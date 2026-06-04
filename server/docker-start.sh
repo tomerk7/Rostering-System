@@ -1,19 +1,9 @@
 #!/usr/bin/env sh
 set -e
 
-cd /var/www
-
 # Always make sure composer is installed on boot.
 # This is to make the first run smoother so no need to run composer install manually.
 composer install --no-interaction --no-progress
-
-chmod -R ug+rwx storage bootstrap/cache 2>/dev/null || true
-
-if grep -qE '^DB_CONNECTION=sqlite' .env 2>/dev/null; then
-	if [ ! -f database/database.sqlite ]; then
-		touch database/database.sqlite
-	fi
-fi
 
 # Ensure APP_KEY is set before running framework commands that rely on encryption.
 if [ -f .env ]; then
@@ -24,10 +14,10 @@ if [ -f .env ]; then
 	fi
 fi
 
-php artisan migrate --force
-php artisan db:seed --force
+php artisan migrate --force;
+php artisan db:seed --force;
 
-# Start cron so the Laravel scheduler (configured in /etc/cron.d/laravel-scheduler) runs.
+# Start cron so the Laravel scheduler (configured in /etc/cron.d/laravel-scheduler)
 service cron start
 
 # Process queued jobs using the database queue connection.

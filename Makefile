@@ -14,7 +14,8 @@ server := $(compose) exec server
 
 docker-init:
 	[ -f server/.env ] || cp server/.env.example server/.env
-	$(compose) up -d
+	[ -f db/.env ] || cp db/.env.example db/.env
+	$(compose) up -d --build
 
 docker-up:
 	$(compose) up -d
@@ -36,6 +37,12 @@ db-migrate-create:
 
 db-seeders:
 	$(server) php artisan db:seed --force
+
+db-psql:
+	$(compose) exec db psql -U rostering -d rostering
+
+db-logs:
+	$(compose) logs -f db
 
 artisan-ide-helper:
 	$(server) sh -c "composer require --dev barryvdh/laravel-ide-helper"

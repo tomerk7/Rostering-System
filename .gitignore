@@ -1,0 +1,4 @@
+server/.env
+db/.env
+db/data/
+server/vendor/
