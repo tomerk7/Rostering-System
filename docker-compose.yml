@@ -28,6 +28,18 @@ services:
     volumes:
       - ./server:/var/www
       - server_vendor:/var/www/vendor
+  client:
+    build:
+      context: ./client
+    container_name: rostering_client
+    env_file:
+      - ./client/.env
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - client_node_modules:/app/node_modules
 
 volumes:
   server_vendor:
+  client_node_modules:

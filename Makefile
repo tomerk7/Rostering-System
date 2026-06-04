@@ -9,12 +9,12 @@ compose := docker compose
 endif
 
 server := $(compose) exec server
-# Uncomment when the client service is added to docker-compose.yml:
-# client := $(compose) exec client
+client := $(compose) exec client
 
 docker-init:
 	[ -f server/.env ] || cp server/.env.example server/.env
 	[ -f db/.env ] || cp db/.env.example db/.env
+	[ -f client/.env ] || cp client/.env.example client/.env
 	$(compose) up -d --build
 
 docker-up:
@@ -61,3 +61,12 @@ tests:
 
 optimize-clear-all:
 	$(server) php artisan optimize:clear
+
+client-npm-install:
+	$(client) npm install
+
+client-build:
+	$(client) npm run build
+
+client-lint:
+	$(client) npm run lint
