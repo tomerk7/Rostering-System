@@ -44,6 +44,12 @@ db-psql:
 db-logs:
 	$(compose) logs -f db
 
+server-logs:
+	$(compose) logs -f server
+
+client-logs:
+	$(compose) logs -f client
+
 artisan-ide-helper:
 	$(server) sh -c "composer require --dev barryvdh/laravel-ide-helper"
 

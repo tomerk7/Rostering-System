@@ -3,3 +3,4 @@ db/.env
 client/.env
 db/data/
 server/vendor/
+docs/
