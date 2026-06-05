@@ -6,14 +6,53 @@ namespace App\Services\Workers;
 
 use App\Models\Contract;
 use App\Models\Worker;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
-final readonly class WorkerProfileService
+final readonly class WorkerService
 {
+    private const RELATIONS = [
+        'role',
+        'contract.availableDays',
+        'contract.availableShifts',
+    ];
+
+    public function list(Request $request): LengthAwarePaginator
+    {
+        $perPage = min((int) $request->integer('per_page', 15), 100);
+
+        return Worker::query()
+            ->with(self::RELATIONS)
+            ->when($request->filled('search'), function (Builder $query) use ($request): void {
+                $this->applySearch($query, (string) $request->string('search'));
+            })
+            ->when($request->filled('role_id'), function (Builder $query) use ($request): void {
+                $query->where('role_id', $request->integer('role_id'));
+            })
+            ->when($request->filled('role_code'), function (Builder $query) use ($request): void {
+                $query->whereHas('role', function (Builder $query) use ($request): void {
+                    $query->where('code', (string) $request->string('role_code'));
+                });
+            })
+            ->when($request->has('is_active'), function (Builder $query) use ($request): void {
+                $query->where('is_active', $request->boolean('is_active'));
+            })
+            ->orderBy('full_name')
+            ->paginate($perPage)
+            ->withQueryString();
+    }
+
+    public function loadDetails(Worker $worker): Worker
+    {
+        return $worker->load(self::RELATIONS);
+    }
+
     /**
      * Create a worker with contract and availability.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function create(array $data): Worker
     {
@@ -23,14 +62,14 @@ final readonly class WorkerProfileService
             $contract = $worker->contract()->create($this->contractAttributes($data));
             $this->replaceAvailability($contract, $data);
 
-            return $worker->load(['role', 'contract.availableDays', 'contract.availableShifts']);
+            return $this->loadDetails($worker);
         });
     }
 
     /**
      * Update a worker with contract and availability.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     public function update(Worker $worker, array $data): Worker
     {
@@ -40,15 +79,28 @@ final readonly class WorkerProfileService
             $contract = $worker->contract()->updateOrCreate([], $this->contractAttributes($data));
             $this->replaceAvailability($contract, $data);
 
-            return $worker->refresh()->load(['role', 'contract.availableDays', 'contract.availableShifts']);
+            return $this->loadDetails($worker->refresh());
+        });
+    }
+
+    public function delete(Worker $worker): void
+    {
+        $worker->delete();
+    }
+
+    private function applySearch(Builder $query, string $search): void
+    {
+        $query->where(function (Builder $query) use ($search): void {
+            $query
+                ->where('full_name', 'like', "%{$search}%")
+                ->orWhere('israeli_id', 'like', "%{$search}%");
         });
     }
 
     /**
      * Build worker attributes from validated request data.
      *
-     * @param array<string, mixed> $data
-     *
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function workerAttributes(array $data): array
@@ -64,8 +116,7 @@ final readonly class WorkerProfileService
     /**
      * Build contract attributes from validated request data.
      *
-     * @param array<string, mixed> $data
-     *
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     private function contractAttributes(array $data): array
@@ -83,7 +134,7 @@ final readonly class WorkerProfileService
     /**
      * Replace all normalized availability rows for the contract.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      */
     private function replaceAvailability(Contract $contract, array $data): void
     {
@@ -111,8 +162,7 @@ final readonly class WorkerProfileService
     /**
      * Normalize submitted integer lists before replacing child rows.
      *
-     * @param array<int, int|string> $values
-     *
+     * @param  array<int, int|string>  $values
      * @return array<int, int>
      */
     private function normalizedIntegers(array $values): array
