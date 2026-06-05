@@ -1,9 +1,89 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useWorkersStore } from '@/stores/workers'
-import type { Worker } from '@/api/workers'
+import {
+  exportWorkers,
+  importWorkers,
+  type ImportRowError,
+  type ImportSummary,
+  type Worker,
+} from '@/api/workers'
+import { isAxiosError } from 'axios'
 
 const workersStore = useWorkersStore()
+
+const showImport = ref(false)
+const importFile = ref<File | null>(null)
+const importing = ref(false)
+const importError = ref('')
+const importSummary = ref<ImportSummary | null>(null)
+const importErrors = ref<ImportRowError[]>([])
+const exporting = ref(false)
+
+function openImport() {
+  showImport.value = true
+  importFile.value = null
+  importError.value = ''
+  importSummary.value = null
+  importErrors.value = []
+}
+
+function closeImport() {
+  showImport.value = false
+}
+
+function onFileChange(event: Event) {
+  const target = event.target as HTMLInputElement
+  importFile.value = target.files?.[0] ?? null
+}
+
+async function submitImport() {
+  if (importFile.value === null) {
+    importError.value = 'Please choose a CSV file to import.'
+    return
+  }
+
+  importing.value = true
+  importError.value = ''
+  importSummary.value = null
+  importErrors.value = []
+
+  try {
+    const response = await importWorkers(importFile.value)
+    importSummary.value = response.data
+    importErrors.value = response.errors ?? []
+    await workersStore.fetchWorkers()
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 422) {
+      const fileErrors = error.response.data?.errors?.file as string[] | undefined
+      importError.value = fileErrors?.[0] ?? 'The uploaded file is invalid.'
+    } else {
+      importError.value = 'Import failed. Please try again.'
+    }
+  } finally {
+    importing.value = false
+  }
+}
+
+async function downloadExport() {
+  exporting.value = true
+
+  try {
+    const blob = await exportWorkers()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `workers-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    workersStore.error = 'Could not export workers. Please try again.'
+  } finally {
+    exporting.value = false
+  }
+}
 
 const roleOptions = [
   { value: '', label: 'All roles' },
@@ -73,7 +153,13 @@ function availabilitySummary(worker: Worker): string {
         <h1 class="page__title">Worker Directory</h1>
         <p class="page__description">Search, filter, and manage worker profiles for scheduling.</p>
       </div>
-      <RouterLink class="button button--primary" :to="{ name: 'workers.create' }">Add worker</RouterLink>
+      <div class="page__actions">
+        <button type="button" class="button" :disabled="exporting" @click="downloadExport">
+          {{ exporting ? 'Exporting...' : 'Export CSV' }}
+        </button>
+        <button type="button" class="button" @click="openImport">Import CSV</button>
+        <RouterLink class="button button--primary" :to="{ name: 'workers.create' }">Add worker</RouterLink>
+      </div>
     </header>
 
     <section class="panel">
@@ -205,5 +291,68 @@ function availabilitySummary(worker: Worker): string {
         </div>
       </footer>
     </section>
+
+    <div v-if="showImport" class="modal" role="dialog" aria-modal="true" @click.self="closeImport">
+      <div class="modal__card">
+        <header class="modal__header">
+          <h2 class="modal__title">Import workers from CSV</h2>
+          <button type="button" class="button" @click="closeImport">Close</button>
+        </header>
+
+        <p class="modal__hint">
+          One row per worker. Columns are read by position: full_name, israeli_id, role, status,
+          hourly_cost, min_monthly_hours, max_monthly_hours, available_days, available_shifts.
+        </p>
+
+        <label class="field">
+          <span class="field__label">CSV file</span>
+          <input class="input" type="file" accept=".csv,text/csv" @change="onFileChange" />
+        </label>
+
+        <div v-if="importError" class="alert" role="alert">{{ importError }}</div>
+
+        <div v-if="importSummary" class="alert alert--success" role="status">
+          Imported {{ importSummary.imported }} of {{ importSummary.total }} rows
+          ({{ importSummary.created }} created, {{ importSummary.updated }} updated,
+          {{ importSummary.skipped }} skipped).
+        </div>
+
+        <div v-if="importErrors.length" class="import-errors">
+          <h3 class="import-errors__title">Row errors ({{ importErrors.length }})</h3>
+          <div class="table-wrap">
+            <table class="table import-errors__table">
+              <thead>
+                <tr>
+                  <th>Line</th>
+                  <th>Field</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(rowError, index) in importErrors" :key="`${rowError.line}-${index}`">
+                  <td>{{ rowError.line }}</td>
+                  <td>{{ rowError.field }}</td>
+                  <td>{{ rowError.message }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <footer class="modal__footer">
+          <button type="button" class="button" :disabled="importing" @click="closeImport">
+            Done
+          </button>
+          <button
+            type="button"
+            class="button button--primary"
+            :disabled="importing || importFile === null"
+            @click="submitImport"
+          >
+            {{ importing ? 'Importing...' : 'Import' }}
+          </button>
+        </footer>
+      </div>
+    </div>
   </main>
 </template>

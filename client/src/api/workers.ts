@@ -73,6 +73,28 @@ export interface ReferenceData {
   shifts: WorkerShift[]
 }
 
+export interface ImportSummary {
+  total: number
+  imported: number
+  created: number
+  updated: number
+  skipped: number
+}
+
+export interface ImportRowError {
+  line: number
+  field: string
+  message: string
+}
+
+export interface ImportResponse {
+  success: boolean
+  message: string
+  data: ImportSummary
+  errors: ImportRowError[]
+  meta: Record<string, unknown>
+}
+
 export interface WorkerPayload {
   full_name: string
   israeli_id: string
@@ -121,6 +143,21 @@ export async function deleteWorker(workerId: number): Promise<ApiResponse<null>>
 
 export async function getReferenceData(): Promise<ApiResponse<ReferenceData>> {
   const { data } = await api.get<ApiResponse<ReferenceData>>('/api/reference-data')
+
+  return data
+}
+
+export async function importWorkers(file: File): Promise<ImportResponse> {
+  const form = new FormData()
+  form.append('file', file)
+
+  const { data } = await api.post<ImportResponse>('/api/workers/import', form)
+
+  return data
+}
+
+export async function exportWorkers(): Promise<Blob> {
+  const { data } = await api.get<Blob>('/api/workers/export', { responseType: 'blob' })
 
   return data
 }

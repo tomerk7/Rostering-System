@@ -38,6 +38,11 @@ const router = createRouter({
       component: LoginView,
       meta: { requiresGuest: true },
     },
+    {
+      path: '/:pathMatch(.*)*',
+      name: 'not-found',
+      redirect: { name: 'home' },
+    },
   ],
 })
 

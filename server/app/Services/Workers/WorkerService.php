@@ -115,9 +115,11 @@ final readonly class WorkerService
      */
     private function applySearch(Builder $query, string $search): void
     {
-        $query->where(function (Builder $query) use ($search): void {
+        $term = '%' . mb_strtolower($search) . '%';
+
+        $query->where(function (Builder $query) use ($term, $search): void {
             $query
-                ->where('full_name', 'like', "%{$search}%")
+                ->whereRaw('LOWER(full_name) LIKE ?', [$term])
                 ->orWhere('israeli_id', 'like', "%{$search}%");
         });
     }
