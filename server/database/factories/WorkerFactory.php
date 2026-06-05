@@ -1,0 +1,75 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Database\Factories;
+
+use App\Models\Role;
+use App\Models\Worker;
+use Database\Seeders\ReferenceDataSeeder;
+use Illuminate\Database\Eloquent\Factories\Factory;
+
+/**
+ * @extends Factory<Worker>
+ */
+final class WorkerFactory extends Factory
+{
+    /**
+     * Define the model's default state.
+     *
+     * @return array<string, mixed>
+     */
+    public function definition(): array
+    {
+        return [
+            'full_name' => fake()->name(),
+            'israeli_id' => $this->validIsraeliId(),
+            'role_id' => $this->roleId(),
+            'is_active' => true,
+        ];
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'is_active' => false,
+        ]);
+    }
+
+    private function roleId(): int
+    {
+        $roleId = Role::query()->inRandomOrder()->value('id');
+
+        if ($roleId !== null) {
+            return (int) $roleId;
+        }
+
+        return (int) Role::query()
+            ->firstOrCreate(
+                ['code' => ReferenceDataSeeder::ROLES[0]['code']],
+                ['name' => ReferenceDataSeeder::ROLES[0]['name']],
+            )
+            ->getKey();
+    }
+
+    private function validIsraeliId(): string
+    {
+        $baseDigits = str_pad(
+            (string) fake()->unique()->numberBetween(1, 99_999_999),
+            8,
+            '0',
+            STR_PAD_LEFT,
+        );
+
+        $sum = 0;
+
+        for ($index = 0; $index < 8; $index++) {
+            $product = (int) $baseDigits[$index] * ($index % 2 === 0 ? 1 : 2);
+            $sum += intdiv($product, 10) + ($product % 10);
+        }
+
+        $checkDigit = (10 - ($sum % 10)) % 10;
+
+        return $baseDigits.$checkDigit;
+    }
+}
