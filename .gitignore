@@ -4,3 +4,5 @@ client/.env
 db/data/
 server/vendor/
 docs/
+prompts/
+.vscode/

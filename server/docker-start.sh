@@ -15,7 +15,6 @@ if [ -f .env ]; then
 fi
 
 php artisan migrate --force;
-php artisan db:seed --force;
 
 # Start cron so the Laravel scheduler (configured in /etc/cron.d/laravel-scheduler)
 service cron start
