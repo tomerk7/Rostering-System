@@ -73,6 +73,7 @@ function availabilitySummary(worker: Worker): string {
         <h1 class="page__title">Worker Directory</h1>
         <p class="page__description">Search, filter, and manage worker profiles for scheduling.</p>
       </div>
+      <RouterLink class="button button--primary" :to="{ name: 'workers.create' }">Add worker</RouterLink>
     </header>
 
     <section class="panel">
@@ -160,6 +161,9 @@ function availabilitySummary(worker: Worker): string {
                 </td>
                 <td>{{ availabilitySummary(worker) }}</td>
                 <td class="table__actions">
+                <RouterLink class="button" :to="{ name: 'workers.edit', params: { id: worker.id } }">
+                  Edit
+                </RouterLink>
                   <button
                     type="button"
                     class="button button--danger"

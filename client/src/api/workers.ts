@@ -9,12 +9,12 @@ export interface ApiMeta {
   total: number
 }
 
-export interface ApiResponse<T> {
+export interface ApiResponse<T, TMeta = Record<string, unknown>> {
   success: boolean
   message: string
   data: T
   errors: Record<string, string[]>
-  meta: ApiMeta
+  meta: TMeta
 }
 
 export interface WorkerRole {
@@ -62,14 +62,65 @@ export interface WorkerListParams {
   per_page?: number
 }
 
-export async function listWorkers(params: WorkerListParams = {}): Promise<ApiResponse<Worker[]>> {
-  const { data } = await api.get<ApiResponse<Worker[]>>('/api/workers', { params })
+export interface ReferenceRole {
+  id: number
+  code: string
+  name: string
+}
+
+export interface ReferenceData {
+  roles: ReferenceRole[]
+  shifts: WorkerShift[]
+}
+
+export interface WorkerPayload {
+  full_name: string
+  israeli_id: string
+  role_id: number | null
+  is_active: boolean
+  contract: {
+    hourly_cost: number | null
+    min_monthly_hours: number | null
+    max_monthly_hours: number | null
+  }
+  availability: {
+    days: number[]
+    shifts: number[]
+  }
+}
+
+export async function listWorkers(params: WorkerListParams = {}): Promise<ApiResponse<Worker[], ApiMeta>> {
+  const { data } = await api.get<ApiResponse<Worker[], ApiMeta>>('/api/workers', { params })
+
+  return data
+}
+
+export async function getWorker(workerId: number): Promise<ApiResponse<Worker>> {
+  const { data } = await api.get<ApiResponse<Worker>>(`/api/workers/${workerId}`)
+
+  return data
+}
+
+export async function createWorker(payload: WorkerPayload): Promise<ApiResponse<Worker>> {
+  const { data } = await api.post<ApiResponse<Worker>>('/api/workers', payload)
+
+  return data
+}
+
+export async function updateWorker(workerId: number, payload: WorkerPayload): Promise<ApiResponse<Worker>> {
+  const { data } = await api.put<ApiResponse<Worker>>(`/api/workers/${workerId}`, payload)
 
   return data
 }
 
 export async function deleteWorker(workerId: number): Promise<ApiResponse<null>> {
   const { data } = await api.delete<ApiResponse<null>>(`/api/workers/${workerId}`)
+
+  return data
+}
+
+export async function getReferenceData(): Promise<ApiResponse<ReferenceData>> {
+  const { data } = await api.get<ApiResponse<ReferenceData>>('/api/reference-data')
 
   return data
 }

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
+import WorkerFormView from '@/views/WorkerFormView.vue'
 import WorkersView from '@/views/WorkersView.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -17,6 +18,18 @@ const router = createRouter({
       path: '/workers',
       name: 'workers',
       component: WorkersView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/workers/create',
+      name: 'workers.create',
+      component: WorkerFormView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/workers/:id/edit',
+      name: 'workers.edit',
+      component: WorkerFormView,
       meta: { requiresAuth: true },
     },
     {
