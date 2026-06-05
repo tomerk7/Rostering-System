@@ -204,7 +204,7 @@ final class WorkerApiTest extends TestCase
         $this->assertDatabaseCount('contract_available_shifts', 0);
     }
 
-    public function test_worker_can_be_soft_deleted(): void
+    public function test_worker_can_be_deleted(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->role->id,
@@ -219,7 +219,7 @@ final class WorkerApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        $this->assertSoftDeleted('workers', [
+        $this->assertDatabaseMissing('workers', [
             'id' => $worker->id,
         ]);
 

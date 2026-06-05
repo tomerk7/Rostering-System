@@ -52,6 +52,11 @@ final class UpdateWorkerRequest extends FormRequest
         ];
     }
 
+    /**
+     * Get the worker ID from the route.
+     *
+     * @return int|string|null
+     */
     private function workerId(): int|string|null
     {
         $worker = $this->route('worker');

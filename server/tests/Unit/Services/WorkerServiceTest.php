@@ -241,7 +241,7 @@ final class WorkerServiceTest extends TestCase
         $this->assertDatabaseCount('contract_available_shifts', 0);
     }
 
-    public function test_delete_soft_deletes_worker(): void
+    public function test_delete_removes_worker(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->generalGuardRole->id,
@@ -250,7 +250,7 @@ final class WorkerServiceTest extends TestCase
 
         $this->service->delete($worker);
 
-        $this->assertSoftDeleted('workers', [
+        $this->assertDatabaseMissing('workers', [
             'id' => $worker->id,
         ]);
     }

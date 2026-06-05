@@ -13,12 +13,18 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class WorkerService
 {
-    private const RELATIONS = [
+    private const array RELATIONS = [
         'role',
         'contract.availableDays',
         'contract.availableShifts',
     ];
 
+    /**
+     * List workers with search, role ID, role code, and active filters.
+     *
+     * @param Request $request
+     * @return LengthAwarePaginator
+     */
     public function list(Request $request): LengthAwarePaginator
     {
         $perPage = min((int) $request->integer('per_page', 15), 100);
@@ -44,6 +50,12 @@ final readonly class WorkerService
             ->withQueryString();
     }
 
+    /**
+     * Load worker details with relations.
+     *
+     * @param Worker $worker
+     * @return Worker
+     */
     public function loadDetails(Worker $worker): Worker
     {
         return $worker->load(self::RELATIONS);
@@ -62,7 +74,7 @@ final readonly class WorkerService
             $contract = $worker->contract()->create($this->contractAttributes($data));
             $this->replaceAvailability($contract, $data);
 
-            return $this->loadDetails($worker);
+            return $worker->load(self::RELATIONS);
         });
     }
 
@@ -79,15 +91,28 @@ final readonly class WorkerService
             $contract = $worker->contract()->updateOrCreate([], $this->contractAttributes($data));
             $this->replaceAvailability($contract, $data);
 
-            return $this->loadDetails($worker->refresh());
+            return $worker->load(self::RELATIONS);
         });
     }
 
+    /**
+     * Delete a worker.
+     *
+     * @param Worker $worker
+     * @return void
+     */
     public function delete(Worker $worker): void
     {
         $worker->delete();
     }
 
+    /**
+     * Apply search to the query.
+     *
+     * @param Builder $query
+     * @param string $search
+     * @return void
+     */
     private function applySearch(Builder $query, string $search): void
     {
         $query->where(function (Builder $query) use ($search): void {
