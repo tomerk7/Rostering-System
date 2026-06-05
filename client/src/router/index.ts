@@ -16,18 +16,25 @@ const router = createRouter({
       path: '/login',
       name: 'login',
       component: LoginView,
+      meta: { requiresGuest: true },
     },
   ],
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+
+  // Ensure the session is hydrated before guarding. `ready` is set after the
+  // first fetch, so this only fetches once and won't double-fetch on startup.
+  if (!auth.ready) {
+    await auth.fetchUser()
+  }
 
   if (to.meta.requiresAuth && !auth.isAuthenticated) {
     return { name: 'login' }
   }
 
-  if (to.name === 'login' && auth.isAuthenticated) {
+  if (to.meta.requiresGuest && auth.isAuthenticated) {
     return { name: 'home' }
   }
 })

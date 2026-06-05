@@ -6,3 +6,4 @@ server/vendor/
 docs/
 prompts/
 .vscode/
+.cursor/
