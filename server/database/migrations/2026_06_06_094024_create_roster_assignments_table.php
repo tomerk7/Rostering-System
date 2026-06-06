@@ -24,10 +24,10 @@ return new class extends Migration
             $table->string('source')->default(AssignmentSource::Auto->value);
             $table->timestamps();
 
-            // A worker can't occupy the same shift slot twice on a day.
-            $table->unique(['worker_id', 'work_date', 'shift_id']);
+            // Prevent assigning the same worker to the same date and shift more than once in the same roster.
+            $table->unique(['roster_id', 'worker_id', 'work_date', 'shift_id']);
 
-            // Per-slot demand checking / grid render and fill counts.
+            // Per-slot demand checking and grid render and fill counts.
             $table->index(['roster_id', 'work_date', 'shift_id']);
 
             // No-3-shifts-per-day rule and per-worker monthly-hour totals.

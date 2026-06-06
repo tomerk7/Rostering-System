@@ -84,6 +84,36 @@ final class RosterPersisterTest extends TestCase
         $this->assertDatabaseCount('roster_assignments', 0);
     }
 
+    public function test_save_allows_multiple_drafts_for_the_same_month_with_overlapping_assignments(): void
+    {
+        $workers = $this->createGuards(2);
+        $assignment = [
+            'worker_id' => $workers[0]->id,
+            'shift_id' => $this->shift->id,
+            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1),
+        ];
+        $result = $this->generationResult([$assignment]);
+
+        $first = $this->persister->save($result, $this->admin->id);
+        $second = $this->persister->save($result, $this->admin->id);
+
+        self::assertNotSame($first->id, $second->id);
+        $this->assertDatabaseCount('rosters', 2);
+        $this->assertDatabaseCount('roster_assignments', 2);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $first->id,
+            'worker_id' => $workers[0]->id,
+            'shift_id' => $this->shift->id,
+            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1)->toDateString(),
+        ]);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $second->id,
+            'worker_id' => $workers[0]->id,
+            'shift_id' => $this->shift->id,
+            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1)->toDateString(),
+        ]);
+    }
+
     public function test_save_rolls_back_the_roster_when_assignment_insertion_fails(): void
     {
         $result = $this->generationResult([

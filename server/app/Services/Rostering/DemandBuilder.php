@@ -6,6 +6,7 @@ namespace App\Services\Rostering;
 
 use App\Models\ShiftRoleRequirement;
 use Carbon\CarbonImmutable;
+use Exception;
 
 /**
  * Expands a target month into the full list of staffing slots by crossing every
