@@ -46,10 +46,22 @@ final class RosterAssignmentController extends Controller
                 (string) $request->validated('work_date'),
             );
         } catch (ManualAssignmentException $exception) {
-            return $this->assignmentError($exception);
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['assignment' => [$exception->getMessage()]],
+            );
         }
 
-        return $this->rosterResponse($roster, 'Assignment created successfully.', 201);
+        $roster->refresh();
+
+        return $this->response(
+            success: true,
+            message: 'Assignment created successfully.',
+            status: 201,
+            data: RosterResource::make($this->rosterService->loadDetails($roster)),
+        );
     }
 
     /**
@@ -69,10 +81,22 @@ final class RosterAssignmentController extends Controller
                 (int) $request->validated('worker_id'),
             );
         } catch (ManualAssignmentException $exception) {
-            return $this->assignmentError($exception);
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['assignment' => [$exception->getMessage()]],
+            );
         }
 
-        return $this->rosterResponse($roster, 'Assignment updated successfully.', 200);
+        $roster->refresh();
+
+        return $this->response(
+            success: true,
+            message: 'Assignment updated successfully.',
+            status: 200,
+            data: RosterResource::make($this->rosterService->loadDetails($roster)),
+        );
     }
 
     /**
@@ -87,45 +111,22 @@ final class RosterAssignmentController extends Controller
         try {
             $this->manualAssignmentService->delete($roster, $assignment);
         } catch (ManualAssignmentException $exception) {
-            return $this->assignmentError($exception);
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['assignment' => [$exception->getMessage()]],
+            );
         }
 
-        return $this->rosterResponse($roster, 'Assignment deleted successfully.', 200);
-    }
-
-    /**
-     * Build the success response with the refreshed roster detail.
-     *
-     * @param Roster $roster
-     * @param string $message
-     * @param int $status
-     * @return JsonResponse
-     */
-    private function rosterResponse(Roster $roster, string $message, int $status): JsonResponse
-    {
         $roster->refresh();
 
         return $this->response(
             success: true,
-            message: $message,
-            status: $status,
+            message: 'Assignment deleted successfully.',
+            status: 200,
             data: RosterResource::make($this->rosterService->loadDetails($roster)),
         );
     }
 
-    /**
-     * Build the validation error response for a failed manual assignment.
-     *
-     * @param ManualAssignmentException $exception
-     * @return JsonResponse
-     */
-    private function assignmentError(ManualAssignmentException $exception): JsonResponse
-    {
-        return $this->response(
-            success: false,
-            message: $exception->getMessage(),
-            status: 422,
-            errors: ['assignment' => [$exception->getMessage()]],
-        );
-    }
 }

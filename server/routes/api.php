@@ -26,8 +26,7 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
 
     Route::post('rosters/generate', [RosterController::class, 'generate']);
     Route::get('rosters/generations/{generation}', [RosterController::class, 'showGeneration']);
-    Route::post('rosters/generations/{generation}/save', [RosterController::class, 'saveGeneration']);
-    Route::apiResource('rosters', RosterController::class)->only(['index', 'store', 'show', 'destroy']);
+    Route::apiResource('rosters', RosterController::class)->only(['index', 'show', 'destroy']);
     Route::post('rosters/{roster}/publish', [RosterController::class, 'publish']);
     Route::scopeBindings()->group(function (): void {
         Route::post('rosters/{roster}/assignments', [RosterAssignmentController::class, 'store']);

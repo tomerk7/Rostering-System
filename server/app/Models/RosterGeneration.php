@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -14,11 +16,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'year',
     'month',
     'status',
-    'assignments',
-    'coverage_shortages',
-    'hours_shortfalls',
-    'summary',
-    'error_message',
     'requested_by',
     'roster_id',
     'started_at',
@@ -27,6 +24,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 final class RosterGeneration extends Model
 {
     use HasFactory;
+    use MassPrunable;
+
+    /**
+     * Remove completed trackers that were abandoned before the client consumed them.
+     *
+     * @return Builder<RosterGeneration>
+     */
+    public function prunable(): Builder
+    {
+        return self::query()
+            ->where('status', 'completed')
+            ->where('completed_at', '<=', now()->subHour());
+    }
 
     /**
      * Use the public uuid for route-model binding instead of the numeric key.
@@ -68,10 +78,6 @@ final class RosterGeneration extends Model
         return [
             'year' => 'integer',
             'month' => 'integer',
-            'assignments' => 'array',
-            'coverage_shortages' => 'array',
-            'hours_shortfalls' => 'array',
-            'summary' => 'array',
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
         ];

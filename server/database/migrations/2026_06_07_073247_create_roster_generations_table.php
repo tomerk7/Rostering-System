@@ -20,11 +20,6 @@ return new class extends Migration
             $table->smallInteger('year');
             $table->smallInteger('month');
             $table->string('status')->default('queued');
-            $table->json('assignments')->nullable();
-            $table->json('coverage_shortages')->nullable();
-            $table->json('hours_shortfalls')->nullable();
-            $table->json('summary')->nullable();
-            $table->text('error_message')->nullable();
             $table->foreignId('requested_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('roster_id')->nullable()->constrained('rosters')->nullOnDelete();
             $table->timestamp('started_at')->nullable();

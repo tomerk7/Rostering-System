@@ -6,13 +6,11 @@ import {
   removeAssignment,
 } from '@/api/rosterAssignments'
 import {
-  createRoster,
   deleteRoster,
-  generateRosterPreview,
+  generateRosterDraft,
   getRoster,
   listRosters,
   publishRoster,
-  saveGeneration,
 } from '@/api/rosters'
 
 const emptyReports = {
@@ -41,13 +39,11 @@ export const useRostersStore = defineStore('rosters', {
     return {
       rosters: [],
       roster: null,
-      preview: null,
-      generationId: null,
+      generatedDraft: null,
       selectedYear: year,
       selectedMonth: month,
       loading: false,
-      previewing: false,
-      saving: false,
+      generating: false,
       publishing: false,
       deletingId: null,
       assignmentLoading: false,
@@ -58,11 +54,11 @@ export const useRostersStore = defineStore('rosters', {
 
   getters: {
     assignments(state) {
-      return state.roster?.assignments ?? state.preview?.assignments ?? []
+      return state.roster?.assignments ?? state.generatedDraft?.assignments ?? []
     },
 
     reports(state) {
-      return state.roster?.reports ?? state.preview?.reports ?? emptyReports
+      return state.roster?.reports ?? state.generatedDraft?.reports ?? emptyReports
     },
 
     alerts() {
@@ -70,7 +66,7 @@ export const useRostersStore = defineStore('rosters', {
     },
 
     summary(state) {
-      return state.roster?.summary ?? state.preview?.summary ?? null
+      return state.roster?.summary ?? state.generatedDraft?.summary ?? null
     },
   },
 
@@ -106,7 +102,7 @@ export const useRostersStore = defineStore('rosters', {
       try {
         const response = await getRoster(rosterId)
         this.roster = response.data
-        this.preview = null
+        this.generatedDraft = null
         this.selectedYear = response.data.year
         this.selectedMonth = response.data.month
       } catch {
@@ -116,90 +112,48 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async generatePreview(year, month) {
+    async generateDraft(year, month) {
       const targetYear = year ?? this.selectedYear
       const targetMonth = month ?? this.selectedMonth
+      const previousDraftId = this.generatedDraft?.status === 'draft'
+        ? this.generatedDraft.id
+        : null
 
-      this.previewing = true
-      this.generationId = null
+      this.generating = true
       this.clearErrors()
 
       try {
-        const preview = await generateRosterPreview({ year: targetYear, month: targetMonth })
-        this.preview = preview
-        this.generationId = preview.generation_id
+        const draft = await generateRosterDraft({ year: targetYear, month: targetMonth })
+        this.generatedDraft = draft
         this.roster = null
-        this.selectedYear = preview.year
-        this.selectedMonth = preview.month
-        return preview
+        this.selectedYear = draft.year
+        this.selectedMonth = draft.month
+
+        if (previousDraftId && previousDraftId !== draft.id) {
+          try {
+            await deleteRoster(previousDraftId)
+          } catch {
+            this.error = 'The new draft was generated, but the previous draft could not be removed.'
+          }
+        }
+
+        return draft
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
         const fallback = !isAxiosError(error) && error?.message
           ? error.message
-          : 'Could not generate roster preview. Please try again.'
+          : 'Could not generate roster draft. Please try again.'
         this.error = this.validationErrors.year?.[0]
           ?? this.validationErrors.month?.[0]
           ?? fallback
         return null
       } finally {
-        this.previewing = false
-      }
-    },
-
-    async saveFromGeneration(options = {}) {
-      if (!this.generationId) {
-        this.error = 'No generated roster to save.'
-        return null
-      }
-
-      this.saving = true
-      this.clearErrors()
-
-      try {
-        const response = await saveGeneration(this.generationId, options)
-        this.roster = response.data
-        this.preview = null
-        this.generationId = null
-        this.selectedYear = response.data.year
-        this.selectedMonth = response.data.month
-        return response.data
-      } catch (error) {
-        this.validationErrors = extractValidationErrors(error)
-        this.error = this.validationErrors.status?.[0]
-          ?? 'Could not save roster. Please try again.'
-        return null
-      } finally {
-        this.saving = false
-      }
-    },
-
-    async saveDraft(year, month) {
-      const targetYear = year ?? this.selectedYear
-      const targetMonth = month ?? this.selectedMonth
-
-      this.saving = true
-      this.clearErrors()
-
-      try {
-        const response = await createRoster({ year: targetYear, month: targetMonth })
-        this.roster = response.data
-        this.preview = null
-        this.selectedYear = response.data.year
-        this.selectedMonth = response.data.month
-        return response.data
-      } catch (error) {
-        this.validationErrors = extractValidationErrors(error)
-        this.error = this.validationErrors.year?.[0]
-          ?? this.validationErrors.month?.[0]
-          ?? 'Could not generate roster. Please try again.'
-        return null
-      } finally {
-        this.saving = false
+        this.generating = false
       }
     },
 
     async publish(rosterId) {
-      const id = rosterId ?? this.roster?.id
+      const id = rosterId ?? this.roster?.id ?? this.generatedDraft?.id
 
       if (!id) {
         this.error = 'No roster selected to publish.'
@@ -211,36 +165,11 @@ export const useRostersStore = defineStore('rosters', {
 
       try {
         const response = await publishRoster(id)
-        this.roster = response.data
+        this.applyRosterUpdate(response.data)
         return response.data
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
         this.error = this.validationErrors.roster?.[0] ?? 'Could not publish roster. Please try again.'
-        return null
-      } finally {
-        this.publishing = false
-      }
-    },
-
-    async publishFromPreview() {
-      this.publishing = true
-      this.clearErrors()
-
-      try {
-        const response = await createRoster({
-          year: this.selectedYear,
-          month: this.selectedMonth,
-          publish: true,
-        })
-        this.roster = response.data
-        this.preview = null
-        return response.data
-      } catch (error) {
-        this.validationErrors = extractValidationErrors(error)
-        this.error = this.validationErrors.year?.[0]
-          ?? this.validationErrors.month?.[0]
-          ?? this.validationErrors.roster?.[0]
-          ?? 'Could not publish roster. Please try again.'
         return null
       } finally {
         this.publishing = false
@@ -253,7 +182,7 @@ export const useRostersStore = defineStore('rosters', {
 
       try {
         const response = await addAssignment(rosterId, payload)
-        this.roster = response.data
+        this.applyRosterUpdate(response.data)
         return response.data
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
@@ -274,7 +203,7 @@ export const useRostersStore = defineStore('rosters', {
 
       try {
         const response = await changeAssignment(rosterId, assignmentId, { worker_id: workerId })
-        this.roster = response.data
+        this.applyRosterUpdate(response.data)
         return response.data
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
@@ -313,7 +242,7 @@ export const useRostersStore = defineStore('rosters', {
 
       try {
         const response = await removeAssignment(rosterId, assignmentId)
-        this.roster = response.data
+        this.applyRosterUpdate(response.data)
         return response.data
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
@@ -324,9 +253,18 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    clearPreview() {
-      this.preview = null
-      this.generationId = null
+    clearGeneratedDraft() {
+      this.generatedDraft = null
+    },
+
+    applyRosterUpdate(roster) {
+      if (this.generatedDraft?.id === roster.id) {
+        this.generatedDraft = roster
+      }
+
+      if (this.roster?.id === roster.id) {
+        this.roster = roster
+      }
     },
 
     clearRoster() {

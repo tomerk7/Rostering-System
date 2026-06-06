@@ -12,6 +12,7 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Tests\TestCase;
@@ -159,13 +160,11 @@ final class WorkerCsvExporterTest extends TestCase
 
     private function captureWriteTo(): string
     {
-        $handle = fopen('php://temp', 'r+');
-        $this->csvService->writeTo($handle);
-        rewind($handle);
-        $contents = stream_get_contents($handle);
-        fclose($handle);
+        $exportId = (string) Str::uuid();
+        $storedPath = "worker-exports/{$exportId}.csv";
+        $this->csvService->processExport($exportId, $storedPath);
 
-        return $contents;
+        return Storage::disk('local')->get($storedPath);
     }
 
     private function captureStreamDownload(): string

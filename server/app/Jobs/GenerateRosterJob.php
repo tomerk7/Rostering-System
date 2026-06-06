@@ -61,9 +61,6 @@ final class GenerateRosterJob implements ShouldQueue
             'exception' => $exception,
         ]);
 
-        app(RosterService::class)->markGenerationFailed(
-            $this->generationUuid,
-            $exception?->getMessage() ?? 'Unknown error.',
-        );
+        app(RosterService::class)->deleteGeneration($this->generationUuid);
     }
 }

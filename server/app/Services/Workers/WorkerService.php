@@ -74,9 +74,20 @@ final readonly class WorkerService
     public function create(array $data): Worker
     {
         return DB::transaction(function () use ($data): Worker {
-            $worker = Worker::query()->create($this->workerAttributes($data));
+            $worker = Worker::query()->create([
+                'full_name' => $data['full_name'],
+                'israeli_id' => $data['israeli_id'],
+                'role_id' => $data['role_id'],
+                'is_active' => $data['is_active']
+            ]);
 
-            $contract = $worker->contract()->create($this->contractAttributes($data));
+            /** @var Contract $contract */
+            $contract = $worker->contract()->create([
+                'hourly_cost' => $data['contract']['hourly_cost'],
+                'min_monthly_hours' => $data['contract']['min_monthly_hours'],
+                'max_monthly_hours' => $data['contract']['max_monthly_hours'],
+            ]);
+
             $this->replaceAvailability($contract, $data);
 
             return $worker->load(self::RELATIONS);
@@ -91,9 +102,20 @@ final readonly class WorkerService
     public function update(Worker $worker, array $data): Worker
     {
         return DB::transaction(function () use ($worker, $data): Worker {
-            $worker->update($this->workerAttributes($data));
+            $worker->update([
+                'full_name' => $data['full_name'],
+                'israeli_id' => $data['israeli_id'],
+                'role_id' => $data['role_id'],
+                'is_active' => $data['is_active']
+            ]);
 
-            $contract = $worker->contract()->updateOrCreate([], $this->contractAttributes($data));
+            /** @var Contract $contract */
+            $contract = $worker->contract()->updateOrCreate([], [
+                'hourly_cost' => $data['contract']['hourly_cost'],
+                'min_monthly_hours' => $data['contract']['min_monthly_hours'],
+                'max_monthly_hours' => $data['contract']['max_monthly_hours'],
+            ]);
+
             $this->replaceAvailability($contract, $data);
 
             return $worker->load(self::RELATIONS);
@@ -113,7 +135,7 @@ final readonly class WorkerService
 
     /**
      * Delete every worker and their roster assignments.
-     * 
+     *
      * @return int
      */
     public function deleteAll(): int
@@ -186,40 +208,6 @@ final readonly class WorkerService
     }
 
     /**
-     * Build worker attributes from validated request data.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
-     */
-    private function workerAttributes(array $data): array
-    {
-        return [
-            'full_name' => $data['full_name'],
-            'israeli_id' => $data['israeli_id'],
-            'role_id' => $data['role_id'],
-            'is_active' => $data['is_active'],
-        ];
-    }
-
-    /**
-     * Build contract attributes from validated request data.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, mixed>
-     */
-    private function contractAttributes(array $data): array
-    {
-        /** @var array<string, mixed> $contract */
-        $contract = $data['contract'];
-
-        return [
-            'hourly_cost' => $contract['hourly_cost'],
-            'min_monthly_hours' => $contract['min_monthly_hours'],
-            'max_monthly_hours' => $contract['max_monthly_hours'],
-        ];
-    }
-
-    /**
      * Replace all availability rows for the contract.
      *
      * @param  array<string, mixed>  $data
@@ -232,18 +220,19 @@ final readonly class WorkerService
         $contract->availableDays()->delete();
         $contract->availableShiftRows()->delete();
 
-        $contract->availableDays()->createMany(
-            array_map(
-                static fn (int $dayOfWeek): array => ['day_of_week' => $dayOfWeek],
-                $availability['days'],
-            ),
-        );
+        $days = [];
 
-        $contract->availableShiftRows()->createMany(
-            array_map(
-                static fn (int $shiftId): array => ['shift_id' => $shiftId],
-                $availability['shifts'],
-            ),
-        );
+        foreach ($availability['days'] as $dayOfWeek) {
+            $days[] = ['day_of_week' => $dayOfWeek];
+        }
+
+        $shifts = [];
+
+        foreach ($availability['shifts'] as $shiftId) {
+            $shifts[] = ['shift_id' => $shiftId];
+        }
+
+        $contract->availableDays()->createMany($days);
+        $contract->availableShiftRows()->createMany($shifts);
     }
 }

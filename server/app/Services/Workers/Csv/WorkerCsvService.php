@@ -326,7 +326,15 @@ final class WorkerCsvService
         }
 
         try {
-            $this->writeTo($handle);
+            fputcsv($handle, self::HEADERS);
+
+            Worker::query()
+                ->with(['role', 'contract.availableDays', 'contract.availableShifts'])
+                ->orderBy('israeli_id')
+                ->lazy()
+                ->each(function (Worker $worker) use ($handle): void {
+                    fputcsv($handle, $this->toRow($worker));
+                });
         } finally {
             fclose($handle);
         }
@@ -437,28 +445,6 @@ final class WorkerCsvService
             $filename,
             ['Content-Type' => 'text/csv'],
         );
-    }
-
-    /**
-     * Stream every worker to the given handle as a re-importable CSV.
-     *
-     * Writes the header row followed by one row per worker in the exact column
-     * order the importer expects. Workers are read with `lazy()` (chunked,
-     * eager-loaded) so memory stays flat regardless of workforce size.
-     *
-     * @param  resource  $handle  An open, writable stream (e.g. php://output).
-     */
-    public function writeTo($handle): void
-    {
-        fputcsv($handle, self::HEADERS);
-
-        Worker::query()
-            ->with(['role', 'contract.availableDays', 'contract.availableShifts'])
-            ->orderBy('israeli_id')
-            ->lazy()
-            ->each(function (Worker $worker) use ($handle): void {
-                fputcsv($handle, $this->toRow($worker));
-            });
     }
 
     /**

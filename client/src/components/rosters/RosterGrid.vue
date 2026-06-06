@@ -51,7 +51,7 @@ function firstShortRoleId(cell) {
       <p class="roster-grid__hint">
         Daily assignments by shift. Understaffed cells are highlighted.
         <template v-if="editable">
-          Click an understaffed cell to add a worker.
+          Click any cell to add a worker.
         </template>
       </p>
     </header>
@@ -88,9 +88,9 @@ function firstShortRoleId(cell) {
               class="roster-grid__cell"
               :class="{
                 'roster-grid__cell--understaffed': cell.isUnderstaffed,
-                'roster-grid__cell--editable': editable && cell.isUnderstaffed,
+                'roster-grid__cell--editable': editable,
               }"
-              :title="editable && cell.isUnderstaffed ? 'Click to add assignment' : undefined"
+              :title="editable ? 'Click to add assignment' : undefined"
               @click="onCellClick(row.workDate, cell.shiftId, firstShortRoleId(cell))"
             >
               <div class="roster-grid__demand">

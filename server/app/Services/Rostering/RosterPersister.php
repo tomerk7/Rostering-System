@@ -8,7 +8,6 @@ use App\Enums\RosterStatus;
 use App\Exceptions\Rostering\RosterStatusException;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
-use App\Models\RosterGeneration;
 use App\Services\Rostering\Data\GenerationResult;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
@@ -38,34 +37,6 @@ final readonly class RosterPersister
             ]);
 
             $this->insertAssignments($roster, $result->assignments);
-
-            return $roster;
-        });
-    }
-
-    /**
-     * Save a completed generation's stored preview as a new draft roster.
-     *
-     * Persists the assignments verbatim from the generation's JSON payload so the
-     * saved draft matches the previewed result exactly, without re-running the
-     * engine.
-     *
-     * @param RosterGeneration $generation
-     * @param int $createdBy
-     * @return Roster
-     */
-    public function saveFromGeneration(RosterGeneration $generation, int $createdBy): Roster
-    {
-        return DB::transaction(function () use ($generation, $createdBy): Roster {
-            $roster = Roster::query()->create([
-                'year' => $generation->year,
-                'month' => $generation->month,
-                'status' => RosterStatus::Draft,
-                'generated_at' => Carbon::now(),
-                'created_by' => $createdBy,
-            ]);
-
-            $this->insertStoredAssignments($roster, $generation->assignments ?? []);
 
             return $roster;
         });
@@ -140,36 +111,4 @@ final readonly class RosterPersister
         RosterAssignment::query()->insert($rows);
     }
 
-    /**
-     * Bulk-insert assignments from a generation's stored JSON payload.
-     *
-     * Reads only the persistence-relevant keys from each enriched assignment;
-     * work_date is already a date string in the stored payload.
-     *
-     * @param  list<array{worker_id: int, shift_id: int, work_date: string, source: string}>  $assignments
-     */
-    private function insertStoredAssignments(Roster $roster, array $assignments): void
-    {
-        if ($assignments === []) {
-            return;
-        }
-
-        $now = Carbon::now();
-        $rosterId = $roster->getKey();
-
-        $rows = array_map(
-            static fn (array $assignment): array => [
-                'roster_id' => $rosterId,
-                'worker_id' => $assignment['worker_id'],
-                'shift_id' => $assignment['shift_id'],
-                'work_date' => $assignment['work_date'],
-                'source' => $assignment['source'],
-                'created_at' => $now,
-                'updated_at' => $now,
-            ],
-            $assignments,
-        );
-
-        RosterAssignment::query()->insert($rows);
-    }
 }

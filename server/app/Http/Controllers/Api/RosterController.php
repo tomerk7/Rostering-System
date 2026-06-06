@@ -7,14 +7,12 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\Rostering\RosterStatusException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GenerateRosterRequest;
-use App\Http\Requests\PreviewRosterRequest;
 use App\Http\Resources\RosterResource;
 use App\Models\Roster;
 use App\Models\RosterGeneration;
 use App\Services\Rostering\RosterService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Exception;
 
 final class RosterController extends Controller
@@ -57,10 +55,11 @@ final class RosterController extends Controller
     /**
      * Return the current state of a queued roster generation.
      *
+     * @param Request $request
      * @param RosterGeneration $generation
      * @return JsonResponse
      */
-    public function showGeneration(RosterGeneration $generation): JsonResponse
+    public function showGeneration(Request $request, RosterGeneration $generation): JsonResponse
     {
         return match ($generation->status) {
             'queued', 'processing' => $this->response(
@@ -79,24 +78,15 @@ final class RosterController extends Controller
                 data: [
                     'generation_id' => $generation->uuid,
                     'status' => $generation->status,
-                    'year' => $generation->year,
-                    'month' => $generation->month,
-                    'assignments' => $generation->assignments ?? [],
-                    'reports' => [
-                        'coverage_shortages' => $generation->coverage_shortages ?? [],
-                        'hours_shortfalls' => $generation->hours_shortfalls ?? [],
-                    ],
-                    'summary' => $generation->summary,
-                ],
-            ),
-            'failed' => $this->response(
-                success: false,
-                message: 'Roster generation failed.',
-                status: 200,
-                data: [
-                    'generation_id' => $generation->uuid,
-                    'status' => $generation->status,
-                    'message' => $generation->error_message ?? 'Unknown error.',
+                    'roster' => (function () use ($request, $generation): array {
+                        $roster = $generation->roster()->firstOrFail();
+                        $data = RosterResource::make($this->rosterService->loadDetails($roster))
+                            ->resolve($request);
+
+                        $generation->delete();
+
+                        return $data;
+                    })(),
                 ],
             ),
             default => $this->response(
@@ -109,73 +99,6 @@ final class RosterController extends Controller
                 ],
             ),
         };
-    }
-
-    /**
-     * Save a completed generation's preview as a draft roster.
-     *
-     * @param Request $request
-     * @param RosterGeneration $generation
-     * @return JsonResponse
-     * @throws RosterStatusException
-     */
-    public function saveGeneration(Request $request, RosterGeneration $generation): JsonResponse
-    {
-        if ($generation->status !== 'completed') {
-            return $this->response(
-                success: false,
-                message: 'Only a completed generation can be saved.',
-                status: 422,
-                errors: ['status' => ['Only a completed generation can be saved.']],
-            );
-        }
-
-        $publish = $request->boolean('publish');
-
-        $roster = $this->rosterService->saveGenerationAsDraft(
-            $generation,
-            (int) $request->user()->id,
-            $publish,
-        );
-
-        return $this->response(
-            success: true,
-            message: $publish
-                ? 'Roster published successfully.'
-                : 'Roster saved as draft successfully.',
-            status: 201,
-            data: RosterResource::make($this->rosterService->loadDetails($roster)),
-        );
-    }
-
-    /**
-     * Regenerate and persist a draft roster for the requested period.
-     *  
-     * @param PreviewRosterRequest $request
-     * @return JsonResponse
-     * @throws Exception
-     * @throws ValidationException
-     */
-    public function store(PreviewRosterRequest $request): JsonResponse
-    {
-        $roster = $this->rosterService->saveDraft(
-            (int) $request->validated('year'),
-            (int) $request->validated('month'),
-            (int) $request->user()->id,
-        );
-
-        if ($request->boolean('publish')) {
-            $roster = $this->rosterService->publish($roster);
-        }
-
-        return $this->response(
-            success: true,
-            message: $request->boolean('publish')
-                ? 'Roster published successfully.'
-                : 'Roster saved as draft successfully.',
-            status: 201,
-            data: RosterResource::make($this->rosterService->loadDetails($roster)),
-        );
     }
 
     /**
@@ -195,7 +118,7 @@ final class RosterController extends Controller
 
     /**
      * Show one roster with enriched assignments, optionally filtered by date or shift.
-     * 
+     *
      * @param Request $request
      * @param Roster $roster
      * @return JsonResponse
@@ -211,15 +134,15 @@ final class RosterController extends Controller
             status: 200,
             data: RosterResource::make($this->rosterService->loadDetails(
                 $roster,
-                $date === null ? null : (string) $date,
-                $shiftId === null ? null : (int) $shiftId,
+                $date ?? (string) $date,
+                $shiftId ?? (int) $shiftId,
             )),
         );
     }
 
     /**
      * Publish a draft roster for its month.
-     *  
+     *
      * @param Roster $roster
      * @return JsonResponse
      * @throws Exception

@@ -50,6 +50,9 @@ db-logs:
 server-logs:
 	$(compose) logs -f server
 
+server-app-logs:
+	$(compose) exec server tail -f storage/logs/laravel.log
+
 client-logs:
 	$(compose) logs -f client
 
