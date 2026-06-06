@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\ReferenceDataController;
+use App\Http\Controllers\Api\RosterController;
 use App\Http\Controllers\Api\WorkerCsvController;
 use App\Http\Controllers\Api\WorkerController;
 use Illuminate\Http\Request;
@@ -19,4 +20,7 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::get('workers/export', [WorkerCsvController::class, 'export']);
 
     Route::apiResource('workers', WorkerController::class);
+
+    Route::post('rosters/preview', [RosterController::class, 'preview']);
+    Route::apiResource('rosters', RosterController::class)->only(['index', 'store', 'show']);
 });

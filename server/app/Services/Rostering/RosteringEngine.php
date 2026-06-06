@@ -110,8 +110,7 @@ final readonly class RosteringEngine
                 ];
 
                 $workers[$bestId]['assigned_hours'] += $slot['duration_hours'];
-                $workers[$bestId]['shifts_per_date'][$dateKey] =
-                    ($workers[$bestId]['shifts_per_date'][$dateKey] ?? 0) + 1;
+                $workers[$bestId]['shifts_per_date'][$dateKey] = ($workers[$bestId]['shifts_per_date'][$dateKey] ?? 0) + 1;
                 $assignedToSlot[$bestId] = true;
             }
         }
