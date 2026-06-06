@@ -8,3 +8,5 @@ prompts/
 .vscode/
 .cursor/
 DS_Store 
+.idea/
+.windsurfrules

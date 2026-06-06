@@ -109,17 +109,10 @@ def role_counts_for_count(count: int) -> dict[str, int]:
 
 
 def build_name_pool(count: int, rng: random.Random) -> list[str]:
-    names: list[str] = []
-    seen: set[str] = set()
-
-    while len(names) < count:
-        name = f"{rng.choice(FIRST_NAMES)} {rng.choice(LAST_NAMES)}"
-        if name in seen:
-            continue
-        seen.add(name)
-        names.append(name)
-
-    return names
+    return [
+        f"{rng.choice(FIRST_NAMES)} {rng.choice(LAST_NAMES)}"
+        for _ in range(count)
+    ]
 
 
 def pick_days(rng: random.Random, profile: str) -> list[str]:
