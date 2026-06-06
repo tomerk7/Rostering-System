@@ -20,6 +20,12 @@ const auth = useAuthStore()
       >
         Manage workers
       </RouterLink>
+      <RouterLink
+        class="button"
+        :to="{ name: 'rosters.generate' }"
+      >
+        Generate roster
+      </RouterLink>
     </div>
   </main>
 </template>

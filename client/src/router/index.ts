@@ -1,6 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
+import RosterDetailsView from '@/views/RosterDetailsView.vue'
+import RosterGenerateView from '@/views/RosterGenerateView.vue'
+import RostersView from '@/views/RostersView.vue'
 import WorkerFormView from '@/views/WorkerFormView.vue'
 import WorkersView from '@/views/WorkersView.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -30,6 +33,24 @@ const router = createRouter({
       path: '/workers/:id/edit',
       name: 'workers.edit',
       component: WorkerFormView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rosters/generate',
+      name: 'rosters.generate',
+      component: RosterGenerateView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rosters',
+      name: 'rosters',
+      component: RostersView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rosters/:id',
+      name: 'rosters.show',
+      component: RosterDetailsView,
       meta: { requiresAuth: true },
     },
     {
