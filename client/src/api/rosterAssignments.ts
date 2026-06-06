@@ -4,7 +4,6 @@ import type { ApiResponse, Roster } from '@/api/rosters'
 export interface AddAssignmentPayload {
   worker_id: number
   shift_id: number
-  role_id: number
   work_date: string
 }
 

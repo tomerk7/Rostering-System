@@ -24,4 +24,5 @@ final class RosterStatusException extends RuntimeException
             "Only a draft roster can be published; current status is '{$current->value}'.",
         );
     }
+
 }

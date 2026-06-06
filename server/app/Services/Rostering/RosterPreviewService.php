@@ -84,6 +84,7 @@ final readonly class RosterPreviewService
             'worker_name' => $worker?->full_name,
             'shift_id' => $assignment['shift_id'],
             'shift_code' => $shift?->code,
+            'role_id' => $role?->id,
             'role_name' => $role?->name,
             'work_date' => $assignment['work_date']->toDateString(),
             'source' => $assignment['source'],

@@ -4,6 +4,12 @@ import type { RosterAssignment, RosterPreviewAssignment, RosterReports } from '@
 import type { ReferenceRole, ShiftRoleRequirement, Worker, WorkerShift } from '@/api/workers'
 import { buildRosterGrid, formatDemandSummary } from '@/lib/rosterGrid'
 
+export interface GridCellSelection {
+  workDate: string
+  shiftId: number
+  roleId?: number
+}
+
 const props = defineProps<{
   year: number
   month: number
@@ -13,6 +19,12 @@ const props = defineProps<{
   assignments: RosterAssignment[] | RosterPreviewAssignment[]
   reports: RosterReports
   workersById: Map<number, Worker>
+  editable?: boolean
+}>()
+
+const emit = defineEmits<{
+  'cell-click': [selection: GridCellSelection]
+  'remove-assignment': [assignmentId: number]
 }>()
 
 const grid = computed(() =>
@@ -27,13 +39,28 @@ const grid = computed(() =>
     workersById: props.workersById,
   }),
 )
+
+function onCellClick(workDate: string, shiftId: number, roleId?: number) {
+  if (!props.editable) {
+    return
+  }
+
+  emit('cell-click', { workDate, shiftId, roleId })
+}
+
+function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] }): number | undefined {
+  return cell.roles.find((role) => role.shortage > 0)?.roleId
+}
 </script>
 
 <template>
   <section class="roster-grid">
     <header>
       <h2 class="roster-grid__title">{{ grid.monthLabel }}</h2>
-      <p class="roster-grid__hint">Daily assignments by shift. Understaffed cells are highlighted.</p>
+      <p class="roster-grid__hint">
+        Daily assignments by shift. Understaffed cells are highlighted.
+        <template v-if="editable">Click an understaffed cell to add a worker.</template>
+      </p>
     </header>
 
     <div class="roster-grid__table-wrap">
@@ -57,7 +84,12 @@ const grid = computed(() =>
               v-for="cell in row.shifts"
               :key="`${row.workDate}-${cell.shiftId}`"
               class="roster-grid__cell"
-              :class="{ 'roster-grid__cell--understaffed': cell.isUnderstaffed }"
+              :class="{
+                'roster-grid__cell--understaffed': cell.isUnderstaffed,
+                'roster-grid__cell--editable': editable && cell.isUnderstaffed,
+              }"
+              :title="editable && cell.isUnderstaffed ? 'Click to add assignment' : undefined"
+              @click="onCellClick(row.workDate, cell.shiftId, firstShortRoleId(cell))"
             >
               <div class="roster-grid__demand">
                 <span class="roster-grid__demand-label">Need</span>
@@ -85,6 +117,15 @@ const grid = computed(() =>
                   <span class="roster-grid__worker">{{ assignment.workerName }}</span>
                   <span class="roster-grid__role-badge">{{ assignment.roleCode }}</span>
                   <span class="roster-grid__source-badge">{{ assignment.source }}</span>
+                  <button
+                    v-if="editable && assignment.assignmentId"
+                    type="button"
+                    class="roster-grid__remove"
+                    title="Remove assignment"
+                    @click.stop="emit('remove-assignment', assignment.assignmentId!)"
+                  >
+                    Remove
+                  </button>
                 </li>
               </ul>
               <p v-else class="roster-grid__empty-slot">No assignments</p>

@@ -147,4 +147,21 @@ final class RosterController extends Controller
             data: RosterResource::make($roster),
         );
     }
+
+    /**
+     * Delete a roster.
+     *
+     * @param Roster $roster
+     * @return JsonResponse
+     */
+    public function destroy(Roster $roster): JsonResponse
+    {
+        $this->rosterService->delete($roster);
+
+        return $this->response(
+            success: true,
+            message: 'Roster deleted successfully.',
+            status: 200,
+        );
+    }
 }

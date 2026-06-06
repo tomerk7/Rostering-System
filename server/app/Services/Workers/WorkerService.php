@@ -27,7 +27,7 @@ final readonly class WorkerService
      */
     public function list(Request $request): LengthAwarePaginator
     {
-        $perPage = min((int) $request->integer('per_page', 15), 100);
+        $perPage = min((int) $request->integer('per_page', 15), 1000);
 
         return Worker::query()
             ->with(self::RELATIONS)

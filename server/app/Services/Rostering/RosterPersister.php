@@ -71,6 +71,14 @@ final readonly class RosterPersister
     }
 
     /**
+     * Delete a roster and its assignments.
+     */
+    public function delete(Roster $roster): void
+    {
+        $roster->delete();
+    }
+
+    /**
      * Bulk-insert the generation assignments for a roster.
      *
      * Uses a single insert for the high-volume fact table; timestamps and the

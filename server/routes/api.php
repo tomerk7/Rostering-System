@@ -23,7 +23,7 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::apiResource('workers', WorkerController::class);
 
     Route::post('rosters/preview', [RosterController::class, 'preview']);
-    Route::apiResource('rosters', RosterController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('rosters', RosterController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::post('rosters/{roster}/publish', [RosterController::class, 'publish']);
     Route::scopeBindings()->group(function (): void {
         Route::post('rosters/{roster}/assignments', [RosterAssignmentController::class, 'store']);

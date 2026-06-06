@@ -30,6 +30,28 @@ async function publishRoster(roster: Roster) {
   await rostersStore.publish(roster.id)
   await rostersStore.fetchRosters()
 }
+
+function deleteConfirmMessage(roster: Roster): string {
+  const period = periodLabel(roster)
+
+  if (roster.status === 'published') {
+    return `Delete the published ${period} roster? This will remove the active schedule for this month.`
+  }
+
+  if (roster.status === 'superseded') {
+    return `Delete the superseded ${period} roster? This cannot be undone.`
+  }
+
+  return `Delete the ${period} draft roster? This cannot be undone.`
+}
+
+async function deleteRoster(roster: Roster) {
+  if (!window.confirm(deleteConfirmMessage(roster))) {
+    return
+  }
+
+  await rostersStore.removeRoster(roster.id)
+}
 </script>
 
 <template>
@@ -98,6 +120,14 @@ async function publishRoster(roster: Roster) {
                     @click="publishRoster(roster)"
                   >
                     Publish
+                  </button>
+                  <button
+                    type="button"
+                    class="button button--danger"
+                    :disabled="rostersStore.deletingId === roster.id"
+                    @click="deleteRoster(roster)"
+                  >
+                    {{ rostersStore.deletingId === roster.id ? 'Deleting...' : 'Delete' }}
                   </button>
                 </td>
               </tr>

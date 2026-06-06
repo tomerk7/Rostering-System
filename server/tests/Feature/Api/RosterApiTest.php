@@ -348,6 +348,46 @@ final class RosterApiTest extends TestCase
             ->assertJsonPath('message', 'Manual assignments are only allowed on draft rosters.');
     }
 
+    public function test_draft_roster_can_be_deleted(): void
+    {
+        $roster = $this->createDraftRosterWithAssignment();
+
+        $this->deleteJson("/api/rosters/{$roster->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('rosters', ['id' => $roster->id]);
+        $this->assertDatabaseMissing('roster_assignments', ['roster_id' => $roster->id]);
+    }
+
+    public function test_published_roster_can_be_deleted(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->published()
+            ->create(['created_by' => $this->user->id]);
+
+        $this->deleteJson("/api/rosters/{$roster->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('rosters', ['id' => $roster->id]);
+    }
+
+    public function test_superseded_roster_can_be_deleted(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->superseded()
+            ->create(['created_by' => $this->user->id]);
+
+        $this->deleteJson("/api/rosters/{$roster->id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('rosters', ['id' => $roster->id]);
+    }
+
     private function createDraftRosterWithAssignment(): Roster
     {
         $roster = Roster::factory()

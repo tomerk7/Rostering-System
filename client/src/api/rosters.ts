@@ -1,5 +1,5 @@
 import api from '@/lib/axios'
-import type { ApiMeta, ApiResponse, WorkerShift } from '@/api/workers'
+import type { ApiMeta, ApiResponse } from '@/api/workers'
 
 export type { ApiMeta, ApiResponse }
 
@@ -11,24 +11,26 @@ export interface RosterCreator {
   email: string | null
 }
 
-export interface RosterAssignmentWorker {
-  id: number | null
-  full_name: string | null
-}
-
 export interface RosterAssignment {
   id: number
   worker_id: number
-  worker: RosterAssignmentWorker
+  worker_name: string | null
   shift_id: number
-  shift: WorkerShift
+  shift_code: string | null
+  role_id: number | null
+  role_name: string | null
   work_date: string
   source: AssignmentSource
 }
 
 export interface RosterPreviewAssignment {
+  id: number | null
   worker_id: number
+  worker_name: string | null
   shift_id: number
+  shift_code: string | null
+  role_id: number | null
+  role_name: string | null
   work_date: string
   source: AssignmentSource
 }
@@ -118,6 +120,12 @@ export async function createRoster(payload: StoreRosterPayload): Promise<ApiResp
 
 export async function publishRoster(rosterId: number): Promise<ApiResponse<Roster>> {
   const { data } = await api.post<ApiResponse<Roster>>(`/api/rosters/${rosterId}/publish`)
+
+  return data
+}
+
+export async function deleteRoster(rosterId: number): Promise<ApiResponse<null>> {
+  const { data } = await api.delete<ApiResponse<null>>(`/api/rosters/${rosterId}`)
 
   return data
 }

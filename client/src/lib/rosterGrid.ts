@@ -119,6 +119,13 @@ function buildRequirementsByShift(
   return map
 }
 
+function resolveRoleId(
+  assignment: AnyAssignment,
+  workersById: Map<number, Worker>,
+): number | null {
+  return assignment.role_id ?? workersById.get(assignment.worker_id)?.role.id ?? null
+}
+
 function countAssignmentsBySlotRole(
   assignments: AnyAssignment[],
   workersById: Map<number, Worker>,
@@ -126,16 +133,38 @@ function countAssignmentsBySlotRole(
   const counts = new Map<string, number>()
 
   for (const assignment of assignments) {
-    const worker = workersById.get(assignment.worker_id)
-    if (!worker?.role.id) {
+    const roleId = resolveRoleId(assignment, workersById)
+    if (!roleId) {
       continue
     }
 
-    const key = shortageKey(assignment.work_date, assignment.shift_id, worker.role.id)
+    const key = shortageKey(assignment.work_date, assignment.shift_id, roleId)
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
 
   return counts
+}
+
+function roleCodeFromName(roleName: string | null | undefined): string {
+  if (!roleName) {
+    return 'unknown'
+  }
+
+  const normalized = roleName.toLowerCase()
+
+  if (normalized.includes('general')) {
+    return 'general_guard'
+  }
+
+  if (normalized.includes('screen')) {
+    return 'screener'
+  }
+
+  if (normalized.includes('super')) {
+    return 'supervisor'
+  }
+
+  return normalized.replace(/\s+/g, '_')
 }
 
 function buildAssignmentsForCell(
@@ -149,14 +178,15 @@ function buildAssignmentsForCell(
     .map((assignment) => {
       const worker = workersById.get(assignment.worker_id)
 
-      const savedWorkerName = 'id' in assignment ? assignment.worker?.full_name : null
-
       return {
-        assignmentId: 'id' in assignment ? assignment.id : undefined,
+        assignmentId: assignment.id ?? undefined,
         workerId: assignment.worker_id,
-        workerName: worker?.full_name ?? savedWorkerName ?? `Worker #${assignment.worker_id}`,
-        roleCode: worker?.role.code ?? 'unknown',
-        roleName: worker?.role.name ?? 'Unknown',
+        workerName:
+          worker?.full_name
+          ?? assignment.worker_name
+          ?? `Worker #${assignment.worker_id}`,
+        roleCode: worker?.role.code ?? roleCodeFromName(assignment.role_name),
+        roleName: worker?.role.name ?? assignment.role_name ?? 'Unknown',
         source: assignment.source,
       }
     })

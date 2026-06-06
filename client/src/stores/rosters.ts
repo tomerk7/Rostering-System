@@ -8,6 +8,7 @@ import {
 } from '@/api/rosterAssignments'
 import {
   createRoster,
+  deleteRoster,
   getRoster,
   listRosters,
   previewRoster,
@@ -53,6 +54,7 @@ export const useRostersStore = defineStore('rosters', {
       previewing: false,
       saving: false,
       publishing: false,
+      deletingId: null as number | null,
       assignmentLoading: false,
       error: '',
       validationErrors: {} as Record<string, string[]>,
@@ -226,7 +228,11 @@ export const useRostersStore = defineStore('rosters', {
         return response.data
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
-        this.error = 'Could not add assignment. Please check the form and try again.'
+        if (isAxiosError(error) && error.response?.data?.message) {
+          this.error = String(error.response.data.message)
+        } else {
+          this.error = 'Could not add assignment. Please check the form and try again.'
+        }
         return null
       } finally {
         this.assignmentLoading = false
@@ -247,6 +253,28 @@ export const useRostersStore = defineStore('rosters', {
         return null
       } finally {
         this.assignmentLoading = false
+      }
+    },
+
+    async removeRoster(rosterId: number) {
+      this.deletingId = rosterId
+      this.clearErrors()
+
+      try {
+        await deleteRoster(rosterId)
+
+        if (this.roster?.id === rosterId) {
+          this.roster = null
+        }
+
+        this.rosters = this.rosters.filter((roster) => roster.id !== rosterId)
+        return true
+      } catch (error) {
+        this.validationErrors = extractValidationErrors(error)
+        this.error = this.validationErrors.status?.[0] ?? 'Could not delete roster. Please try again.'
+        return false
+      } finally {
+        this.deletingId = null
       }
     },
 

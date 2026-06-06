@@ -102,4 +102,12 @@ final readonly class RosterService
     {
         return $this->persister->publish($roster);
     }
+
+    /**
+     * Delete a roster.
+     */
+    public function delete(Roster $roster): void
+    {
+        $this->persister->delete($roster);
+    }
 }
