@@ -125,14 +125,14 @@ final class WorkerServiceTest extends TestCase
         self::assertTrue($loadedWorker->contract->relationLoaded('availableShifts'));
     }
 
-    public function test_create_persists_worker_contract_and_normalized_availability(): void
+    public function test_create_persists_worker_contract_and_validated_availability(): void
     {
         $worker = $this->service->create($this->workerData([
             'full_name' => 'Created By Service',
             'israeli_id' => $this->validIsraeliId(71111111),
             'availability' => [
-                'days' => ['3', 1, 3],
-                'shifts' => [(string) $this->dayShift->id, $this->morningShift->id, $this->dayShift->id],
+                'days' => [1, 3],
+                'shifts' => [$this->morningShift->id, $this->dayShift->id],
             ],
         ]));
 

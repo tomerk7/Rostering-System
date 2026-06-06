@@ -9,9 +9,11 @@ use App\Models\ContractAvailableDay;
 use App\Models\ContractAvailableShift;
 use App\Models\Role;
 use App\Models\Shift;
+use App\Models\User;
 use App\Models\Worker;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -30,6 +32,8 @@ final class WorkerApiTest extends TestCase
         parent::setUp();
 
         $this->seed(ReferenceDataSeeder::class);
+
+        Sanctum::actingAs(User::factory()->create());
 
         $this->role = Role::query()->where('code', 'general_guard')->firstOrFail();
         $this->morningShift = Shift::query()->where('code', 'A')->firstOrFail();
@@ -173,6 +177,28 @@ final class WorkerApiTest extends TestCase
                 'contract.max_monthly_hours',
                 'availability.days',
                 'availability.shifts.0',
+            ]);
+
+        $this->assertDatabaseCount('workers', 0);
+        $this->assertDatabaseCount('contracts', 0);
+    }
+
+    public function test_worker_availability_validation_rejects_duplicate_values(): void
+    {
+        $payload = $this->workerPayload([
+            'availability' => [
+                'days' => [1, 1],
+                'shifts' => [$this->morningShift->id, $this->morningShift->id],
+            ],
+        ]);
+
+        $response = $this->postJson('/api/workers', $payload);
+
+        $response
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'availability.days.1',
+                'availability.shifts.1',
             ]);
 
         $this->assertDatabaseCount('workers', 0);

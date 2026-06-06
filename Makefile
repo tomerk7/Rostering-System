@@ -29,6 +29,9 @@ docker-rebuild:
 db-migrate:
 	$(server) php artisan migrate
 
+db-rebuild:
+	$(server) php artisan migrate:fresh
+
 db-migrate-revert:
 	$(server) php artisan migrate:rollback --step=1
 

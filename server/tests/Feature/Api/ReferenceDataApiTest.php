@@ -7,8 +7,10 @@ namespace Tests\Feature\Api;
 use App\Models\Role;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
+use App\Models\User;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
 final class ReferenceDataApiTest extends TestCase
@@ -38,6 +40,8 @@ final class ReferenceDataApiTest extends TestCase
 
     public function test_reference_data_api_returns_roles_and_shifts(): void
     {
+        Sanctum::actingAs(User::factory()->create());
+
         $this->seed(ReferenceDataSeeder::class);
 
         $response = $this->getJson('/api/reference-data');

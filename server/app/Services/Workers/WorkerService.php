@@ -159,13 +159,13 @@ final readonly class WorkerService
     }
 
     /**
-     * Replace all normalized availability rows for the contract.
+     * Replace all availability rows for the contract.
      *
      * @param  array<string, mixed>  $data
      */
     private function replaceAvailability(Contract $contract, array $data): void
     {
-        /** @var array{days: array<int, int|string>, shifts: array<int, int|string>} $availability */
+        /** @var array{days: list<int>, shifts: list<int>} $availability */
         $availability = $data['availability'];
 
         $contract->availableDays()->delete();
@@ -174,29 +174,15 @@ final readonly class WorkerService
         $contract->availableDays()->createMany(
             array_map(
                 static fn (int $dayOfWeek): array => ['day_of_week' => $dayOfWeek],
-                $this->normalizedIntegers($availability['days']),
+                $availability['days'],
             ),
         );
 
         $contract->availableShiftRows()->createMany(
             array_map(
                 static fn (int $shiftId): array => ['shift_id' => $shiftId],
-                $this->normalizedIntegers($availability['shifts']),
+                $availability['shifts'],
             ),
         );
-    }
-
-    /**
-     * Normalize submitted integer lists before replacing child rows.
-     *
-     * @param  array<int, int|string>  $values
-     * @return array<int, int>
-     */
-    private function normalizedIntegers(array $values): array
-    {
-        $values = array_values(array_unique(array_map('intval', $values)));
-        sort($values);
-
-        return $values;
     }
 }
