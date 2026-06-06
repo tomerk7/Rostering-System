@@ -1,17 +1,34 @@
 import api from '@/lib/axios'
-import type { ApiResponse } from '@/api/workers'
+import type { ApiMeta, ApiResponse, WorkerShift } from '@/api/workers'
+
+export type { ApiMeta, ApiResponse }
 
 export type RosterStatus = 'draft' | 'published' | 'superseded'
-
 export type AssignmentSource = 'auto' | 'manual'
 
-export interface RosterAssignment {
+export interface RosterCreator {
   id: number | null
+  email: string | null
+}
+
+export interface RosterAssignmentWorker {
+  id: number | null
+  full_name: string | null
+}
+
+export interface RosterAssignment {
+  id: number
   worker_id: number
-  worker_name: string | null
+  worker: RosterAssignmentWorker
   shift_id: number
-  shift_code: string | null
-  role_name: string | null
+  shift: WorkerShift
+  work_date: string
+  source: AssignmentSource
+}
+
+export interface RosterPreviewAssignment {
+  worker_id: number
+  shift_id: number
   work_date: string
   source: AssignmentSource
 }
@@ -19,37 +36,26 @@ export interface RosterAssignment {
 export interface CoverageShortage {
   work_date: string
   shift_id: number
-  shift_code: string | null
   role_id: number
-  role_name: string | null
   required: number
   assigned: number
-  missing: number
 }
 
 export interface HoursShortfall {
   worker_id: number
-  worker_name: string | null
   min_hours: number
   scheduled_hours: number
-  shortfall_hours: number
 }
 
-export interface RosterPreviewSummary {
+export interface RosterReports {
+  coverage_shortages: CoverageShortage[]
+  hours_shortfalls: HoursShortfall[]
+}
+
+export interface RosterSummary {
   assignment_count: number
   coverage_shortage_count: number
   hours_shortfall_count: number
-  has_coverage_shortages: boolean
-  has_hours_shortfalls: boolean
-}
-
-export interface RosterPreview {
-  year: number
-  month: number
-  assignments: RosterAssignment[]
-  coverage_shortages: CoverageShortage[]
-  hours_shortfalls: HoursShortfall[]
-  summary: RosterPreviewSummary
 }
 
 export interface Roster {
@@ -59,63 +65,53 @@ export interface Roster {
   status: RosterStatus
   generated_at: string | null
   published_at: string | null
-  assignment_count?: number
-  assignments?: RosterAssignment[]
+  created_by: number | null
+  creator: RosterCreator | null
+  assignments_count?: number
   created_at: string | null
   updated_at: string | null
+  assignments?: RosterAssignment[]
+  reports?: RosterReports
+  summary?: RosterSummary
 }
 
-export interface PreviewRosterPayload {
+export interface RosterPreview {
+  year: number
+  month: number
+  assignments: RosterPreviewAssignment[]
+  reports: RosterReports
+  summary: RosterSummary
+}
+
+export interface RosterMonthPayload {
   year: number
   month: number
 }
 
-export interface RosterShowParams {
-  date?: string
-  shift_id?: number
+export interface StoreRosterPayload extends RosterMonthPayload {
+  publish?: boolean
 }
 
-export interface CreateAssignmentPayload {
-  worker_id: number
-  shift_id: number
-  work_date: string
-}
-
-export async function preview(payload: PreviewRosterPayload): Promise<ApiResponse<RosterPreview>> {
-  const { data } = await api.post<ApiResponse<RosterPreview>>('/api/rosters/preview', payload)
-
-  return data
-}
-
-export async function saveDraft(payload: PreviewRosterPayload): Promise<ApiResponse<Roster>> {
-  const { data } = await api.post<ApiResponse<Roster>>('/api/rosters', payload)
-
-  return data
-}
-
-export async function list(): Promise<ApiResponse<Roster[]>> {
+export async function listRosters(): Promise<ApiResponse<Roster[]>> {
   const { data } = await api.get<ApiResponse<Roster[]>>('/api/rosters')
 
   return data
 }
 
-export async function get(rosterId: number, params: RosterShowParams = {}): Promise<ApiResponse<Roster>> {
-  const { data } = await api.get<ApiResponse<Roster>>(`/api/rosters/${rosterId}`, { params })
+export async function getRoster(rosterId: number): Promise<ApiResponse<Roster>> {
+  const { data } = await api.get<ApiResponse<Roster>>(`/api/rosters/${rosterId}`)
 
   return data
 }
 
-export async function createAssignment(
-  rosterId: number,
-  payload: CreateAssignmentPayload,
-): Promise<ApiResponse<RosterAssignment>> {
-  const { data } = await api.post<ApiResponse<RosterAssignment>>(`/api/rosters/${rosterId}/assignments`, payload)
+export async function previewRoster(payload: RosterMonthPayload): Promise<ApiResponse<RosterPreview>> {
+  const { data } = await api.post<ApiResponse<RosterPreview>>('/api/rosters/preview', payload)
 
   return data
 }
 
-export async function deleteAssignment(rosterId: number, assignmentId: number): Promise<ApiResponse<null>> {
-  const { data } = await api.delete<ApiResponse<null>>(`/api/rosters/${rosterId}/assignments/${assignmentId}`)
+export async function createRoster(payload: StoreRosterPayload): Promise<ApiResponse<Roster>> {
+  const { data } = await api.post<ApiResponse<Roster>>('/api/rosters', payload)
 
   return data
 }

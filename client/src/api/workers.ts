@@ -68,9 +68,17 @@ export interface ReferenceRole {
   name: string
 }
 
+export interface ShiftRoleRequirement {
+  shift_id: number
+  role_id: number
+  required_count: number
+  role?: ReferenceRole
+}
+
 export interface ReferenceData {
   roles: ReferenceRole[]
   shifts: WorkerShift[]
+  shift_role_requirements: ShiftRoleRequirement[]
 }
 
 export interface ImportSummary {
