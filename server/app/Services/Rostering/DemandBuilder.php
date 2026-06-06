@@ -16,14 +16,10 @@ final readonly class DemandBuilder
     /**
      * Build every staffing slot for the target month.
      *
-     * Each slot is an array:
-     *   work_date      => CarbonImmutable
-     *   shift_id       => int
-     *   role_id        => int
-     *   required_count => int
-     *   duration_hours => int
-     *
+     * @param int $year
+     * @param int $month
      * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
+     * @throws Exception
      */
     public function build(int $year, int $month): array
     {

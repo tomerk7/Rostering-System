@@ -5,27 +5,20 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use Carbon\CarbonImmutable;
+use Exception;
 
 /**
- * Pre-generation fail-fast check. For each role on each date it compares the
- * available pool against peak daily demand, accounting for the 2-shifts-per-day
- * ceiling: covering D positions needs at least ceil(D / 2) distinct workers.
- * Detecting obvious impossibility up front yields a clearer alert than a partial
- * roster and avoids wasted construction work.
+ * Validates that the roster can theoretically be generated before scheduling begins.
  */
 final readonly class FeasibilityChecker
 {
     /**
-     * Return the list of impossibilities; an empty list means the month is
-     * theoretically fillable. Each issue is an array:
-     *   role_id           => int
-     *   work_date         => CarbonImmutable
-     *   required_workers  => int
-     *   available_workers => int
-     *
-     * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>  $slots
-     * @param  array<int, array{role_id: int, days: array<int, true>, ...}>  $workers
+     * Returns staffing shortages grouped by role and date. An empty list means the month is theoretically fillable.
+     * 
+     * @param list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}> $slots
+     * @param array<int, array{role_id: int, days: array<int, true>, ...}> $workers
      * @return list<array{role_id: int, work_date: CarbonImmutable, required_workers: int, available_workers: int}>
+     * @throws Exception
      */
     public function check(array $slots, array $workers): array
     {

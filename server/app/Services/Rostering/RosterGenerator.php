@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use App\Services\Rostering\Data\GenerationResult;
+use Exception;
 
 /**
  * Orchestrates one rostering run end to end: expand the month's demand, load the
@@ -26,6 +27,11 @@ final readonly class RosterGenerator
 
     /**
      * Generate the roster preview for a target month.
+     * 
+     * @param int $year
+     * @param int $month
+     * @return GenerationResult
+     * @throws Exception
      */
     public function generate(int $year, int $month): GenerationResult
     {

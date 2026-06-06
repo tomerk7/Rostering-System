@@ -6,28 +6,20 @@ namespace App\Services\Rostering;
 
 use App\Models\Contract;
 use App\Models\Worker;
+use Exception;
 
 /**
  * Loads the active, schedulable workforce once and turns it into the engine's
- * working set: one array per worker holding immutable availability/contract data
- * plus the live counters the greedy loop mutates as it places assignments.
+ * working set: one array per worker holding immutable availability/contract data plus the live counters the greedy loop mutates as it places assignments.
  */
 final readonly class EligibilityResolver
 {
     /**
      * Resolve eligible workers keyed by worker id.
      *
-     * Each worker is an array:
-     *   role_id         => int
-     *   hourly_cost     => float
-     *   min_hours       => int
-     *   max_hours       => int
-     *   days            => array<int, true>     set of available day_of_week (0..6)
-     *   shifts          => array<int, true>     set of available shift ids
-     *   assigned_hours  => int                  live counter, starts at 0
-     *   shifts_per_date => array<string, int>   live counter, shifts placed per Y-m-d
-     *
+     * @return list<array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}>
      * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}>
+     * @throws Exception
      */
     public function resolve(): array
     {

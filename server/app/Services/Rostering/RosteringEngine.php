@@ -248,6 +248,11 @@ final readonly class RosteringEngine
 
     /**
      * Build the stable aggregation key for one (date, shift, role) slot.
+     * 
+     * @param CarbonImmutable $date
+     * @param int $shiftId
+     * @param int $roleId
+     * @return string
      */
     private function coverageKey(CarbonImmutable $date, int $shiftId, int $roleId): string
     {
