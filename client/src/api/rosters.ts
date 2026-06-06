@@ -119,3 +119,9 @@ export async function deleteAssignment(rosterId: number, assignmentId: number): 
 
   return data
 }
+
+export async function publishRoster(rosterId: number): Promise<ApiResponse<Roster>> {
+  const { data } = await api.post<ApiResponse<Roster>>(`/api/rosters/${rosterId}/publish`)
+
+  return data
+}

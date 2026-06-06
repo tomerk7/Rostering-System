@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\Rostering\RosterStatusException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\PreviewRosterRequest;
 use App\Http\Resources\RosterResource;
@@ -102,6 +103,35 @@ final class RosterController extends Controller
             message: 'Roster retrieved successfully.',
             status: 200,
             data: RosterResource::make($this->rosterService->loadDetails($roster, $request)),
+        );
+    }
+
+    /**
+     * Publish a draft roster for its month.
+     *  
+     * @param Roster $roster
+     * @return JsonResponse
+     * @throws Exception
+     * @throws RosterStatusException
+     */
+    public function publish(Roster $roster): JsonResponse
+    {
+        try {
+            $roster = $this->rosterService->publish($roster);
+        } catch (RosterStatusException $exception) {
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['status' => [$exception->getMessage()]],
+            );
+        }
+
+        return $this->response(
+            success: true,
+            message: 'Roster published successfully.',
+            status: 200,
+            data: RosterResource::make($roster),
         );
     }
 }

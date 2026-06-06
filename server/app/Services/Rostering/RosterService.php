@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering;
 
+use App\Exceptions\Rostering\RosterStatusException;
 use App\Models\Roster;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -80,5 +81,17 @@ final readonly class RosterService
         $result = $this->generator->generate($year, $month);
 
         return $this->persister->save($result, $createdBy);
+    }
+
+    /**
+     * Publish a draft roster, superseding any previously published roster for the month.
+     *
+     * @param Roster $roster
+     * @return Roster
+     * @throws RosterStatusException
+     */
+    public function publish(Roster $roster): Roster
+    {
+        return $this->persister->publish($roster);
     }
 }

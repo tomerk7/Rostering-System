@@ -2,20 +2,36 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { isAxiosError } from 'axios'
-import { get, type Roster } from '@/api/rosters'
-import { getReferenceData, type WorkerShift } from '@/api/workers'
+import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
+import {
+  createAssignment,
+  deleteAssignment,
+  get,
+  publishRoster,
+  type Roster,
+  type RosterAssignment,
+} from '@/api/rosters'
+import { getReferenceData, listWorkers, type Worker, type WorkerShift } from '@/api/workers'
 
 const route = useRoute()
 
 const roster = ref<Roster | null>(null)
 const shifts = ref<WorkerShift[]>([])
+const workers = ref<Worker[]>([])
 const loading = ref(true)
 const filtering = ref(false)
+const savingAssignment = ref(false)
+const publishing = ref(false)
+const deletingAssignmentId = ref<number | null>(null)
 const error = ref('')
+const assignmentError = ref('')
+const showAssignmentModal = ref(false)
 const filterDate = ref('')
 const filterShiftId = ref<number | ''>('')
 
 const rosterId = computed(() => Number(route.params.id))
+
+const isDraft = computed(() => roster.value?.status === 'draft')
 
 const periodLabel = computed(() => {
   if (roster.value === null) {
@@ -49,8 +65,13 @@ onMounted(async () => {
   error.value = ''
 
   try {
-    const referenceResponse = await getReferenceData()
+    const [referenceResponse, workersResponse] = await Promise.all([
+      getReferenceData(),
+      listWorkers({ is_active: true, per_page: 100 }),
+    ])
+
     shifts.value = referenceResponse.data.shifts
+    workers.value = workersResponse.data
     await loadRoster()
   } catch (err) {
     if (isAxiosError(err) && err.response?.status === 404) {
@@ -81,6 +102,90 @@ async function resetFilters(): Promise<void> {
   filterShiftId.value = ''
   await applyFilters()
 }
+
+function openAssignmentModal(): void {
+  assignmentError.value = ''
+  showAssignmentModal.value = true
+}
+
+function closeAssignmentModal(): void {
+  showAssignmentModal.value = false
+  assignmentError.value = ''
+}
+
+async function submitAssignment(payload: {
+  worker_id: number
+  shift_id: number
+  work_date: string
+}): Promise<void> {
+  savingAssignment.value = true
+  assignmentError.value = ''
+
+  try {
+    await createAssignment(rosterId.value, payload)
+    showAssignmentModal.value = false
+    await loadRoster()
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.data?.message) {
+      assignmentError.value = String(err.response.data.message)
+    } else {
+      assignmentError.value = 'Could not add assignment. Please try again.'
+    }
+  } finally {
+    savingAssignment.value = false
+  }
+}
+
+async function onPublish(): Promise<void> {
+  if (!window.confirm('Publish this roster? Any previously published roster for this month will be superseded.')) {
+    return
+  }
+
+  publishing.value = true
+  error.value = ''
+
+  try {
+    const response = await publishRoster(rosterId.value)
+    roster.value = response.data
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.data?.message) {
+      error.value = String(err.response.data.message)
+    } else {
+      error.value = 'Could not publish roster. Please try again.'
+    }
+  } finally {
+    publishing.value = false
+  }
+}
+
+async function removeAssignment(assignment: RosterAssignment): Promise<void> {
+  if (assignment.id === null) {
+    return
+  }
+
+  const workerLabel = assignment.worker_name ?? assignment.worker_id
+  const shiftLabel = assignment.shift_code ?? assignment.shift_id
+
+  if (!window.confirm(`Delete assignment for ${workerLabel} on ${assignment.work_date} (${shiftLabel})?`)) {
+    return
+  }
+
+  deletingAssignmentId.value = assignment.id
+  error.value = ''
+
+  try {
+    await deleteAssignment(rosterId.value, assignment.id)
+    await loadRoster()
+  } catch (err) {
+    if (isAxiosError(err) && err.response?.data?.message) {
+      error.value = String(err.response.data.message)
+    } else {
+      error.value = 'Could not delete assignment. Please try again.'
+    }
+  } finally {
+    deletingAssignmentId.value = null
+  }
+}
 </script>
 
 <template>
@@ -94,6 +199,24 @@ async function resetFilters(): Promise<void> {
         </p>
       </div>
       <div class="page__actions">
+        <button
+          v-if="isDraft"
+          type="button"
+          class="button button--primary"
+          :disabled="publishing"
+          @click="onPublish"
+        >
+          {{ publishing ? 'Publishing...' : 'Publish' }}
+        </button>
+        <button
+          v-if="isDraft"
+          type="button"
+          class="button"
+          :disabled="publishing"
+          @click="openAssignmentModal"
+        >
+          Add assignment
+        </button>
         <RouterLink class="button" :to="{ name: 'rosters' }">All rosters</RouterLink>
         <RouterLink class="button" :to="{ name: 'rosters.generate' }">Generate another</RouterLink>
       </div>
@@ -155,11 +278,14 @@ async function resetFilters(): Promise<void> {
                 <th>Worker</th>
                 <th>Role</th>
                 <th>Source</th>
+                <th v-if="isDraft" class="table__actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!roster.assignments?.length">
-                <td colspan="5" class="table__empty">No assignments match the current filters.</td>
+                <td :colspan="isDraft ? 6 : 5" class="table__empty">
+                  No assignments match the current filters.
+                </td>
               </tr>
               <tr
                 v-for="assignment in roster.assignments"
@@ -170,12 +296,34 @@ async function resetFilters(): Promise<void> {
                 <td>{{ assignment.worker_name ?? assignment.worker_id }}</td>
                 <td>{{ assignment.role_name ?? '-' }}</td>
                 <td>{{ assignment.source }}</td>
+                <td v-if="isDraft" class="table__actions">
+                  <button
+                    v-if="assignment.id !== null"
+                    type="button"
+                    class="button button--danger"
+                    :disabled="deletingAssignmentId === assignment.id"
+                    @click="removeAssignment(assignment)"
+                  >
+                    {{ deletingAssignmentId === assignment.id ? 'Deleting...' : 'Delete' }}
+                  </button>
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
     </template>
+
+    <AssignmentFormModal
+      :show="showAssignmentModal"
+      :workers="workers"
+      :shifts="shifts"
+      :initial-date="filterDate"
+      :saving="savingAssignment"
+      :error="assignmentError"
+      @close="closeAssignmentModal"
+      @submit="submitAssignment"
+    />
   </main>
 </template>
 
