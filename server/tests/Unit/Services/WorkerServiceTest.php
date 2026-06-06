@@ -102,7 +102,7 @@ final class WorkerServiceTest extends TestCase
         $paginator = $this->service->list($request);
 
         self::assertSame(1, $paginator->total());
-        self::assertSame(100, $paginator->perPage());
+        self::assertSame(250, $paginator->perPage());
         self::assertSame($matchedWorker->id, $paginator->items()[0]->id);
     }
 
@@ -239,6 +239,74 @@ final class WorkerServiceTest extends TestCase
         $this->assertDatabaseCount('contracts', 0);
         $this->assertDatabaseCount('contract_available_days', 0);
         $this->assertDatabaseCount('contract_available_shifts', 0);
+    }
+
+    public function test_reference_data_returns_roles_ordered_by_name(): void
+    {
+        $roles = $this->service->referenceData()['roles'];
+
+        self::assertSame(
+            ['General Guard', 'Screener', 'Supervisor'],
+            $roles->pluck('name')->all(),
+        );
+        self::assertSame(['id', 'code', 'name'], array_keys($roles->first()->getAttributes()));
+    }
+
+    public function test_reference_data_returns_shifts_ordered_by_code(): void
+    {
+        $shifts = $this->service->referenceData()['shifts'];
+
+        self::assertSame(['A', 'B', 'C'], $shifts->pluck('code')->all());
+        self::assertSame(
+            ['id', 'code', 'label', 'start_time', 'end_time', 'duration_hours'],
+            array_keys($shifts->first()->getAttributes()),
+        );
+    }
+
+    public function test_reference_data_returns_shift_role_requirements_with_nested_role_and_ordering(): void
+    {
+        $requirements = $this->service->referenceData()['shift_role_requirements'];
+
+        self::assertCount(9, $requirements);
+
+        $firstRequirement = $requirements->first();
+        self::assertIsArray($firstRequirement);
+        self::assertSame(['shift_id', 'role_id', 'required_count', 'role'], array_keys($firstRequirement));
+
+        $matchedRequirement = $requirements->first(
+            fn (array $requirement): bool => $requirement['shift_id'] === $this->morningShift->id
+                && $requirement['role_id'] === $this->generalGuardRole->id,
+        );
+
+        self::assertNotNull($matchedRequirement);
+        self::assertSame(6, $matchedRequirement['required_count']);
+        self::assertSame([
+            'id' => $this->generalGuardRole->id,
+            'code' => 'general_guard',
+            'name' => 'General Guard',
+        ], $matchedRequirement['role']);
+
+        $shiftIds = $requirements->pluck('shift_id')->all();
+        self::assertSame($shiftIds, collect($shiftIds)->sort()->values()->all());
+
+        foreach ($requirements->groupBy('shift_id') as $shiftRequirements) {
+            $roleIds = $shiftRequirements->pluck('role_id')->all();
+            self::assertSame($roleIds, collect($roleIds)->sort()->values()->all());
+        }
+    }
+
+    public function test_reference_data_maps_required_counts_per_role_code(): void
+    {
+        $requirements = $this->service->referenceData()['shift_role_requirements'];
+
+        foreach (ReferenceDataSeeder::REQUIRED_COUNTS_BY_ROLE_CODE as $roleCode => $requiredCount) {
+            $roleId = Role::query()->where('code', $roleCode)->value('id');
+
+            self::assertSame(
+                3,
+                $requirements->where('role_id', $roleId)->where('required_count', $requiredCount)->count(),
+            );
+        }
     }
 
     public function test_delete_removes_worker(): void

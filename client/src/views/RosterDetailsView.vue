@@ -1,13 +1,12 @@
-<script setup lang="ts">
+<script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
 import { useRosterReference } from '@/composables/useRosterReference'
 import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
-import RosterGrid, { type GridCellSelection } from '@/components/rosters/RosterGrid.vue'
+import RosterGrid from '@/components/rosters/RosterGrid.vue'
 import { formatMonthYear } from '@/lib/rosterGrid'
-import type { Worker } from '@/api/workers'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,7 +16,7 @@ const referenceData = useRosterReference()
 const rosterId = computed(() => Number(route.params.id))
 const showAssignmentModal = ref(false)
 const assignmentError = ref('')
-const assignmentContext = ref<GridCellSelection | null>(null)
+const assignmentContext = ref(null)
 
 const periodLabel = computed(() => {
   if (!rostersStore.roster) {
@@ -31,7 +30,7 @@ const isDraft = computed(() => rostersStore.roster?.status === 'draft')
 
 const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
 
-const modalWorkers = computed((): Worker[] => {
+const modalWorkers = computed(() => {
   const roleId = assignmentContext.value?.roleId
 
   if (!roleId) {
@@ -53,7 +52,7 @@ watch(rosterId, async (id) => {
   await rostersStore.fetchRoster(id)
 })
 
-function openAssignmentModal(context: GridCellSelection | null = null) {
+function openAssignmentModal(context = null) {
   assignmentError.value = ''
   assignmentContext.value = context
   showAssignmentModal.value = true
@@ -65,7 +64,7 @@ function closeAssignmentModal() {
   assignmentError.value = ''
 }
 
-async function submitAssignment(payload: { worker_id: number; shift_id: number; work_date: string }) {
+async function submitAssignment(payload) {
   if (!rostersStore.roster) {
     return
   }
@@ -82,7 +81,7 @@ async function submitAssignment(payload: { worker_id: number; shift_id: number; 
   assignmentError.value = rostersStore.validationErrors.assignment?.[0] ?? rostersStore.error
 }
 
-async function removeAssignment(assignmentId: number) {
+async function removeAssignment(assignmentId) {
   if (!rostersStore.roster) {
     return
   }
@@ -106,7 +105,7 @@ async function publishRoster() {
   await rostersStore.publish(rostersStore.roster.id)
 }
 
-function deleteConfirmMessage(): string {
+function deleteConfirmMessage() {
   const roster = rostersStore.roster
   const period = periodLabel.value
 
@@ -146,20 +145,37 @@ async function deleteRoster() {
   <main class="page page--wide">
     <header class="page__header">
       <div>
-        <p class="page__eyebrow">Rosters</p>
+        <p class="page__eyebrow">
+          Rosters
+        </p>
         <h1 class="page__title">
-          <template v-if="rostersStore.roster">{{ periodLabel }}</template>
-          <template v-else>Roster detail</template>
+          <template v-if="rostersStore.roster">
+            {{ periodLabel }}
+          </template>
+          <template v-else>
+            Roster detail
+          </template>
         </h1>
-        <p v-if="rostersStore.roster" class="page__description">
+        <p
+          v-if="rostersStore.roster"
+          class="page__description"
+        >
           Status:
-          <span class="badge" :class="rostersStore.roster.status === 'published' ? 'badge--success' : 'badge--muted'">
+          <span
+            class="badge"
+            :class="rostersStore.roster.status === 'published' ? 'badge--success' : 'badge--muted'"
+          >
             {{ rostersStore.roster.status }}
           </span>
         </p>
       </div>
       <div class="page__actions">
-        <RouterLink class="button" :to="{ name: 'rosters' }">Back to list</RouterLink>
+        <RouterLink
+          class="button"
+          :to="{ name: 'rosters' }"
+        >
+          Back to list
+        </RouterLink>
         <button
           v-if="isDraft"
           type="button"
@@ -190,21 +206,39 @@ async function deleteRoster() {
     </header>
 
     <section class="panel">
-      <div v-if="rostersStore.error && !showAssignmentModal" class="alert" role="alert">
+      <div
+        v-if="rostersStore.error && !showAssignmentModal"
+        class="alert"
+        role="alert"
+      >
         {{ rostersStore.error }}
       </div>
 
-      <div v-if="referenceData.error" class="alert" role="alert">
+      <div
+        v-if="referenceData.error"
+        class="alert"
+        role="alert"
+      >
         {{ referenceData.error }}
       </div>
 
-      <div v-if="rostersStore.loading || referenceData.loading" class="empty-state">
+      <div
+        v-if="rostersStore.loading || referenceData.loading"
+        class="empty-state"
+      >
         Loading roster...
       </div>
 
-      <div v-else-if="!rostersStore.roster" class="empty-state">
+      <div
+        v-else-if="!rostersStore.roster"
+        class="empty-state"
+      >
         Roster not found.
-        <button type="button" class="button" @click="router.push({ name: 'rosters' })">
+        <button
+          type="button"
+          class="button"
+          @click="router.push({ name: 'rosters' })"
+        >
           Back to list
         </button>
       </div>

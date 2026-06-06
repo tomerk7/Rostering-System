@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getLoginErrorMessage, useAuthStore } from '@/stores/auth'
@@ -14,7 +14,7 @@ const submitting = ref(false)
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function validate(): boolean {
+function validate() {
   fieldErrors.email = ''
   fieldErrors.password = ''
   serverError.value = ''
@@ -61,11 +61,23 @@ async function onSubmit() {
 <template>
   <main class="login">
     <section class="login__card">
-      <h1 class="login__title">Sign in</h1>
-      <p class="login__subtitle">Rostering System</p>
+      <h1 class="login__title">
+        Sign in
+      </h1>
+      <p class="login__subtitle">
+        Rostering System
+      </p>
 
-      <form class="login__form" novalidate @submit.prevent="onSubmit">
-        <div v-if="serverError" class="login__alert" role="alert">
+      <form
+        class="login__form"
+        novalidate
+        @submit.prevent="onSubmit"
+      >
+        <div
+          v-if="serverError"
+          class="login__alert"
+          role="alert"
+        >
           {{ serverError }}
         </div>
 
@@ -80,8 +92,12 @@ async function onSubmit() {
             :class="{ 'login__input--error': fieldErrors.email }"
             :aria-invalid="!!fieldErrors.email"
             :aria-describedby="fieldErrors.email ? 'email-error' : undefined"
-          />
-          <span v-if="fieldErrors.email" id="email-error" class="login__error">
+          >
+          <span
+            v-if="fieldErrors.email"
+            id="email-error"
+            class="login__error"
+          >
             {{ fieldErrors.email }}
           </span>
         </label>
@@ -97,13 +113,21 @@ async function onSubmit() {
             :class="{ 'login__input--error': fieldErrors.password }"
             :aria-invalid="!!fieldErrors.password"
             :aria-describedby="fieldErrors.password ? 'password-error' : undefined"
-          />
-          <span v-if="fieldErrors.password" id="password-error" class="login__error">
+          >
+          <span
+            v-if="fieldErrors.password"
+            id="password-error"
+            class="login__error"
+          >
             {{ fieldErrors.password }}
           </span>
         </label>
 
-        <button type="submit" class="login__submit" :disabled="!canSubmit">
+        <button
+          type="submit"
+          class="login__submit"
+          :disabled="!canSubmit"
+        >
           {{ submitting ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>

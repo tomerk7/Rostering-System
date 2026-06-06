@@ -4,7 +4,6 @@ import {
   addAssignment,
   changeAssignment,
   removeAssignment,
-  type AddAssignmentPayload,
 } from '@/api/rosterAssignments'
 import {
   createRoster,
@@ -13,29 +12,23 @@ import {
   listRosters,
   previewRoster,
   publishRoster,
-  type Roster,
-  type RosterAssignment,
-  type RosterPreview,
-  type RosterPreviewAssignment,
-  type RosterReports,
-  type RosterSummary,
 } from '@/api/rosters'
 
-const emptyReports: RosterReports = {
+const emptyReports = {
   coverage_shortages: [],
   hours_shortfalls: [],
 }
 
-function extractValidationErrors(error: unknown): Record<string, string[]> {
+function extractValidationErrors(error) {
   if (isAxiosError(error) && error.response?.status === 422) {
-    const data = error.response.data as { errors?: Record<string, string[]> }
+    const data = error.response.data
     return data.errors ?? {}
   }
 
   return {}
 }
 
-function currentMonthYear(): { year: number; month: number } {
+function currentMonthYear() {
   const now = new Date()
   return { year: now.getFullYear(), month: now.getMonth() + 1 }
 }
@@ -45,36 +38,36 @@ export const useRostersStore = defineStore('rosters', {
     const { year, month } = currentMonthYear()
 
     return {
-      rosters: [] as Roster[],
-      roster: null as Roster | null,
-      preview: null as RosterPreview | null,
+      rosters: [],
+      roster: null,
+      preview: null,
       selectedYear: year,
       selectedMonth: month,
       loading: false,
       previewing: false,
       saving: false,
       publishing: false,
-      deletingId: null as number | null,
+      deletingId: null,
       assignmentLoading: false,
       error: '',
-      validationErrors: {} as Record<string, string[]>,
+      validationErrors: {},
     }
   },
 
   getters: {
-    assignments(state): RosterAssignment[] | RosterPreviewAssignment[] {
+    assignments(state) {
       return state.roster?.assignments ?? state.preview?.assignments ?? []
     },
 
-    reports(state): RosterReports {
+    reports(state) {
       return state.roster?.reports ?? state.preview?.reports ?? emptyReports
     },
 
-    alerts(): RosterReports {
+    alerts() {
       return this.reports
     },
 
-    summary(state): RosterSummary | null {
+    summary(state) {
       return state.roster?.summary ?? state.preview?.summary ?? null
     },
   },
@@ -85,7 +78,7 @@ export const useRostersStore = defineStore('rosters', {
       this.validationErrors = {}
     },
 
-    setSelectedMonth(year: number, month: number) {
+    setSelectedMonth(year, month) {
       this.selectedYear = year
       this.selectedMonth = month
     },
@@ -104,7 +97,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async fetchRoster(rosterId: number) {
+    async fetchRoster(rosterId) {
       this.loading = true
       this.clearErrors()
 
@@ -121,7 +114,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async generatePreview(year?: number, month?: number) {
+    async generatePreview(year, month) {
       const targetYear = year ?? this.selectedYear
       const targetMonth = month ?? this.selectedMonth
 
@@ -144,7 +137,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async saveDraft(year?: number, month?: number) {
+    async saveDraft(year, month) {
       const targetYear = year ?? this.selectedYear
       const targetMonth = month ?? this.selectedMonth
 
@@ -162,14 +155,14 @@ export const useRostersStore = defineStore('rosters', {
         this.validationErrors = extractValidationErrors(error)
         this.error = this.validationErrors.year?.[0]
           ?? this.validationErrors.month?.[0]
-          ?? 'Could not save roster draft. Please try again.'
+          ?? 'Could not generate roster. Please try again.'
         return null
       } finally {
         this.saving = false
       }
     },
 
-    async publish(rosterId?: number) {
+    async publish(rosterId) {
       const id = rosterId ?? this.roster?.id
 
       if (!id) {
@@ -218,7 +211,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async addManualAssignment(rosterId: number, payload: AddAssignmentPayload) {
+    async addManualAssignment(rosterId, payload) {
       this.assignmentLoading = true
       this.clearErrors()
 
@@ -239,7 +232,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async changeManualAssignment(rosterId: number, assignmentId: number, workerId: number) {
+    async changeManualAssignment(rosterId, assignmentId, workerId) {
       this.assignmentLoading = true
       this.clearErrors()
 
@@ -256,7 +249,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async removeRoster(rosterId: number) {
+    async removeRoster(rosterId) {
       this.deletingId = rosterId
       this.clearErrors()
 
@@ -278,7 +271,7 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async removeManualAssignment(rosterId: number, assignmentId: number) {
+    async removeManualAssignment(rosterId, assignmentId) {
       this.assignmentLoading = true
       this.clearErrors()
 

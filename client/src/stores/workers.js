@@ -1,9 +1,7 @@
 import { defineStore } from 'pinia'
-import { deleteWorker, listWorkers, type ApiMeta, type Worker, type WorkerListParams } from '@/api/workers'
+import { deleteWorker, listWorkers } from '@/api/workers'
 
-type StatusFilter = '' | 'active' | 'inactive'
-
-const emptyMeta: ApiMeta = {
+const emptyMeta = {
   current_page: 1,
   from: null,
   last_page: 1,
@@ -12,7 +10,7 @@ const emptyMeta: ApiMeta = {
   total: 0,
 }
 
-function statusToBoolean(status: StatusFilter): boolean | undefined {
+function statusToBoolean(status) {
   if (status === 'active') {
     return true
   }
@@ -26,20 +24,20 @@ function statusToBoolean(status: StatusFilter): boolean | undefined {
 
 export const useWorkersStore = defineStore('workers', {
   state: () => ({
-    workers: [] as Worker[],
+    workers: [],
     meta: { ...emptyMeta },
     search: '',
     roleCode: '',
-    status: '' as StatusFilter,
+    status: '',
     page: 1,
     perPage: 10,
     loading: false,
     error: '',
-    deletingId: null as number | null,
+    deletingId: null,
   }),
 
   getters: {
-    params(state): WorkerListParams {
+    params(state) {
       return {
         search: state.search || undefined,
         role_code: state.roleCode || undefined,
@@ -71,12 +69,12 @@ export const useWorkersStore = defineStore('workers', {
       await this.fetchWorkers()
     },
 
-    async setPage(page: number) {
+    async setPage(page) {
       this.page = page
       await this.fetchWorkers()
     },
 
-    async removeWorker(workerId: number) {
+    async removeWorker(workerId) {
       this.deletingId = workerId
       this.error = ''
 

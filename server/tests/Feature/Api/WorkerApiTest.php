@@ -230,6 +230,60 @@ final class WorkerApiTest extends TestCase
         $this->assertDatabaseCount('contract_available_shifts', 0);
     }
 
+    public function test_worker_reference_data_requires_authentication(): void
+    {
+        $this->app['auth']->forgetGuards();
+
+        $this->getJson('/api/workers/reference-data')
+            ->assertUnauthorized();
+    }
+
+    public function test_worker_reference_data_returns_roles_and_shifts(): void
+    {
+        $response = $this->getJson('/api/workers/reference-data');
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Reference data retrieved successfully.')
+            ->assertJsonPath('data.roles.0.code', 'general_guard')
+            ->assertJsonPath('data.roles.0.name', 'General Guard')
+            ->assertJsonPath('data.shifts.0.code', 'A')
+            ->assertJsonPath('data.shifts.0.label', 'morning')
+            ->assertJsonCount(3, 'data.roles')
+            ->assertJsonCount(3, 'data.shifts')
+            ->assertJsonCount(9, 'data.shift_role_requirements')
+            ->assertJsonStructure([
+                'data' => [
+                    'roles' => [['id', 'code', 'name']],
+                    'shifts' => [['id', 'code', 'label', 'start_time', 'end_time', 'duration_hours']],
+                    'shift_role_requirements' => [[
+                        'shift_id',
+                        'role_id',
+                        'required_count',
+                        'role' => ['id', 'code', 'name'],
+                    ]],
+                ],
+            ]);
+    }
+
+    public function test_worker_reference_data_returns_requirements_ordered_by_shift_and_role(): void
+    {
+        $requirements = $this->getJson('/api/workers/reference-data')
+            ->assertOk()
+            ->json('data.shift_role_requirements');
+
+        $shiftIds = array_column($requirements, 'shift_id');
+        self::assertSame($shiftIds, collect($shiftIds)->sort()->values()->all());
+
+        $groupedByShift = collect($requirements)->groupBy('shift_id');
+
+        foreach ($groupedByShift as $shiftRequirements) {
+            $roleIds = $shiftRequirements->pluck('role_id')->all();
+            self::assertSame($roleIds, collect($roleIds)->sort()->values()->all());
+        }
+    }
+
     public function test_worker_can_be_deleted(): void
     {
         $worker = Worker::factory()->create([

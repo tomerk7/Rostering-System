@@ -1,26 +1,22 @@
-<script setup lang="ts">
+<script setup>
 import { computed, ref, watch } from 'vue'
-import type { ReferenceRole, Worker, WorkerShift } from '@/api/workers'
 
-const props = defineProps<{
-  show: boolean
-  workers: Worker[]
-  shifts: WorkerShift[]
-  roles?: ReferenceRole[]
-  initialDate?: string
-  initialShiftId?: number
-  initialRoleId?: number
-  saving?: boolean
-  error?: string
-}>()
+const props = defineProps({
+  show: { type: Boolean, required: true },
+  workers: { type: Array, required: true },
+  shifts: { type: Array, required: true },
+  roles: { type: Array, default: undefined },
+  initialDate: { type: String, default: undefined },
+  initialShiftId: { type: Number, default: undefined },
+  initialRoleId: { type: Number, default: undefined },
+  saving: { type: Boolean, default: false },
+  error: { type: String, default: '' },
+})
 
-const emit = defineEmits<{
-  close: []
-  submit: [payload: { worker_id: number; shift_id: number; work_date: string }]
-}>()
+const emit = defineEmits(['close', 'submit'])
 
-const workerId = ref<number | ''>('')
-const shiftId = ref<number | ''>('')
+const workerId = ref('')
+const shiftId = ref('')
 const workDate = ref('')
 
 const rolesById = computed(() => new Map((props.roles ?? []).map((role) => [role.id, role])))
@@ -64,11 +60,25 @@ function onSubmit() {
 </script>
 
 <template>
-  <div v-if="show" class="modal" role="dialog" aria-modal="true" @click.self="emit('close')">
+  <div
+    v-if="show"
+    class="modal"
+    role="dialog"
+    aria-modal="true"
+    @click.self="emit('close')"
+  >
     <div class="modal__card">
       <header class="modal__header">
-        <h2 class="modal__title">Add assignment</h2>
-        <button type="button" class="button" @click="emit('close')">Close</button>
+        <h2 class="modal__title">
+          Add assignment
+        </h2>
+        <button
+          type="button"
+          class="button"
+          @click="emit('close')"
+        >
+          Close
+        </button>
       </header>
 
       <p class="modal__hint">
@@ -76,16 +86,30 @@ function onSubmit() {
         auto-generation apply (availability, max 2 shifts/day, unique slot, max monthly hours).
       </p>
 
-      <p v-if="suggestedRole" class="modal__hint modal__hint--emphasis">
+      <p
+        v-if="suggestedRole"
+        class="modal__hint modal__hint--emphasis"
+      >
         Suggested role: {{ suggestedRole.name }}
       </p>
 
-      <form class="assignment-form" @submit.prevent="onSubmit">
+      <form
+        class="assignment-form"
+        @submit.prevent="onSubmit"
+      >
         <label class="field">
           <span class="field__label">Worker</span>
-          <select v-model="workerId" class="input" required>
+          <select
+            v-model="workerId"
+            class="input"
+            required
+          >
             <option value="">Select worker</option>
-            <option v-for="worker in filteredWorkers" :key="worker.id" :value="worker.id">
+            <option
+              v-for="worker in filteredWorkers"
+              :key="worker.id"
+              :value="worker.id"
+            >
               {{ worker.full_name }} ({{ worker.role.name ?? worker.role.code }})
             </option>
           </select>
@@ -93,9 +117,17 @@ function onSubmit() {
 
         <label class="field">
           <span class="field__label">Shift</span>
-          <select v-model="shiftId" class="input" required>
+          <select
+            v-model="shiftId"
+            class="input"
+            required
+          >
             <option value="">Select shift</option>
-            <option v-for="shift in shifts" :key="shift.id" :value="shift.id">
+            <option
+              v-for="shift in shifts"
+              :key="shift.id"
+              :value="shift.id"
+            >
               {{ shift.code }} — {{ shift.label }}
             </option>
           </select>
@@ -103,13 +135,29 @@ function onSubmit() {
 
         <label class="field">
           <span class="field__label">Date</span>
-          <input v-model="workDate" class="input" type="date" required />
+          <input
+            v-model="workDate"
+            class="input"
+            type="date"
+            required
+          >
         </label>
 
-        <div v-if="error" class="alert" role="alert">{{ error }}</div>
+        <div
+          v-if="error"
+          class="alert"
+          role="alert"
+        >
+          {{ error }}
+        </div>
 
         <footer class="modal__footer">
-          <button type="button" class="button" :disabled="saving" @click="emit('close')">
+          <button
+            type="button"
+            class="button"
+            :disabled="saving"
+            @click="emit('close')"
+          >
             Cancel
           </button>
           <button

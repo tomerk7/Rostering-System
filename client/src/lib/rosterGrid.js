@@ -1,60 +1,10 @@
-import type {
-  CoverageShortage,
-  RosterAssignment,
-  RosterPreviewAssignment,
-  RosterReports,
-} from '@/api/rosters'
-import type { ReferenceRole, ShiftRoleRequirement, Worker, WorkerShift } from '@/api/workers'
-
-export interface GridRoleDemand {
-  roleId: number
-  roleCode: string
-  roleName: string
-  required: number
-  assigned: number
-  shortage: number
-}
-
-export interface GridAssignment {
-  assignmentId?: number
-  workerId: number
-  workerName: string
-  roleCode: string
-  roleName: string
-  source: 'auto' | 'manual'
-}
-
-export interface GridShiftCell {
-  shiftId: number
-  shiftCode: string
-  shiftLabel: string
-  roles: GridRoleDemand[]
-  assignments: GridAssignment[]
-  isUnderstaffed: boolean
-}
-
-export interface GridDayRow {
-  workDate: string
-  dayLabel: string
-  shifts: GridShiftCell[]
-}
-
-export interface RosterGridData {
-  year: number
-  month: number
-  monthLabel: string
-  rows: GridDayRow[]
-}
-
-type AnyAssignment = RosterAssignment | RosterPreviewAssignment
-
-function padMonthDay(value: number): string {
+function padMonthDay(value) {
   return String(value).padStart(2, '0')
 }
 
-export function getDatesInMonth(year: number, month: number): string[] {
+export function getDatesInMonth(year, month) {
   const daysInMonth = new Date(year, month, 0).getDate()
-  const dates: string[] = []
+  const dates = []
 
   for (let day = 1; day <= daysInMonth; day++) {
     dates.push(`${year}-${padMonthDay(month)}-${padMonthDay(day)}`)
@@ -63,13 +13,13 @@ export function getDatesInMonth(year: number, month: number): string[] {
   return dates
 }
 
-export function formatMonthYear(year: number, month: number): string {
+export function formatMonthYear(year, month) {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
     new Date(year, month - 1, 1),
   )
 }
 
-export function formatWorkDateLabel(workDate: string): string {
+export function formatWorkDateLabel(workDate) {
   const date = new Date(`${workDate}T00:00:00`)
 
   return new Intl.DateTimeFormat('en-US', {
@@ -79,12 +29,12 @@ export function formatWorkDateLabel(workDate: string): string {
   }).format(date)
 }
 
-function shortageKey(workDate: string, shiftId: number, roleId: number): string {
+function shortageKey(workDate, shiftId, roleId) {
   return `${workDate}|${shiftId}|${roleId}`
 }
 
-function buildShortageMap(shortages: CoverageShortage[]): Map<string, CoverageShortage> {
-  const map = new Map<string, CoverageShortage>()
+function buildShortageMap(shortages) {
+  const map = new Map()
 
   for (const shortage of shortages) {
     map.set(shortageKey(shortage.work_date, shortage.shift_id, shortage.role_id), shortage)
@@ -93,11 +43,8 @@ function buildShortageMap(shortages: CoverageShortage[]): Map<string, CoverageSh
   return map
 }
 
-function buildRequirementsByShift(
-  requirements: ShiftRoleRequirement[],
-  rolesById: Map<number, ReferenceRole>,
-): Map<number, ShiftRoleRequirement[]> {
-  const map = new Map<number, ShiftRoleRequirement[]>()
+function buildRequirementsByShift(requirements, rolesById) {
+  const map = new Map()
 
   for (const requirement of requirements) {
     const existing = map.get(requirement.shift_id) ?? []
@@ -119,18 +66,12 @@ function buildRequirementsByShift(
   return map
 }
 
-function resolveRoleId(
-  assignment: AnyAssignment,
-  workersById: Map<number, Worker>,
-): number | null {
+function resolveRoleId(assignment, workersById) {
   return assignment.role_id ?? workersById.get(assignment.worker_id)?.role.id ?? null
 }
 
-function countAssignmentsBySlotRole(
-  assignments: AnyAssignment[],
-  workersById: Map<number, Worker>,
-): Map<string, number> {
-  const counts = new Map<string, number>()
+function countAssignmentsBySlotRole(assignments, workersById) {
+  const counts = new Map()
 
   for (const assignment of assignments) {
     const roleId = resolveRoleId(assignment, workersById)
@@ -145,7 +86,7 @@ function countAssignmentsBySlotRole(
   return counts
 }
 
-function roleCodeFromName(roleName: string | null | undefined): string {
+function roleCodeFromName(roleName) {
   if (!roleName) {
     return 'unknown'
   }
@@ -167,12 +108,7 @@ function roleCodeFromName(roleName: string | null | undefined): string {
   return normalized.replace(/\s+/g, '_')
 }
 
-function buildAssignmentsForCell(
-  assignments: AnyAssignment[],
-  workDate: string,
-  shiftId: number,
-  workersById: Map<number, Worker>,
-): GridAssignment[] {
+function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
   return assignments
     .filter((assignment) => assignment.work_date === workDate && assignment.shift_id === shiftId)
     .map((assignment) => {
@@ -193,16 +129,7 @@ function buildAssignmentsForCell(
     .sort((left, right) => left.roleName.localeCompare(right.roleName) || left.workerName.localeCompare(right.workerName))
 }
 
-export function buildRosterGrid(params: {
-  year: number
-  month: number
-  shifts: WorkerShift[]
-  requirements: ShiftRoleRequirement[]
-  roles: ReferenceRole[]
-  assignments: AnyAssignment[]
-  reports: RosterReports
-  workersById: Map<number, Worker>
-}): RosterGridData {
+export function buildRosterGrid(params) {
   const {
     year,
     month,
@@ -220,11 +147,11 @@ export function buildRosterGrid(params: {
   const assignmentCounts = countAssignmentsBySlotRole(assignments, workersById)
   const sortedShifts = [...shifts].sort((left, right) => left.code.localeCompare(right.code))
 
-  const rows = getDatesInMonth(year, month).map((workDate): GridDayRow => {
-    const shiftCells = sortedShifts.map((shift): GridShiftCell => {
+  const rows = getDatesInMonth(year, month).map((workDate) => {
+    const shiftCells = sortedShifts.map((shift) => {
       const shiftRequirements = requirementsByShift.get(shift.id) ?? []
 
-      const roleDemands = shiftRequirements.map((requirement): GridRoleDemand => {
+      const roleDemands = shiftRequirements.map((requirement) => {
         const key = shortageKey(workDate, shift.id, requirement.role_id)
         const shortage = shortageMap.get(key)
         const assigned = shortage?.assigned ?? assignmentCounts.get(key) ?? 0
@@ -267,7 +194,7 @@ export function buildRosterGrid(params: {
   }
 }
 
-export function formatDemandSummary(roles: GridRoleDemand[]): string {
+export function formatDemandSummary(roles) {
   return roles
     .map((role) => {
       const shortCode = role.roleCode === 'general_guard'

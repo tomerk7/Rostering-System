@@ -1,23 +1,17 @@
-<script setup lang="ts">
+<script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useWorkersStore } from '@/stores/workers'
-import {
-  exportWorkers,
-  importWorkers,
-  type ImportRowError,
-  type ImportSummary,
-  type Worker,
-} from '@/api/workers'
+import { exportWorkers, importWorkers } from '@/api/workers'
 import { isAxiosError } from 'axios'
 
 const workersStore = useWorkersStore()
 
 const showImport = ref(false)
-const importFile = ref<File | null>(null)
+const importFile = ref(null)
 const importing = ref(false)
 const importError = ref('')
-const importSummary = ref<ImportSummary | null>(null)
-const importErrors = ref<ImportRowError[]>([])
+const importSummary = ref(null)
+const importErrors = ref([])
 const exporting = ref(false)
 
 function openImport() {
@@ -32,9 +26,8 @@ function closeImport() {
   showImport.value = false
 }
 
-function onFileChange(event: Event) {
-  const target = event.target as HTMLInputElement
-  importFile.value = target.files?.[0] ?? null
+function onFileChange(event) {
+  importFile.value = event.target.files?.[0] ?? null
 }
 
 async function submitImport() {
@@ -55,7 +48,7 @@ async function submitImport() {
     await workersStore.fetchWorkers()
   } catch (error) {
     if (isAxiosError(error) && error.response?.status === 422) {
-      const fileErrors = error.response.data?.errors?.file as string[] | undefined
+      const fileErrors = error.response.data?.errors?.file
       importError.value = fileErrors?.[0] ?? 'The uploaded file is invalid.'
     } else {
       importError.value = 'Import failed. Please try again.'
@@ -112,7 +105,7 @@ async function resetFilters() {
   await workersStore.applyFilters()
 }
 
-async function deleteWorker(worker: Worker) {
+async function deleteWorker(worker) {
   if (!window.confirm(`Delete ${worker.full_name}?`)) {
     return
   }
@@ -120,7 +113,7 @@ async function deleteWorker(worker: Worker) {
   await workersStore.removeWorker(worker.id)
 }
 
-function formatCurrency(value: string | number | undefined): string {
+function formatCurrency(value) {
   if (value === undefined) {
     return '-'
   }
@@ -132,7 +125,7 @@ function formatCurrency(value: string | number | undefined): string {
   }).format(Number(value))
 }
 
-function availabilitySummary(worker: Worker): string {
+function availabilitySummary(worker) {
   const contract = worker.contract
 
   if (contract === null) {
@@ -149,21 +142,46 @@ function availabilitySummary(worker: Worker): string {
   <main class="page">
     <header class="page__header">
       <div>
-        <p class="page__eyebrow">Workers</p>
-        <h1 class="page__title">Worker Directory</h1>
-        <p class="page__description">Search, filter, and manage worker profiles for scheduling.</p>
+        <p class="page__eyebrow">
+          Workers
+        </p>
+        <h1 class="page__title">
+          Worker Directory
+        </h1>
+        <p class="page__description">
+          Search, filter, and manage worker profiles for scheduling.
+        </p>
       </div>
       <div class="page__actions">
-        <button type="button" class="button" :disabled="exporting" @click="downloadExport">
+        <button
+          type="button"
+          class="button"
+          :disabled="exporting"
+          @click="downloadExport"
+        >
           {{ exporting ? 'Exporting...' : 'Export CSV' }}
         </button>
-        <button type="button" class="button" @click="openImport">Import CSV</button>
-        <RouterLink class="button button--primary" :to="{ name: 'workers.create' }">Add worker</RouterLink>
+        <button
+          type="button"
+          class="button"
+          @click="openImport"
+        >
+          Import CSV
+        </button>
+        <RouterLink
+          class="button button--primary"
+          :to="{ name: 'workers.create' }"
+        >
+          Add worker
+        </RouterLink>
       </div>
     </header>
 
     <section class="panel">
-      <form class="toolbar" @submit.prevent="workersStore.applyFilters">
+      <form
+        class="toolbar"
+        @submit.prevent="workersStore.applyFilters"
+      >
         <label class="field toolbar__search">
           <span class="field__label">Search</span>
           <input
@@ -171,13 +189,20 @@ function availabilitySummary(worker: Worker): string {
             class="input"
             type="search"
             placeholder="Name or Israeli ID"
-          />
+          >
         </label>
 
         <label class="field">
           <span class="field__label">Role</span>
-          <select v-model="workersStore.roleCode" class="input">
-            <option v-for="role in roleOptions" :key="role.value" :value="role.value">
+          <select
+            v-model="workersStore.roleCode"
+            class="input"
+          >
+            <option
+              v-for="role in roleOptions"
+              :key="role.value"
+              :value="role.value"
+            >
               {{ role.label }}
             </option>
           </select>
@@ -185,24 +210,44 @@ function availabilitySummary(worker: Worker): string {
 
         <label class="field">
           <span class="field__label">Status</span>
-          <select v-model="workersStore.status" class="input">
-            <option v-for="status in statusOptions" :key="status.value" :value="status.value">
+          <select
+            v-model="workersStore.status"
+            class="input"
+          >
+            <option
+              v-for="status in statusOptions"
+              :key="status.value"
+              :value="status.value"
+            >
               {{ status.label }}
             </option>
           </select>
         </label>
 
         <div class="toolbar__actions">
-          <button type="submit" class="button button--primary" :disabled="workersStore.loading">
+          <button
+            type="submit"
+            class="button button--primary"
+            :disabled="workersStore.loading"
+          >
             Search
           </button>
-          <button type="button" class="button" :disabled="workersStore.loading" @click="resetFilters">
+          <button
+            type="button"
+            class="button"
+            :disabled="workersStore.loading"
+            @click="resetFilters"
+          >
             Reset
           </button>
         </div>
       </form>
 
-      <div v-if="workersStore.error" class="alert" role="alert">
+      <div
+        v-if="workersStore.error"
+        class="alert"
+        role="alert"
+      >
         {{ workersStore.error }}
       </div>
 
@@ -216,25 +261,43 @@ function availabilitySummary(worker: Worker): string {
               <th>Status</th>
               <th>Contract</th>
               <th>Availability</th>
-              <th class="table__actions">Actions</th>
+              <th class="table__actions">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="workersStore.loading">
-              <td colspan="7" class="table__empty">Loading workers...</td>
+              <td
+                colspan="7"
+                class="table__empty"
+              >
+                Loading workers...
+              </td>
             </tr>
             <tr v-else-if="workersStore.workers.length === 0">
-              <td colspan="7" class="table__empty">No workers found.</td>
+              <td
+                colspan="7"
+                class="table__empty"
+              >
+                No workers found.
+              </td>
             </tr>
             <template v-else>
-              <tr v-for="worker in workersStore.workers" :key="worker.id">
+              <tr
+                v-for="worker in workersStore.workers"
+                :key="worker.id"
+              >
                 <td>
                   <strong>{{ worker.full_name }}</strong>
                 </td>
                 <td>{{ worker.israeli_id }}</td>
                 <td>{{ worker.role.name ?? '-' }}</td>
                 <td>
-                  <span class="badge" :class="worker.is_active ? 'badge--success' : 'badge--muted'">
+                  <span
+                    class="badge"
+                    :class="worker.is_active ? 'badge--success' : 'badge--muted'"
+                  >
                     {{ worker.is_active ? 'Active' : 'Inactive' }}
                   </span>
                 </td>
@@ -247,9 +310,12 @@ function availabilitySummary(worker: Worker): string {
                 </td>
                 <td>{{ availabilitySummary(worker) }}</td>
                 <td class="table__actions">
-                <RouterLink class="button" :to="{ name: 'workers.edit', params: { id: worker.id } }">
-                  Edit
-                </RouterLink>
+                  <RouterLink
+                    class="button"
+                    :to="{ name: 'workers.edit', params: { id: worker.id } }"
+                  >
+                    Edit
+                  </RouterLink>
                   <button
                     type="button"
                     class="button button--danger"
@@ -292,11 +358,25 @@ function availabilitySummary(worker: Worker): string {
       </footer>
     </section>
 
-    <div v-if="showImport" class="modal" role="dialog" aria-modal="true" @click.self="closeImport">
+    <div
+      v-if="showImport"
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      @click.self="closeImport"
+    >
       <div class="modal__card">
         <header class="modal__header">
-          <h2 class="modal__title">Import workers from CSV</h2>
-          <button type="button" class="button" @click="closeImport">Close</button>
+          <h2 class="modal__title">
+            Import workers from CSV
+          </h2>
+          <button
+            type="button"
+            class="button"
+            @click="closeImport"
+          >
+            Close
+          </button>
         </header>
 
         <p class="modal__hint">
@@ -306,19 +386,39 @@ function availabilitySummary(worker: Worker): string {
 
         <label class="field">
           <span class="field__label">CSV file</span>
-          <input class="input" type="file" accept=".csv,text/csv" @change="onFileChange" />
+          <input
+            class="input"
+            type="file"
+            accept=".csv,text/csv"
+            @change="onFileChange"
+          >
         </label>
 
-        <div v-if="importError" class="alert" role="alert">{{ importError }}</div>
+        <div
+          v-if="importError"
+          class="alert"
+          role="alert"
+        >
+          {{ importError }}
+        </div>
 
-        <div v-if="importSummary" class="alert alert--success" role="status">
+        <div
+          v-if="importSummary"
+          class="alert alert--success"
+          role="status"
+        >
           Imported {{ importSummary.imported }} of {{ importSummary.total }} rows
           ({{ importSummary.created }} created, {{ importSummary.updated }} updated,
           {{ importSummary.skipped }} skipped).
         </div>
 
-        <div v-if="importErrors.length" class="import-errors">
-          <h3 class="import-errors__title">Row errors ({{ importErrors.length }})</h3>
+        <div
+          v-if="importErrors.length"
+          class="import-errors"
+        >
+          <h3 class="import-errors__title">
+            Row errors ({{ importErrors.length }})
+          </h3>
           <div class="table-wrap">
             <table class="table import-errors__table">
               <thead>
@@ -329,7 +429,10 @@ function availabilitySummary(worker: Worker): string {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(rowError, index) in importErrors" :key="`${rowError.line}-${index}`">
+                <tr
+                  v-for="(rowError, index) in importErrors"
+                  :key="`${rowError.line}-${index}`"
+                >
                   <td>{{ rowError.line }}</td>
                   <td>{{ rowError.field }}</td>
                   <td>{{ rowError.message }}</td>
@@ -340,7 +443,12 @@ function availabilitySummary(worker: Worker): string {
         </div>
 
         <footer class="modal__footer">
-          <button type="button" class="button" :disabled="importing" @click="closeImport">
+          <button
+            type="button"
+            class="button"
+            :disabled="importing"
+            @click="closeImport"
+          >
             Done
           </button>
           <button

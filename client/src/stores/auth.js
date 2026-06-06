@@ -2,15 +2,9 @@ import { defineStore } from 'pinia'
 import api from '@/lib/axios'
 import { isAxiosError } from 'axios'
 
-export interface User {
-  id: number
-  name: string
-  email: string
-}
-
 export const useAuthStore = defineStore('auth', {
   state: () => ({
-    user: null as User | null,
+    user: null,
     ready: false,
   }),
 
@@ -23,7 +17,7 @@ export const useAuthStore = defineStore('auth', {
       await api.get('/sanctum/csrf-cookie')
     },
 
-    async login(email: string, password: string) {
+    async login(email, password) {
       await this.csrf()
       await api.post('/login', { email, password })
       await this.fetchUser()
@@ -31,7 +25,7 @@ export const useAuthStore = defineStore('auth', {
 
     async fetchUser() {
       try {
-        const { data } = await api.get<User>('/api/user')
+        const { data } = await api.get('/api/user')
         this.user = data
       } catch {
         this.user = null
@@ -48,11 +42,9 @@ export const useAuthStore = defineStore('auth', {
   },
 })
 
-export function getLoginErrorMessage(error: unknown): string {
+export function getLoginErrorMessage(error) {
   if (isAxiosError(error)) {
-    const data = error.response?.data as
-      | { message?: string; errors?: Record<string, string[]> }
-      | undefined
+    const data = error.response?.data
 
     if (data?.errors?.email?.[0]) {
       return data.errors.email[0]

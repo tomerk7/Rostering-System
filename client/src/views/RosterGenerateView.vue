@@ -1,15 +1,10 @@
-<script setup lang="ts">
+<script setup>
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
-import { useRosterReference } from '@/composables/useRosterReference'
-import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
-import RosterGrid from '@/components/rosters/RosterGrid.vue'
-import { formatMonthYear } from '@/lib/rosterGrid'
 
 const router = useRouter()
 const rostersStore = useRostersStore()
-const referenceData = useRosterReference()
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
@@ -21,22 +16,30 @@ const yearOptions = computed(() => {
   return [currentYear - 1, currentYear, currentYear + 1]
 })
 
-const periodLabel = computed(() =>
-  formatMonthYear(rostersStore.selectedYear, rostersStore.selectedMonth),
+const canGenerate = computed(
+  () => rostersStore.selectedYear != null && rostersStore.selectedMonth != null,
 )
 
-const hasPreview = computed(() => rostersStore.preview !== null)
-
-onMounted(async () => {
-  await referenceData.load()
+onMounted(() => {
+  rostersStore.clearPreview()
+  rostersStore.clearRoster()
+  rostersStore.clearErrors()
+  rostersStore.setSelectedMonth(null, null)
 })
 
-async function runPreview() {
-  await rostersStore.generatePreview(rostersStore.selectedYear, rostersStore.selectedMonth)
+function onPeriodChange() {
+  rostersStore.clearErrors()
 }
 
-async function saveDraft() {
-  const roster = await rostersStore.saveDraft(rostersStore.selectedYear, rostersStore.selectedMonth)
+async function generateRoster() {
+  if (!canGenerate.value) {
+    return
+  }
+
+  const roster = await rostersStore.saveDraft(
+    rostersStore.selectedYear,
+    rostersStore.selectedMonth,
+  )
 
   if (roster) {
     await router.push({ name: 'rosters.show', params: { id: roster.id } })
@@ -48,89 +51,98 @@ async function saveDraft() {
   <main class="page page--wide">
     <header class="page__header">
       <div>
-        <p class="page__eyebrow">Rosters</p>
-        <h1 class="page__title">Generate Roster</h1>
+        <p class="page__eyebrow">
+          Rosters
+        </p>
+        <h1 class="page__title">
+          Generate Roster
+        </h1>
         <p class="page__description">
-          Select a month, run a preview, review alerts, then save as draft.
+          Select a month and generate a draft roster. You can review, edit, and publish it afterward.
         </p>
       </div>
       <div class="page__actions">
-        <RouterLink class="button" :to="{ name: 'rosters' }">Back to list</RouterLink>
+        <RouterLink
+          class="button"
+          :to="{ name: 'rosters' }"
+        >
+          Back to list
+        </RouterLink>
       </div>
     </header>
 
     <section class="panel">
-      <form class="toolbar roster-toolbar" @submit.prevent="runPreview">
+      <form
+        class="toolbar roster-toolbar"
+        @submit.prevent="generateRoster"
+      >
         <label class="field">
           <span class="field__label">Year</span>
-          <select v-model.number="rostersStore.selectedYear" class="input">
-            <option v-for="year in yearOptions" :key="year" :value="year">{{ year }}</option>
+          <select
+            v-model="rostersStore.selectedYear"
+            class="input"
+            required
+            @change="onPeriodChange"
+          >
+            <option
+              :value="null"
+              disabled
+            >
+              Select year
+            </option>
+            <option
+              v-for="year in yearOptions"
+              :key="year"
+              :value="year"
+            >{{ year }}</option>
           </select>
         </label>
 
         <label class="field">
           <span class="field__label">Month</span>
-          <select v-model.number="rostersStore.selectedMonth" class="input">
-            <option v-for="month in monthOptions" :key="month.value" :value="month.value">
+          <select
+            v-model="rostersStore.selectedMonth"
+            class="input"
+            required
+            @change="onPeriodChange"
+          >
+            <option
+              :value="null"
+              disabled
+            >
+              Select month
+            </option>
+            <option
+              v-for="month in monthOptions"
+              :key="month.value"
+              :value="month.value"
+            >
               {{ month.label }}
             </option>
           </select>
         </label>
 
         <div class="toolbar__actions">
-          <button type="submit" class="button button--primary" :disabled="rostersStore.previewing">
-            {{ rostersStore.previewing ? 'Generating preview...' : 'Run preview' }}
-          </button>
           <button
-            v-if="hasPreview"
-            type="button"
+            type="submit"
             class="button button--primary"
-            :disabled="rostersStore.saving"
-            @click="saveDraft"
+            :disabled="rostersStore.saving || !canGenerate"
           >
-            {{ rostersStore.saving ? 'Saving draft...' : 'Save draft' }}
+            {{ rostersStore.saving ? 'Generating...' : 'Generate' }}
           </button>
         </div>
       </form>
 
-      <div v-if="rostersStore.error" class="alert" role="alert">
+      <div
+        v-if="rostersStore.error"
+        class="alert"
+        role="alert"
+      >
         {{ rostersStore.error }}
       </div>
 
-      <div v-if="referenceData.error" class="alert" role="alert">
-        {{ referenceData.error }}
-      </div>
-
-      <div v-if="referenceData.loading" class="empty-state">Loading reference data...</div>
-
-      <template v-else-if="hasPreview && referenceData.reference">
-        <div class="roster-preview-banner">
-          <strong>Preview for {{ periodLabel }}</strong>
-          <span>Review alerts before saving. Nothing is persisted until you save the draft.</span>
-        </div>
-
-        <RosterAlertSummary
-          :summary="rostersStore.summary"
-          :reports="rostersStore.reports"
-          :workers-by-id="referenceData.workersById"
-          :shifts="referenceData.reference.shifts"
-          :roles="referenceData.reference.roles"
-        />
-
-        <RosterGrid
-          :year="rostersStore.selectedYear"
-          :month="rostersStore.selectedMonth"
-          :shifts="referenceData.reference.shifts"
-          :requirements="referenceData.reference.shift_role_requirements"
-          :roles="referenceData.reference.roles"
-          :assignments="rostersStore.assignments"
-          :reports="rostersStore.reports"
-          :workers-by-id="referenceData.workersById"
-        />
-      </template>
-
-      <div v-else class="empty-state">
-        Choose a month and run preview to see the roster grid and alerts.
+      <div class="empty-state">
+        Choose a month and click Generate to create a draft roster you can edit.
       </div>
     </section>
   </main>

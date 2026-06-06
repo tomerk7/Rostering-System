@@ -70,8 +70,6 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 
-  // Ensure the session is hydrated before guarding. `ready` is set after the
-  // first fetch, so this only fetches once and won't double-fetch on startup.
   if (!auth.ready) {
     await auth.fetchUser()
   }

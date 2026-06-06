@@ -2,20 +2,28 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Api;
+namespace Tests\Feature\Database;
 
 use App\Models\Role;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
-use App\Models\User;
+use App\Services\Workers\WorkerService;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
-final class ReferenceDataApiTest extends TestCase
+final class ReferenceDataSeederTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_reference_data_returns_empty_collections_when_database_is_empty(): void
+    {
+        $data = (new WorkerService())->referenceData();
+
+        self::assertCount(0, $data['roles']);
+        self::assertCount(0, $data['shifts']);
+        self::assertCount(0, $data['shift_role_requirements']);
+    }
 
     public function test_reference_data_seeder_creates_roles_shifts_and_requirements(): void
     {
@@ -36,24 +44,6 @@ final class ReferenceDataApiTest extends TestCase
                 ]);
             }
         }
-    }
-
-    public function test_reference_data_api_returns_roles_and_shifts(): void
-    {
-        Sanctum::actingAs(User::factory()->create());
-
-        $this->seed(ReferenceDataSeeder::class);
-
-        $response = $this->getJson('/api/reference-data');
-
-        $response
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.roles.0.code', 'general_guard')
-            ->assertJsonPath('data.shifts.0.code', 'A')
-            ->assertJsonCount(3, 'data.roles')
-            ->assertJsonCount(3, 'data.shifts')
-            ->assertJsonCount(9, 'data.shift_role_requirements');
     }
 
     public function test_reference_data_seeder_is_idempotent(): void

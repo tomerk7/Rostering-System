@@ -1,31 +1,20 @@
-<script setup lang="ts">
+<script setup>
 import { computed } from 'vue'
-import type { RosterAssignment, RosterPreviewAssignment, RosterReports } from '@/api/rosters'
-import type { ReferenceRole, ShiftRoleRequirement, Worker, WorkerShift } from '@/api/workers'
 import { buildRosterGrid, formatDemandSummary } from '@/lib/rosterGrid'
 
-export interface GridCellSelection {
-  workDate: string
-  shiftId: number
-  roleId?: number
-}
+const props = defineProps({
+  year: { type: Number, required: true },
+  month: { type: Number, required: true },
+  shifts: { type: Array, required: true },
+  requirements: { type: Array, required: true },
+  roles: { type: Array, required: true },
+  assignments: { type: Array, required: true },
+  reports: { type: Object, required: true },
+  workersById: { type: Map, required: true },
+  editable: { type: Boolean, default: false },
+})
 
-const props = defineProps<{
-  year: number
-  month: number
-  shifts: WorkerShift[]
-  requirements: ShiftRoleRequirement[]
-  roles: ReferenceRole[]
-  assignments: RosterAssignment[] | RosterPreviewAssignment[]
-  reports: RosterReports
-  workersById: Map<number, Worker>
-  editable?: boolean
-}>()
-
-const emit = defineEmits<{
-  'cell-click': [selection: GridCellSelection]
-  'remove-assignment': [assignmentId: number]
-}>()
+const emit = defineEmits(['cell-click', 'remove-assignment'])
 
 const grid = computed(() =>
   buildRosterGrid({
@@ -40,7 +29,7 @@ const grid = computed(() =>
   }),
 )
 
-function onCellClick(workDate: string, shiftId: number, roleId?: number) {
+function onCellClick(workDate, shiftId, roleId) {
   if (!props.editable) {
     return
   }
@@ -48,7 +37,7 @@ function onCellClick(workDate: string, shiftId: number, roleId?: number) {
   emit('cell-click', { workDate, shiftId, roleId })
 }
 
-function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] }): number | undefined {
+function firstShortRoleId(cell) {
   return cell.roles.find((role) => role.shortage > 0)?.roleId
 }
 </script>
@@ -56,10 +45,14 @@ function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] 
 <template>
   <section class="roster-grid">
     <header>
-      <h2 class="roster-grid__title">{{ grid.monthLabel }}</h2>
+      <h2 class="roster-grid__title">
+        {{ grid.monthLabel }}
+      </h2>
       <p class="roster-grid__hint">
         Daily assignments by shift. Understaffed cells are highlighted.
-        <template v-if="editable">Click an understaffed cell to add a worker.</template>
+        <template v-if="editable">
+          Click an understaffed cell to add a worker.
+        </template>
       </p>
     </header>
 
@@ -67,15 +60,24 @@ function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] 
       <table class="roster-grid__table">
         <thead>
           <tr>
-            <th class="roster-grid__date-col">Date</th>
-            <th v-for="shift in shifts" :key="shift.id" class="roster-grid__shift-col">
+            <th class="roster-grid__date-col">
+              Date
+            </th>
+            <th
+              v-for="shift in shifts"
+              :key="shift.id"
+              class="roster-grid__shift-col"
+            >
               Shift {{ shift.code }}
               <span class="roster-grid__shift-label">{{ shift.label }}</span>
             </th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in grid.rows" :key="row.workDate">
+          <tr
+            v-for="row in grid.rows"
+            :key="row.workDate"
+          >
             <td class="roster-grid__date-cell">
               <span class="roster-grid__date-primary">{{ row.dayLabel }}</span>
               <span class="roster-grid__date-secondary">{{ row.workDate }}</span>
@@ -108,7 +110,10 @@ function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] 
                 </li>
               </ul>
 
-              <ul v-if="cell.assignments.length" class="roster-grid__assignments">
+              <ul
+                v-if="cell.assignments.length"
+                class="roster-grid__assignments"
+              >
                 <li
                   v-for="assignment in cell.assignments"
                   :key="`${assignment.workerId}-${assignment.assignmentId ?? assignment.workerName}`"
@@ -122,13 +127,18 @@ function firstShortRoleId(cell: { roles: { roleId: number; shortage: number }[] 
                     type="button"
                     class="roster-grid__remove"
                     title="Remove assignment"
-                    @click.stop="emit('remove-assignment', assignment.assignmentId!)"
+                    @click.stop="emit('remove-assignment', assignment.assignmentId)"
                   >
                     Remove
                   </button>
                 </li>
               </ul>
-              <p v-else class="roster-grid__empty-slot">No assignments</p>
+              <p
+                v-else
+                class="roster-grid__empty-slot"
+              >
+                No assignments
+              </p>
             </td>
           </tr>
         </tbody>

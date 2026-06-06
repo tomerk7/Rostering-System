@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-function getCookie(name: string): string | null {
+function getCookie(name) {
   const match = document.cookie.match(new RegExp(`(^|;\\s*)${name}=([^;]*)`))
   return match?.[2] ? decodeURIComponent(match[2]) : null
 }

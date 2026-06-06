@@ -1,11 +1,10 @@
 import { reactive } from 'vue'
-import { getReferenceData, type ReferenceData, type Worker } from '@/api/workers'
-import { listWorkers } from '@/api/workers'
+import { getReferenceData, listWorkers } from '@/api/workers'
 
 export function useRosterReference() {
   const state = reactive({
-    reference: null as ReferenceData | null,
-    workersById: new Map<number, Worker>(),
+    reference: null,
+    workersById: new Map(),
     loading: false,
     error: '',
     async load() {

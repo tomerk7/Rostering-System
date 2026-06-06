@@ -1,4 +1,4 @@
-<script setup lang="ts">
+<script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { isAxiosError } from 'axios'
 import { useRoute, useRouter } from 'vue-router'
@@ -7,8 +7,6 @@ import {
   getReferenceData,
   getWorker,
   updateWorker,
-  type ReferenceData,
-  type WorkerPayload,
 } from '@/api/workers'
 
 const route = useRoute()
@@ -21,22 +19,22 @@ const workerId = computed(() => {
 })
 const isEdit = computed(() => workerId.value !== null)
 
-const referenceData = ref<ReferenceData>({ roles: [], shifts: [], shift_role_requirements: [] })
+const referenceData = ref({ roles: [], shifts: [], shift_role_requirements: [] })
 const loading = ref(false)
 const submitting = ref(false)
 const formError = ref('')
-const fieldErrors = ref<Record<string, string[]>>({})
+const fieldErrors = ref({})
 
 const form = reactive({
   full_name: '',
   israeli_id: '',
-  role_id: null as number | null,
+  role_id: null,
   is_active: true,
   hourly_cost: '',
   min_monthly_hours: '',
   max_monthly_hours: '',
-  availability_days: [] as number[],
-  availability_shifts: [] as number[],
+  availability_days: [],
+  availability_shifts: [],
 })
 
 const dayOptions = [
@@ -108,7 +106,7 @@ async function submitForm() {
     await router.push({ name: 'workers' })
   } catch (error) {
     if (isAxiosError(error) && error.response?.status === 422) {
-      const data = error.response.data as { errors?: Record<string, string[]>; message?: string }
+      const data = error.response.data
       fieldErrors.value = data.errors ?? {}
       formError.value = data.message ?? 'Please fix the highlighted fields.'
     } else {
@@ -119,7 +117,7 @@ async function submitForm() {
   }
 }
 
-function buildPayload(): WorkerPayload {
+function buildPayload() {
   return {
     full_name: form.full_name.trim(),
     israeli_id: form.israeli_id.trim(),
@@ -137,7 +135,7 @@ function buildPayload(): WorkerPayload {
   }
 }
 
-function fieldError(field: string): string {
+function fieldError(field) {
   return fieldErrors.value[field]?.[0] ?? ''
 }
 </script>
@@ -146,25 +144,54 @@ function fieldError(field: string): string {
   <main class="page">
     <header class="page__header">
       <div>
-        <p class="page__eyebrow">Workers</p>
-        <h1 class="page__title">{{ pageTitle }}</h1>
-        <p class="page__description">Manage personal details, contract limits, and availability.</p>
+        <p class="page__eyebrow">
+          Workers
+        </p>
+        <h1 class="page__title">
+          {{ pageTitle }}
+        </h1>
+        <p class="page__description">
+          Manage personal details, contract limits, and availability.
+        </p>
       </div>
-      <RouterLink class="button" :to="{ name: 'workers' }">Back to workers</RouterLink>
+      <RouterLink
+        class="button"
+        :to="{ name: 'workers' }"
+      >
+        Back to workers
+      </RouterLink>
     </header>
 
     <section class="panel">
-      <div v-if="formError" class="alert" role="alert">
+      <div
+        v-if="formError"
+        class="alert"
+        role="alert"
+      >
         {{ formError }}
       </div>
 
-      <div v-if="loading" class="empty-state">Loading form...</div>
+      <div
+        v-if="loading"
+        class="empty-state"
+      >
+        Loading form...
+      </div>
 
-      <form v-else class="worker-form" novalidate @submit.prevent="submitForm">
+      <form
+        v-else
+        class="worker-form"
+        novalidate
+        @submit.prevent="submitForm"
+      >
         <section class="form-section">
           <div>
-            <h2 class="form-section__title">Worker Details</h2>
-            <p class="form-section__description">Identity, role, and active status.</p>
+            <h2 class="form-section__title">
+              Worker Details
+            </h2>
+            <p class="form-section__description">
+              Identity, role, and active status.
+            </p>
           </div>
 
           <div class="form-grid">
@@ -176,8 +203,11 @@ function fieldError(field: string): string {
                 :class="{ 'input--error': fieldError('full_name') }"
                 type="text"
                 autocomplete="name"
-              />
-              <span v-if="fieldError('full_name')" class="field__error">
+              >
+              <span
+                v-if="fieldError('full_name')"
+                class="field__error"
+              >
                 {{ fieldError('full_name') }}
               </span>
             </label>
@@ -191,8 +221,11 @@ function fieldError(field: string): string {
                 type="text"
                 inputmode="numeric"
                 maxlength="9"
-              />
-              <span v-if="fieldError('israeli_id')" class="field__error">
+              >
+              <span
+                v-if="fieldError('israeli_id')"
+                class="field__error"
+              >
                 {{ fieldError('israeli_id') }}
               </span>
             </label>
@@ -205,17 +238,27 @@ function fieldError(field: string): string {
                 :class="{ 'input--error': fieldError('role_id') }"
               >
                 <option :value="null">Select role</option>
-                <option v-for="role in referenceData.roles" :key="role.id" :value="role.id">
+                <option
+                  v-for="role in referenceData.roles"
+                  :key="role.id"
+                  :value="role.id"
+                >
                   {{ role.name }}
                 </option>
               </select>
-              <span v-if="fieldError('role_id')" class="field__error">
+              <span
+                v-if="fieldError('role_id')"
+                class="field__error"
+              >
                 {{ fieldError('role_id') }}
               </span>
             </label>
 
             <label class="check-field">
-              <input v-model="form.is_active" type="checkbox" />
+              <input
+                v-model="form.is_active"
+                type="checkbox"
+              >
               <span>Worker is active</span>
             </label>
           </div>
@@ -223,8 +266,12 @@ function fieldError(field: string): string {
 
         <section class="form-section">
           <div>
-            <h2 class="form-section__title">Contract</h2>
-            <p class="form-section__description">Hourly cost and monthly hour boundaries.</p>
+            <h2 class="form-section__title">
+              Contract
+            </h2>
+            <p class="form-section__description">
+              Hourly cost and monthly hour boundaries.
+            </p>
           </div>
 
           <div class="form-grid form-grid--three">
@@ -237,8 +284,11 @@ function fieldError(field: string): string {
                 type="number"
                 min="0"
                 step="0.01"
-              />
-              <span v-if="fieldError('contract.hourly_cost')" class="field__error">
+              >
+              <span
+                v-if="fieldError('contract.hourly_cost')"
+                class="field__error"
+              >
                 {{ fieldError('contract.hourly_cost') }}
               </span>
             </label>
@@ -252,8 +302,11 @@ function fieldError(field: string): string {
                 type="number"
                 min="0"
                 max="744"
-              />
-              <span v-if="fieldError('contract.min_monthly_hours')" class="field__error">
+              >
+              <span
+                v-if="fieldError('contract.min_monthly_hours')"
+                class="field__error"
+              >
                 {{ fieldError('contract.min_monthly_hours') }}
               </span>
             </label>
@@ -267,8 +320,11 @@ function fieldError(field: string): string {
                 type="number"
                 min="0"
                 max="744"
-              />
-              <span v-if="fieldError('contract.max_monthly_hours')" class="field__error">
+              >
+              <span
+                v-if="fieldError('contract.max_monthly_hours')"
+                class="field__error"
+              >
                 {{ fieldError('contract.max_monthly_hours') }}
               </span>
             </label>
@@ -277,29 +333,55 @@ function fieldError(field: string): string {
 
         <section class="form-section">
           <div>
-            <h2 class="form-section__title">Availability</h2>
-            <p class="form-section__description">Select available days and shifts.</p>
+            <h2 class="form-section__title">
+              Availability
+            </h2>
+            <p class="form-section__description">
+              Select available days and shifts.
+            </p>
           </div>
 
           <div class="choice-grid">
             <fieldset class="choice-group">
               <legend>Days</legend>
-              <label v-for="day in dayOptions" :key="day.value" class="check-field">
-                <input v-model="form.availability_days" type="checkbox" :value="day.value" />
+              <label
+                v-for="day in dayOptions"
+                :key="day.value"
+                class="check-field"
+              >
+                <input
+                  v-model="form.availability_days"
+                  type="checkbox"
+                  :value="day.value"
+                >
                 <span>{{ day.label }}</span>
               </label>
-              <span v-if="fieldError('availability.days')" class="field__error">
+              <span
+                v-if="fieldError('availability.days')"
+                class="field__error"
+              >
                 {{ fieldError('availability.days') }}
               </span>
             </fieldset>
 
             <fieldset class="choice-group">
               <legend>Shifts</legend>
-              <label v-for="shift in referenceData.shifts" :key="shift.id" class="check-field">
-                <input v-model="form.availability_shifts" type="checkbox" :value="shift.id" />
+              <label
+                v-for="shift in referenceData.shifts"
+                :key="shift.id"
+                class="check-field"
+              >
+                <input
+                  v-model="form.availability_shifts"
+                  type="checkbox"
+                  :value="shift.id"
+                >
                 <span>{{ shift.code }} - {{ shift.label }} ({{ shift.start_time }}-{{ shift.end_time }})</span>
               </label>
-              <span v-if="fieldError('availability.shifts')" class="field__error">
+              <span
+                v-if="fieldError('availability.shifts')"
+                class="field__error"
+              >
                 {{ fieldError('availability.shifts') }}
               </span>
             </fieldset>
@@ -307,8 +389,17 @@ function fieldError(field: string): string {
         </section>
 
         <footer class="form-actions">
-          <RouterLink class="button" :to="{ name: 'workers' }">Cancel</RouterLink>
-          <button type="submit" class="button button--primary" :disabled="submitting">
+          <RouterLink
+            class="button"
+            :to="{ name: 'workers' }"
+          >
+            Cancel
+          </RouterLink>
+          <button
+            type="submit"
+            class="button button--primary"
+            :disabled="submitting"
+          >
             {{ submitLabel }}
           </button>
         </footer>

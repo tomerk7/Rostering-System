@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc -b && vite build",
+    "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx,.cjs,.mjs --fix"
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix"
   },
   "dependencies": {
     "axios": "^1.7.0",
@@ -20,8 +20,7 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.23.0",
-    "typescript": "^5.4.0",
-    "vue-tsc": "^2.0.0",
+    "typescript": "^5.9.3",
     "vite": "^5.2.8",
     "vite-svg-loader": "^5.1.0"
   }
