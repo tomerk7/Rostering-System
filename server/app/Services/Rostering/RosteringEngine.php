@@ -153,22 +153,19 @@ final readonly class RosteringEngine
     {
         $bestId = null;
         $bestDeficit = 0;
-        $bestCost = 0.0;
 
         foreach ($candidateIds as $candidateId) {
             $worker = $workers[$candidateId];
             $deficit = $worker['min_hours'] - $worker['assigned_hours'];
-            $cost = $worker['hourly_cost'];
 
             $isBetter = $bestId === null
                 || $deficit > $bestDeficit
-                || ($deficit === $bestDeficit && $cost < $bestCost)
-                || ($deficit === $bestDeficit && $cost === $bestCost && $candidateId < $bestId);
+                || ($deficit === $bestDeficit)
+                || ($deficit === $bestDeficit && $candidateId < $bestId);
 
             if ($isBetter) {
                 $bestId = $candidateId;
                 $bestDeficit = $deficit;
-                $bestCost = $cost;
             }
         }
 

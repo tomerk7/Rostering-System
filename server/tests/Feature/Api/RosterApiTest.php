@@ -56,16 +56,20 @@ final class RosterApiTest extends TestCase
         $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
     }
 
-    public function test_roster_preview_returns_assignments_shortages_and_summary(): void
+    public function test_roster_generation_can_be_queued_and_polled_for_results(): void
     {
-        $response = $this->postJson('/api/rosters/preview', [
+        $generationId = $this->postJson('/api/rosters/generate', [
             'year' => self::YEAR,
             'month' => self::MONTH,
-        ]);
+        ])
+            ->assertStatus(202)
+            ->assertJsonPath('success', true)
+            ->json('data.generation_id');
 
-        $response
+        $response = $this->getJson("/api/rosters/generations/{$generationId}")
             ->assertOk()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'completed')
             ->assertJsonStructure([
                 'data' => [
                     'year',
@@ -88,11 +92,43 @@ final class RosterApiTest extends TestCase
         self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
     }
 
-    public function test_roster_preview_validates_month(): void
+    public function test_roster_generation_validates_month(): void
     {
-        $this->postJson('/api/rosters/preview', ['year' => self::YEAR, 'month' => 13])
+        $this->postJson('/api/rosters/generate', ['year' => self::YEAR, 'month' => 13])
             ->assertStatus(422)
             ->assertJsonValidationErrors('month');
+    }
+
+    public function test_completed_generation_can_be_saved_as_a_draft(): void
+    {
+        $generationId = $this->postJson('/api/rosters/generate', [
+            'year' => self::YEAR,
+            'month' => self::MONTH,
+        ])->json('data.generation_id');
+
+        $response = $this->postJson("/api/rosters/generations/{$generationId}/save")
+            ->assertCreated()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', RosterStatus::Draft->value)
+            ->assertJsonPath('data.year', self::YEAR)
+            ->assertJsonPath('data.month', self::MONTH);
+
+        $rosterId = $response->json('data.id');
+
+        $this->assertDatabaseHas('rosters', [
+            'id' => $rosterId,
+            'status' => RosterStatus::Draft->value,
+            'created_by' => $this->user->id,
+        ]);
+
+        $this->assertDatabaseHas('roster_generations', [
+            'uuid' => $generationId,
+            'roster_id' => $rosterId,
+        ]);
+
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $rosterId,
+        ]);
     }
 
     public function test_roster_can_be_saved_as_draft(): void

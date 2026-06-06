@@ -7,6 +7,7 @@ namespace App\Jobs;
 use App\Services\Workers\Csv\WorkerCsvService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 final class ExportWorkersJob implements ShouldQueue
@@ -39,6 +40,9 @@ final class ExportWorkersJob implements ShouldQueue
 
     /**
      * Execute the job.
+     * 
+     * @param WorkerCsvService $csvService
+     * @return void
      */
     public function handle(WorkerCsvService $csvService): void
     {
@@ -47,9 +51,18 @@ final class ExportWorkersJob implements ShouldQueue
 
     /**
      * Handle a job failure.
+     * 
+     * @param Throwable|null $exception
+     * @return void
      */
     public function failed(?Throwable $exception): void
     {
+        Log::error('Export workers job failed.', [
+            'export_id' => $this->exportId,
+            'stored_path' => $this->storedPath,
+            'exception' => $exception,
+        ]);
+
         app(WorkerCsvService::class)->markExportFailed(
             $this->exportId,
             $this->storedPath,

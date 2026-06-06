@@ -12,6 +12,7 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Tests\TestCase;
 
@@ -107,7 +108,11 @@ final class WorkerCsvExporterTest extends TestCase
     {
         CarbonImmutable::setTestNow('2026-06-07 12:00:00');
 
-        $response = $this->csvService->streamExport();
+        $exportId = (string) Str::uuid();
+        $storedPath = "worker-exports/{$exportId}.csv";
+        $this->csvService->processExport($exportId, $storedPath);
+
+        $response = $this->csvService->streamQueuedExport($exportId);
 
         self::assertInstanceOf(StreamedResponse::class, $response);
         self::assertSame('text/csv', $response->headers->get('Content-Type'));
@@ -165,7 +170,11 @@ final class WorkerCsvExporterTest extends TestCase
 
     private function captureStreamDownload(): string
     {
-        $response = $this->csvService->streamExport();
+        $exportId = (string) Str::uuid();
+        $storedPath = "worker-exports/{$exportId}.csv";
+        $this->csvService->processExport($exportId, $storedPath);
+
+        $response = $this->csvService->streamQueuedExport($exportId);
 
         ob_start();
         $response->sendContent();

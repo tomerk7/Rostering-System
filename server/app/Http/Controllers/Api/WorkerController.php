@@ -83,13 +83,50 @@ final class WorkerController extends Controller
     }
 
     /**
-     * Export all workers as a streamed, re-importable CSV download.
+     * Queue a worker CSV export and return the result when already finished.
      *
+     * @return JsonResponse
+     */
+    public function export(): JsonResponse
+    {
+        $exportId = $this->csvService->queueExport();
+        $state = $this->csvService->getExportState($exportId);
+
+        if ($state['status'] === 'completed' || $state['status'] === 'failed') {
+            return $this->exportStateResponse($state);
+        }
+
+        return $this->response(
+            success: true,
+            message: 'Worker export queued.',
+            status: 202,
+            data: [
+                'export_id' => $exportId,
+                'status' => 'processing',
+            ],
+        );
+    }
+
+    /**
+     * Return the status of a queued worker CSV export.
+     *
+     * @param string $exportId
+     * @return JsonResponse
+     */
+    public function exportStatus(string $exportId): JsonResponse
+    {
+        return $this->exportStateResponse($this->csvService->getExportState($exportId));
+    }
+
+    /**
+     * Download a completed queued worker CSV export.
+     *
+     * @param string $exportId
      * @return StreamedResponse
      */
-    public function export(): StreamedResponse
+    public function exportDownload(string $exportId): StreamedResponse
     {
-        return $this->csvService->streamExport();
+        return $this->csvService->streamQueuedExport($exportId);
     }
 
     /**
@@ -131,6 +168,52 @@ final class WorkerController extends Controller
                 status: 500,
                 data: [
                     'import_id' => $state['import_id'],
+                    'status' => 'failed',
+                    'message' => $state['message'] ?? 'Unknown error.',
+                ],
+            ),
+        };
+    }
+
+    /**
+     * Return the status of a queued worker CSV export.
+     *  
+     * @param array{
+     *     status: 'not_found'|'processing'|'completed'|'failed',
+     *     export_id: string,
+     *     data?: array<string, mixed>,
+     *     message?: string
+     * } $state
+     */
+    private function exportStateResponse(array $state): JsonResponse
+    {
+        return match ($state['status']) {
+            'not_found' => $this->response(
+                success: false,
+                message: 'Worker export not found.',
+                status: 404,
+            ),
+            'processing' => $this->response(
+                success: true,
+                message: 'Worker export is processing.',
+                status: 200,
+                data: [
+                    'export_id' => $state['export_id'],
+                    'status' => 'processing',
+                ],
+            ),
+            'completed' => $this->response(
+                success: true,
+                message: 'Worker export processed.',
+                status: 200,
+                data: $state['data'],
+            ),
+            'failed' => $this->response(
+                success: false,
+                message: 'Worker export failed.',
+                status: 500,
+                data: [
+                    'export_id' => $state['export_id'],
                     'status' => 'failed',
                     'message' => $state['message'] ?? 'Unknown error.',
                 ],

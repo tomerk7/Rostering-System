@@ -16,12 +16,16 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::get('workers/reference-data', [WorkerController::class, 'referenceData']);
     Route::post('workers/import', [WorkerController::class, 'import']);
     Route::get('workers/import/{importId}', [WorkerController::class, 'importStatus']);
-    Route::get('workers/export', [WorkerController::class, 'export']);
+    Route::post('workers/export', [WorkerController::class, 'export']);
+    Route::get('workers/export/{exportId}', [WorkerController::class, 'exportStatus']);
+    Route::get('workers/export/{exportId}/download', [WorkerController::class, 'exportDownload']);
     Route::delete('workers', [WorkerController::class, 'destroyAll']);
 
     Route::apiResource('workers', WorkerController::class);
 
-    Route::post('rosters/preview', [RosterController::class, 'preview']);
+    Route::post('rosters/generate', [RosterController::class, 'generate']);
+    Route::get('rosters/generations/{generation}', [RosterController::class, 'showGeneration']);
+    Route::post('rosters/generations/{generation}/save', [RosterController::class, 'saveGeneration']);
     Route::apiResource('rosters', RosterController::class)->only(['index', 'store', 'show', 'destroy']);
     Route::post('rosters/{roster}/publish', [RosterController::class, 'publish']);
     Route::scopeBindings()->group(function (): void {

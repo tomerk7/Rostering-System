@@ -77,8 +77,53 @@ export async function importWorkers(file) {
   return data
 }
 
-export async function exportWorkers() {
-  const { data } = await api.get('/api/workers/export', { responseType: 'blob' })
+async function pollExportStatus(exportId, maxAttempts = 120) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data } = await api.get(`/api/workers/export/${exportId}`)
 
-  return data
+    if (data.data?.status === 'completed') {
+      return data
+    }
+
+    if (data.data?.status === 'failed') {
+      throw new Error(data.data?.message ?? 'Export failed.')
+    }
+
+    await sleep(1000)
+  }
+
+  throw new Error('Export timed out. Please try again.')
+}
+
+function resolveExportId(responseData, status) {
+  if (status === 202 && responseData.data?.export_id) {
+    return responseData.data.export_id
+  }
+
+  if (responseData.data?.status === 'completed' && responseData.data?.export_id) {
+    return responseData.data.export_id
+  }
+
+  return null
+}
+
+export async function exportWorkers() {
+  const { data, status } = await api.post('/api/workers/export')
+
+  let exportId = resolveExportId(data, status)
+
+  if (exportId === null) {
+    throw new Error('Export failed.')
+  }
+
+  if (status === 202) {
+    const polled = await pollExportStatus(exportId)
+    exportId = polled.data?.export_id ?? exportId
+  }
+
+  const { data: blob } = await api.get(`/api/workers/export/${exportId}/download`, {
+    responseType: 'blob',
+  })
+
+  return blob
 }

@@ -651,11 +651,18 @@ final class WorkerApiTest extends TestCase
 
     private function exportCsv(): string
     {
-        $response = $this->get('/api/workers/export');
+        $response = $this->postJson('/api/workers/export');
 
-        $response->assertOk();
+        $response->assertOk()
+            ->assertJsonPath('data.status', 'completed');
 
-        return $response->streamedContent();
+        $exportId = (string) $response->json('data.export_id');
+
+        $download = $this->get("/api/workers/export/{$exportId}/download");
+
+        $download->assertOk();
+
+        return $download->streamedContent();
     }
 
     private function writeTempCsv(string $contents): string
