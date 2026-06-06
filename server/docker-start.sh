@@ -20,6 +20,17 @@ php artisan migrate --force;
 service cron start
 
 # Process queued jobs using the database queue connection.
-php artisan queue:work --queue=default --sleep=1 --tries=1 --max-time=0 &
+#
+# Wrapped in a restart loop so a worker that exits (timeout, OOM, fatal error,
+# or the hourly --max-time recycle) is brought back automatically instead of
+# leaving jobs stuck in the queue. --timeout must be >= the job's own timeout,
+# and --memory gives heavy imports headroom above the 128MB default.
+(
+	while true; do
+		php artisan queue:work --queue=default --sleep=1 --tries=1 --timeout=1800 --memory=512 --max-time=3600
+		echo "[docker-start] queue worker exited; restarting in 2s" >&2
+		sleep 2
+	done
+) &
 
 php artisan serve --host=0.0.0.0 --port=8000

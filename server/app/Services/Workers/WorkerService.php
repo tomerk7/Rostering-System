@@ -6,6 +6,7 @@ namespace App\Services\Workers;
 
 use App\Models\Contract;
 use App\Models\Role;
+use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
@@ -108,6 +109,20 @@ final readonly class WorkerService
     public function delete(Worker $worker): void
     {
         $worker->delete();
+    }
+
+    /**
+     * Delete every worker and their roster assignments.
+     * 
+     * @return int
+     */
+    public function deleteAll(): int
+    {
+        return DB::transaction(function (): int {
+            RosterAssignment::query()->delete();
+
+            return Worker::query()->delete();
+        });
     }
 
     /**

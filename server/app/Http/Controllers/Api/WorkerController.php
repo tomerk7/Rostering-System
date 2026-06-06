@@ -10,8 +10,7 @@ use App\Http\Requests\StoreWorkerRequest;
 use App\Http\Requests\UpdateWorkerRequest;
 use App\Http\Resources\WorkerResource;
 use App\Models\Worker;
-use App\Services\Workers\Csv\WorkerCsvExporter;
-use App\Services\Workers\Csv\WorkerCsvImporter;
+use App\Services\Workers\Csv\WorkerCsvService;
 use App\Services\Workers\WorkerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,9 +22,12 @@ final class WorkerController extends Controller
      * Constructor.
      *
      * @param WorkerService $workerService
+     * @param WorkerCsvService $csvService
      */
-    public function __construct(private readonly WorkerService $workerService)
-    {
+    public function __construct(
+        private readonly WorkerService $workerService,
+        private readonly WorkerCsvService $csvService,
+    ) {
     }
 
     /**
@@ -44,49 +46,96 @@ final class WorkerController extends Controller
     }
 
     /**
-     * Import workers from an uploaded CSV file.
+     * Queue a worker CSV import and return the result when already finished.
      *
      * @param ImportWorkersRequest $request
-     * @param WorkerCsvImporter $importer
      * @return JsonResponse
      */
-    public function import(ImportWorkersRequest $request, WorkerCsvImporter $importer): JsonResponse
+    public function import(ImportWorkersRequest $request): JsonResponse
     {
-        $path = $request->file('file')->getRealPath();
+        $importId = $this->csvService->queueImport($request->file('file'));
+        $state = $this->csvService->getImportState($importId);
 
-        $result = $importer->import($path);
-
-        $errors = $result['errors'];
-        unset($result['errors']);
+        if ($state['status'] === 'completed' || $state['status'] === 'failed') {
+            return $this->importStateResponse($state);
+        }
 
         return $this->response(
             success: true,
-            message: 'Worker import processed.',
-            status: 200,
-            data: $result,
-            errors: $errors,
+            message: 'Worker import queued.',
+            status: 202,
+            data: [
+                'import_id' => $importId,
+                'status' => 'processing',
+            ],
         );
+    }
+
+    /**
+     * Return the status of a queued worker CSV import.
+     *
+     * @param string $importId
+     * @return JsonResponse
+     */
+    public function importStatus(string $importId): JsonResponse
+    {
+        return $this->importStateResponse($this->csvService->getImportState($importId));
     }
 
     /**
      * Export all workers as a streamed, re-importable CSV download.
      *
-     * @param WorkerCsvExporter $exporter
      * @return StreamedResponse
      */
-    public function export(WorkerCsvExporter $exporter): StreamedResponse
+    public function export(): StreamedResponse
     {
-        $filename = 'workers-' . now()->format('Y-m-d') . '.csv';
+        return $this->csvService->streamExport();
+    }
 
-        return response()->streamDownload(
-            function () use ($exporter): void {
-                $handle = fopen('php://output', 'w');
-                $exporter->writeTo($handle);
-                fclose($handle);
-            },
-            $filename,
-            ['Content-Type' => 'text/csv'],
-        );
+    /**
+     * @param array{
+     *     status: 'not_found'|'processing'|'completed'|'failed',
+     *     import_id: string,
+     *     data?: array<string, mixed>,
+     *     errors?: list<array{line: int, field: string, message: string}>,
+     *     message?: string
+     * } $state
+     */
+    private function importStateResponse(array $state): JsonResponse
+    {
+        return match ($state['status']) {
+            'not_found' => $this->response(
+                success: false,
+                message: 'Worker import not found.',
+                status: 404,
+            ),
+            'processing' => $this->response(
+                success: true,
+                message: 'Worker import is processing.',
+                status: 200,
+                data: [
+                    'import_id' => $state['import_id'],
+                    'status' => 'processing',
+                ],
+            ),
+            'completed' => $this->response(
+                success: true,
+                message: 'Worker import processed.',
+                status: 200,
+                data: $state['data'],
+                errors: $state['errors'] ?? [],
+            ),
+            'failed' => $this->response(
+                success: false,
+                message: 'Worker import failed.',
+                status: 500,
+                data: [
+                    'import_id' => $state['import_id'],
+                    'status' => 'failed',
+                    'message' => $state['message'] ?? 'Unknown error.',
+                ],
+            ),
+        };
     }
 
     /**
@@ -184,6 +233,25 @@ final class WorkerController extends Controller
             success: true,
             message: 'Worker deleted successfully.',
             status: 200,
+        );
+    }
+
+    /**
+     * Remove every worker from storage.
+     *
+     * @return JsonResponse
+     */
+    public function destroyAll(): JsonResponse
+    {
+        $deleted = $this->workerService->deleteAll();
+
+        return $this->response(
+            success: true,
+            message: 'All workers deleted successfully.',
+            status: 200,
+            data: [
+                'deleted' => $deleted,
+            ],
         );
     }
 }

@@ -113,6 +113,20 @@ async function deleteWorker(worker) {
   await workersStore.removeWorker(worker.id)
 }
 
+async function deleteAllWorkers() {
+  const total = workersStore.meta.total
+
+  if (total === 0) {
+    return
+  }
+
+  if (!window.confirm(`Delete all ${total} workers? This cannot be undone.`)) {
+    return
+  }
+
+  await workersStore.removeAllWorkers()
+}
+
 function formatCurrency(value) {
   if (value === undefined) {
     return '-'
@@ -167,6 +181,14 @@ function availabilitySummary(worker) {
           @click="openImport"
         >
           Import CSV
+        </button>
+        <button
+          type="button"
+          class="button button--danger"
+          :disabled="workersStore.meta.total === 0 || workersStore.deletingAll"
+          @click="deleteAllWorkers"
+        >
+          {{ workersStore.deletingAll ? 'Deleting...' : 'Delete all' }}
         </button>
         <RouterLink
           class="button button--primary"

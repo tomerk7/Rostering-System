@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { deleteWorker, listWorkers } from '@/api/workers'
+import { deleteAllWorkers, deleteWorker, listWorkers } from '@/api/workers'
 
 const emptyMeta = {
   current_page: 1,
@@ -34,6 +34,7 @@ export const useWorkersStore = defineStore('workers', {
     loading: false,
     error: '',
     deletingId: null,
+    deletingAll: false,
   }),
 
   getters: {
@@ -85,6 +86,21 @@ export const useWorkersStore = defineStore('workers', {
         this.error = 'Could not delete worker. Please try again.'
       } finally {
         this.deletingId = null
+      }
+    },
+
+    async removeAllWorkers() {
+      this.deletingAll = true
+      this.error = ''
+
+      try {
+        await deleteAllWorkers()
+        this.page = 1
+        await this.fetchWorkers()
+      } catch {
+        this.error = 'Could not delete all workers. Please try again.'
+      } finally {
+        this.deletingAll = false
       }
     },
   },
