@@ -21,7 +21,7 @@ const workerId = computed(() => {
 })
 const isEdit = computed(() => workerId.value !== null)
 
-const referenceData = ref<ReferenceData>({ roles: [], shifts: [] })
+const referenceData = ref<ReferenceData>({ roles: [], shifts: [], shift_role_requirements: [] })
 const loading = ref(false)
 const submitting = ref(false)
 const formError = ref('')
