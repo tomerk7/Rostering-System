@@ -8,10 +8,11 @@ import {
 import {
   createRoster,
   deleteRoster,
+  generateRosterPreview,
   getRoster,
   listRosters,
-  previewRoster,
   publishRoster,
+  saveGeneration,
 } from '@/api/rosters'
 
 const emptyReports = {
@@ -41,6 +42,7 @@ export const useRostersStore = defineStore('rosters', {
       rosters: [],
       roster: null,
       preview: null,
+      generationId: null,
       selectedYear: year,
       selectedMonth: month,
       loading: false,
@@ -119,21 +121,55 @@ export const useRostersStore = defineStore('rosters', {
       const targetMonth = month ?? this.selectedMonth
 
       this.previewing = true
+      this.generationId = null
       this.clearErrors()
 
       try {
-        const response = await previewRoster({ year: targetYear, month: targetMonth })
-        this.preview = response.data
+        const preview = await generateRosterPreview({ year: targetYear, month: targetMonth })
+        this.preview = preview
+        this.generationId = preview.generation_id
         this.roster = null
-        this.selectedYear = response.data.year
-        this.selectedMonth = response.data.month
+        this.selectedYear = preview.year
+        this.selectedMonth = preview.month
+        return preview
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
+        const fallback = !isAxiosError(error) && error?.message
+          ? error.message
+          : 'Could not generate roster preview. Please try again.'
         this.error = this.validationErrors.year?.[0]
           ?? this.validationErrors.month?.[0]
-          ?? 'Could not generate roster preview. Please try again.'
+          ?? fallback
+        return null
       } finally {
         this.previewing = false
+      }
+    },
+
+    async saveFromGeneration(options = {}) {
+      if (!this.generationId) {
+        this.error = 'No generated roster to save.'
+        return null
+      }
+
+      this.saving = true
+      this.clearErrors()
+
+      try {
+        const response = await saveGeneration(this.generationId, options)
+        this.roster = response.data
+        this.preview = null
+        this.generationId = null
+        this.selectedYear = response.data.year
+        this.selectedMonth = response.data.month
+        return response.data
+      } catch (error) {
+        this.validationErrors = extractValidationErrors(error)
+        this.error = this.validationErrors.status?.[0]
+          ?? 'Could not save roster. Please try again.'
+        return null
+      } finally {
+        this.saving = false
       }
     },
 
@@ -290,6 +326,7 @@ export const useRostersStore = defineStore('rosters', {
 
     clearPreview() {
       this.preview = null
+      this.generationId = null
     },
 
     clearRoster() {

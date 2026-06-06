@@ -15,6 +15,7 @@ Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
 Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::get('workers/reference-data', [WorkerController::class, 'referenceData']);
     Route::post('workers/import', [WorkerController::class, 'import']);
+    Route::get('workers/import/sample', [WorkerController::class, 'importSample']);
     Route::get('workers/import/{importId}', [WorkerController::class, 'importStatus']);
     Route::post('workers/export', [WorkerController::class, 'export']);
     Route::get('workers/export/{exportId}', [WorkerController::class, 'exportStatus']);

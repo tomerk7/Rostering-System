@@ -2,33 +2,40 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
+import { useRosterReference } from '@/composables/useRosterReference'
+import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
+import RosterGrid from '@/components/rosters/RosterGrid.vue'
 
 const router = useRouter()
 const rostersStore = useRostersStore()
+const referenceData = useRosterReference()
+
+const currentYear = new Date().getFullYear()
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
   label: new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date(2026, index, 1)),
 }))
 
-const yearOptions = computed(() => {
-  const currentYear = new Date().getFullYear()
-  return [currentYear - 1, currentYear, currentYear + 1]
-})
-
 const canGenerate = computed(
   () => rostersStore.selectedYear != null && rostersStore.selectedMonth != null,
+)
+
+const hasPreview = computed(
+  () => rostersStore.preview != null && referenceData.reference != null,
 )
 
 onMounted(() => {
   rostersStore.clearPreview()
   rostersStore.clearRoster()
   rostersStore.clearErrors()
-  rostersStore.setSelectedMonth(null, null)
+  rostersStore.setSelectedMonth(currentYear, null)
+  referenceData.load()
 })
 
 function onPeriodChange() {
   rostersStore.clearErrors()
+  rostersStore.clearPreview()
 }
 
 async function generateRoster() {
@@ -36,10 +43,14 @@ async function generateRoster() {
     return
   }
 
-  const roster = await rostersStore.saveDraft(
+  await rostersStore.generatePreview(
     rostersStore.selectedYear,
     rostersStore.selectedMonth,
   )
+}
+
+async function saveDraft() {
+  const roster = await rostersStore.saveFromGeneration()
 
   if (roster) {
     await router.push({ name: 'rosters.show', params: { id: roster.id } })
@@ -58,7 +69,7 @@ async function generateRoster() {
           Generate Roster
         </h1>
         <p class="page__description">
-          Select a month and generate a draft roster. You can review, edit, and publish it afterward.
+          Select a month and generate a roster preview. Review it below, then save it as a draft.
         </p>
       </div>
       <div class="page__actions">
@@ -68,6 +79,15 @@ async function generateRoster() {
         >
           Back to list
         </RouterLink>
+        <button
+          v-if="hasPreview"
+          type="button"
+          class="button button--primary"
+          :disabled="rostersStore.saving"
+          @click="saveDraft"
+        >
+          {{ rostersStore.saving ? 'Saving...' : 'Save as draft' }}
+        </button>
       </div>
     </header>
 
@@ -78,24 +98,12 @@ async function generateRoster() {
       >
         <label class="field">
           <span class="field__label">Year</span>
-          <select
-            v-model="rostersStore.selectedYear"
+          <input
+            :value="currentYear"
             class="input"
-            required
-            @change="onPeriodChange"
+            type="text"
+            readonly
           >
-            <option
-              :value="null"
-              disabled
-            >
-              Select year
-            </option>
-            <option
-              v-for="year in yearOptions"
-              :key="year"
-              :value="year"
-            >{{ year }}</option>
-          </select>
         </label>
 
         <label class="field">
@@ -126,9 +134,9 @@ async function generateRoster() {
           <button
             type="submit"
             class="button button--primary"
-            :disabled="rostersStore.saving || !canGenerate"
+            :disabled="rostersStore.previewing || !canGenerate"
           >
-            {{ rostersStore.saving ? 'Generating...' : 'Generate' }}
+            {{ rostersStore.previewing ? 'Generating...' : 'Generate' }}
           </button>
         </div>
       </form>
@@ -141,8 +149,48 @@ async function generateRoster() {
         {{ rostersStore.error }}
       </div>
 
-      <div class="empty-state">
-        Choose a month and click Generate to create a draft roster you can edit.
+      <div
+        v-if="referenceData.error"
+        class="alert"
+        role="alert"
+      >
+        {{ referenceData.error }}
+      </div>
+
+      <div
+        v-if="rostersStore.previewing"
+        class="empty-state"
+      >
+        Generating roster preview...
+      </div>
+
+      <template v-else-if="hasPreview">
+        <RosterAlertSummary
+          :summary="rostersStore.summary"
+          :reports="rostersStore.reports"
+          :workers-by-id="referenceData.workersById"
+          :shifts="referenceData.reference.shifts"
+          :roles="referenceData.reference.roles"
+        />
+
+        <RosterGrid
+          :year="rostersStore.preview.year"
+          :month="rostersStore.preview.month"
+          :shifts="referenceData.reference.shifts"
+          :requirements="referenceData.reference.shift_role_requirements"
+          :roles="referenceData.reference.roles"
+          :assignments="rostersStore.assignments"
+          :reports="rostersStore.reports"
+          :workers-by-id="referenceData.workersById"
+          :editable="false"
+        />
+      </template>
+
+      <div
+        v-else
+        class="empty-state"
+      >
+        Choose a month and click Generate to preview a roster you can save as a draft.
       </div>
     </section>
   </main>

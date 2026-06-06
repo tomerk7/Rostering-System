@@ -14,6 +14,7 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use App\Services\Workers\WorkerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 final class WorkerController extends Controller
@@ -80,6 +81,20 @@ final class WorkerController extends Controller
     public function importStatus(string $importId): JsonResponse
     {
         return $this->importStateResponse($this->csvService->getImportState($importId));
+    }
+
+    /**
+     * Download the sample worker CSV used for imports.
+     *
+     * @return BinaryFileResponse
+     */
+    public function importSample(): BinaryFileResponse
+    {
+        return response()->download(
+            database_path('data/workers-sample.csv'),
+            'workers-sample.csv',
+            ['Content-Type' => 'text/csv'],
+        );
     }
 
     /**

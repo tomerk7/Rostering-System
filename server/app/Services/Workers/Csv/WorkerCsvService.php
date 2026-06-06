@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -150,6 +151,8 @@ final class WorkerCsvService
      */
     public function queueImport(UploadedFile $file): string
     {
+        $this->purgeAbandonedImportFiles();
+
         $importId = (string) Str::uuid();
         $storedPath = $file->storeAs(self::IMPORT_STORAGE_DIR, "{$importId}.csv", 'local');
 
@@ -181,7 +184,49 @@ final class WorkerCsvService
                 'result' => $result,
             ], now()->addHour());
         } finally {
-            Storage::disk('local')->delete($storedPath);
+            $this->removeImportFile($storedPath);
+        }
+    }
+
+    /**
+     * Remove a stored import CSV from disk.
+     *
+     * @param string $storedPath
+     * @return void
+     */
+    public function removeImportFile(string $storedPath): void
+    {
+        if (! str_starts_with($storedPath, self::IMPORT_STORAGE_DIR.'/')) {
+            Log::warning('Skipped deleting import file outside the import directory.', [
+                'stored_path' => $storedPath,
+            ]);
+
+            return;
+        }
+
+        if (! Storage::disk('local')->delete($storedPath)) {
+            return;
+        }
+
+        Log::info('Import file deleted.', ['stored_path' => $storedPath]);
+    }
+
+    /**
+     * Delete import CSVs left behind when a queued job never ran.
+     *
+     * @return void
+     */
+    private function purgeAbandonedImportFiles(): void
+    {
+        $disk = Storage::disk('local');
+
+        if (! $disk->exists(self::IMPORT_STORAGE_DIR)) {
+            return;
+        }
+
+        foreach ($disk->files(self::IMPORT_STORAGE_DIR) as $path) {
+            $disk->delete($path);
+            Log::info('Abandoned import file deleted.', ['stored_path' => $path]);
         }
     }
 
@@ -200,7 +245,7 @@ final class WorkerCsvService
             'message' => $message,
         ], now()->addHour());
 
-        Storage::disk('local')->delete($storedPath);
+        $this->removeImportFile($storedPath);
     }
 
     /**

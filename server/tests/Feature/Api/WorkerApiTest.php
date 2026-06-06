@@ -294,6 +294,20 @@ final class WorkerApiTest extends TestCase
         }
     }
 
+    public function test_worker_import_sample_can_be_downloaded(): void
+    {
+        $expected = file_get_contents(database_path('data/workers-sample.csv'));
+
+        $response = $this->get('/api/workers/import/sample');
+
+        $response
+            ->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+            ->assertDownload('workers-sample.csv');
+
+        self::assertSame($expected, $response->streamedContent());
+    }
+
     public function test_worker_import_creates_workers_with_contract_and_availability(): void
     {
         $response = $this->importCsv([

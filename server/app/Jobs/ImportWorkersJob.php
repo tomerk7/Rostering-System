@@ -46,7 +46,21 @@ final class ImportWorkersJob implements ShouldQueue
      */
     public function handle(WorkerCsvService $csvService): void
     {
-        $csvService->processImport($this->importId, $this->storedPath);
+        Log::info('Import workers job started.', [
+            'import_id' => $this->importId,
+            'stored_path' => $this->storedPath,
+        ]);
+
+        try {
+            $csvService->processImport($this->importId, $this->storedPath);
+
+            Log::info('Import workers job completed.', [
+                'import_id' => $this->importId,
+                'stored_path' => $this->storedPath,
+            ]);
+        } finally {
+            $csvService->removeImportFile($this->storedPath);
+        }
     }
 
     /**

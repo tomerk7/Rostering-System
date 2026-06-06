@@ -42,10 +42,6 @@ export async function getReferenceData() {
   return data
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
 async function pollImportStatus(importId, maxAttempts = 120) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { data } = await api.get(`/api/workers/import/${importId}`)
@@ -58,7 +54,7 @@ async function pollImportStatus(importId, maxAttempts = 120) {
       throw new Error(data.data?.message ?? 'Import failed.')
     }
 
-    await sleep(1000)
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
   throw new Error('Import timed out. Please try again.')
@@ -77,6 +73,14 @@ export async function importWorkers(file) {
   return data
 }
 
+export async function downloadWorkersSample() {
+  const { data } = await api.get('/api/workers/import/sample', {
+    responseType: 'blob',
+  })
+
+  return data
+}
+
 async function pollExportStatus(exportId, maxAttempts = 120) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { data } = await api.get(`/api/workers/export/${exportId}`)
@@ -89,7 +93,7 @@ async function pollExportStatus(exportId, maxAttempts = 120) {
       throw new Error(data.data?.message ?? 'Export failed.')
     }
 
-    await sleep(1000)
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
   throw new Error('Export timed out. Please try again.')

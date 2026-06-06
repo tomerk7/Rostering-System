@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering;
 
+use App\Models\ContractAvailableDay;
 use App\Models\ShiftRoleRequirement;
-use App\Models\Worker;
 use App\Services\Rostering\Data\GenerationResult;
 use Carbon\CarbonImmutable;
 use Exception;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Orchestrates roster generation and returns assignments, coverage shortages,
@@ -23,14 +24,12 @@ final readonly class RosterGenerator
     /**
      * Generate the roster preview for a target month.
      *
-     * @param  int  $year
-     * @param  int  $month
-     * @return GenerationResult
      *
      * @throws Exception
      */
     public function generate(int $year, int $month): GenerationResult
     {
+        $feasibilityIssues = $this->checkFeasibility($year, $month);
         $slots = $this->buildSlots($year, $month);
         $workers = $this->resolveWorkers();
 
@@ -45,15 +44,90 @@ final readonly class RosterGenerator
             assignments: $assignments,
             coverageShortages: $this->engine->validateCoverage($slots, $assignments, $workers),
             hoursShortfalls: $this->engine->reportHoursShortfalls($workers),
+            feasibilityIssues: $feasibilityIssues,
         );
+    }
+
+    /**
+     * Return staffing shortages grouped by role and date.
+     *
+     * @return list<array{role_id: int, work_date: CarbonImmutable, required_workers: int, available_workers: int}>
+     *
+     * @throws Exception
+     */
+    private function checkFeasibility(int $year, int $month): array
+    {
+        $demandByRole = ShiftRoleRequirement::query()
+            ->where('required_count', '>', 0)
+            ->select('role_id')
+            ->selectRaw('SUM(required_count) AS daily_demand')
+            ->groupBy('role_id')
+            ->orderBy('role_id')
+            ->get();
+
+        if ($demandByRole->isEmpty()) {
+            return [];
+        }
+
+        $roleIds = $demandByRole
+            ->pluck('role_id')
+            ->map(static fn ($roleId): int => (int) $roleId)
+            ->all();
+
+        /** @var array<int, array<int, int>> $availableByRoleAndDay */
+        $availableByRoleAndDay = [];
+
+        ContractAvailableDay::query()
+            ->join('contracts', 'contracts.id', '=', 'contract_available_days.contract_id')
+            ->join('workers', 'workers.id', '=', 'contracts.worker_id')
+            ->where('workers.is_active', true)
+            ->whereIn('workers.role_id', $roleIds)
+            ->select('workers.role_id', 'contract_available_days.day_of_week')
+            ->selectRaw('COUNT(*) AS available_workers')
+            ->groupBy('workers.role_id', 'contract_available_days.day_of_week')
+            ->get()
+            ->each(function (ContractAvailableDay $availability) use (&$availableByRoleAndDay): void {
+                $roleId = (int) $availability->role_id;
+                $dayOfWeek = (int) $availability->day_of_week;
+
+                $availableByRoleAndDay[$roleId][$dayOfWeek] = (int) $availability->available_workers;
+            });
+
+        /** @var array<int, int> $requiredByRole */
+        $requiredByRole = [];
+
+        foreach ($demandByRole as $demand) {
+            $requiredByRole[(int) $demand->role_id] =
+                (int) ceil((int) $demand->daily_demand / RosteringEngine::MAX_SHIFTS_PER_DAY);
+        }
+
+        $firstDay = CarbonImmutable::createFromDate($year, $month, 1)->startOfDay();
+        $issues = [];
+
+        for ($day = 0; $day < $firstDay->daysInMonth; $day++) {
+            $date = $firstDay->addDays($day);
+
+            foreach ($requiredByRole as $roleId => $requiredWorkers) {
+                $availableWorkers = $availableByRoleAndDay[$roleId][$date->dayOfWeek] ?? 0;
+
+                if ($availableWorkers < $requiredWorkers) {
+                    $issues[] = [
+                        'role_id' => $roleId,
+                        'work_date' => $date,
+                        'required_workers' => $requiredWorkers,
+                        'available_workers' => $availableWorkers,
+                    ];
+                }
+            }
+        }
+
+        return $issues;
     }
 
     /**
      * Expand the target month into every staffing slot by crossing each calendar
      * day with the data-driven demand in shift_role_requirements.
      *
-     * @param  int  $year
-     * @param  int  $month
      * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
      *
      * @throws Exception
@@ -95,46 +169,58 @@ final readonly class RosterGenerator
 
     /**
      * Build the worker state used by the rostering engine.
-     * 
+     *
      * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}>
+     *
      * @throws Exception
      */
     private function resolveWorkers(): array
     {
         $workers = [];
 
-        Worker::query()
-            ->active()
-            ->whereHas('contract')
-            ->with(['contract.availableDays', 'contract.availableShiftRows'])
-            ->orderBy('id')
-            ->get()
-            ->each(function (Worker $worker) use (&$workers): void {
-                $contract = $worker->contract;
+        foreach (DB::table('workers')
+            ->join('contracts', 'contracts.worker_id', '=', 'workers.id')
+            ->where('workers.is_active', true)
+            ->select([
+                'workers.id',
+                'workers.role_id',
+                'contracts.hourly_cost',
+                'contracts.min_monthly_hours',
+                'contracts.max_monthly_hours',
+            ])
+            ->orderBy('workers.id')
+            ->cursor() as $worker) {
+            $workers[(int) $worker->id] = [
+                'role_id' => (int) $worker->role_id,
+                'hourly_cost' => (float) $worker->hourly_cost,
+                'min_hours' => (int) $worker->min_monthly_hours,
+                'max_hours' => (int) $worker->max_monthly_hours,
+                'days' => [],
+                'shifts' => [],
+                'assigned_hours' => 0,
+                'shifts_per_date' => [],
+            ];
+        }
 
-                $days = [];
+        foreach (DB::table('contract_available_days')
+            ->join('contracts', 'contracts.id', '=', 'contract_available_days.contract_id')
+            ->join('workers', 'workers.id', '=', 'contracts.worker_id')
+            ->where('workers.is_active', true)
+            ->select('workers.id AS worker_id', 'contract_available_days.day_of_week')
+            ->orderBy('workers.id')
+            ->cursor() as $availability) {
+            $workers[(int) $availability->worker_id]['days'][(int) $availability->day_of_week] = true;
+        }
 
-                foreach ($contract->availableDays as $availableDay) {
-                    $days[(int) $availableDay->day_of_week] = true;
-                }
-
-                $shifts = [];
-
-                foreach ($contract->availableShiftRows as $availableShift) {
-                    $shifts[(int) $availableShift->shift_id] = true;
-                }
-
-                $workers[(int) $worker->id] = [
-                    'role_id' => (int) $worker->role_id,
-                    'hourly_cost' => (float) $contract->hourly_cost,
-                    'min_hours' => (int) $contract->min_monthly_hours,
-                    'max_hours' => (int) $contract->max_monthly_hours,
-                    'days' => $days,
-                    'shifts' => $shifts,
-                    'assigned_hours' => 0,
-                    'shifts_per_date' => [],
-                ];
-            });
+        foreach (DB::table('contract_available_shifts')
+            ->join('contracts', 'contracts.id', '=', 'contract_available_shifts.contract_id')
+            ->join('workers', 'workers.id', '=', 'contracts.worker_id')
+            ->where('workers.is_active', true)
+            ->select('workers.id AS worker_id', 'contract_available_shifts.shift_id')
+            ->orderBy('workers.id')
+            ->cursor() as $availability) {
+            $workers[(int) $availability->worker_id]['shifts'][(int) $availability->shift_id] = true;
+        }
 
         return $workers;
     }

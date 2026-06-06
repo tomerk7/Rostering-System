@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useWorkersStore } from '@/stores/workers'
-import { exportWorkers, importWorkers } from '@/api/workers'
+import { downloadWorkersSample, exportWorkers, importWorkers } from '@/api/workers'
 import { isAxiosError } from 'axios'
 
 const workersStore = useWorkersStore()
@@ -13,6 +13,7 @@ const importError = ref('')
 const importSummary = ref(null)
 const importErrors = ref([])
 const exporting = ref(false)
+const downloadingSample = ref(false)
 
 function openImport() {
   showImport.value = true
@@ -75,6 +76,27 @@ async function downloadExport() {
     workersStore.error = 'Could not export workers. Please try again.'
   } finally {
     exporting.value = false
+  }
+}
+
+async function downloadSample() {
+  downloadingSample.value = true
+  importError.value = ''
+
+  try {
+    const blob = await downloadWorkersSample()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'workers-sample.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    importError.value = 'Could not download sample CSV. Please try again.'
+  } finally {
+    downloadingSample.value = false
   }
 }
 
@@ -415,6 +437,17 @@ function availabilitySummary(worker) {
             @change="onFileChange"
           >
         </label>
+
+        <div>
+          <button
+            type="button"
+            class="button"
+            :disabled="downloadingSample || importing"
+            @click="downloadSample"
+          >
+            {{ downloadingSample ? 'Downloading...' : 'Download sample' }}
+          </button>
+        </div>
 
         <div
           v-if="importError"

@@ -17,6 +17,7 @@ use Carbon\CarbonImmutable;
  *   assignments        => list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>
  *   coverageShortages  => list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>
  *   hoursShortfalls    => list<array{worker_id: int, min_hours: int, scheduled_hours: int}>
+ *   feasibilityIssues  => list<array{role_id: int, work_date: CarbonImmutable, required_workers: int, available_workers: int}>
  */
 final readonly class GenerationResult
 {
@@ -24,6 +25,7 @@ final readonly class GenerationResult
      * @param  list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
      * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>  $coverageShortages
      * @param  list<array{worker_id: int, min_hours: int, scheduled_hours: int}>  $hoursShortfalls
+     * @param  list<array{role_id: int, work_date: CarbonImmutable, required_workers: int, available_workers: int}>  $feasibilityIssues
      */
     public function __construct(
         public int $year,
@@ -31,6 +33,7 @@ final readonly class GenerationResult
         public array $assignments,
         public array $coverageShortages,
         public array $hoursShortfalls,
+        public array $feasibilityIssues = [],
     ) {}
 
     public function hasCoverageShortages(): bool
@@ -41,5 +44,10 @@ final readonly class GenerationResult
     public function hasHoursShortfalls(): bool
     {
         return $this->hoursShortfalls !== [];
+    }
+
+    public function hasFeasibilityIssues(): bool
+    {
+        return $this->feasibilityIssues !== [];
     }
 }

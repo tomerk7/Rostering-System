@@ -29,14 +29,12 @@ final readonly class RosterService
      * @param RosterGenerator $generator
      * @param RosterPersister $persister
      * @param RosterReportService $reportService
-     * @param RosterReportPresenter $presenter
      * @return void
      */
     public function __construct(
         private RosterGenerator $generator,
         private RosterPersister $persister,
         private RosterReportService $reportService,
-        private RosterReportPresenter $presenter,
     ) {}
 
     /**
@@ -185,11 +183,12 @@ final readonly class RosterService
 
     /**
      * Regenerate and persist a draft roster for the requested period.
-     * 
+     *
      * @param int $year
      * @param int $month
      * @param int $createdBy
      * @return Roster
+     * @throws Exception
      */
     public function saveDraft(int $year, int $month, int $createdBy): Roster
     {
@@ -212,6 +211,9 @@ final readonly class RosterService
 
     /**
      * Delete a roster.
+     *
+     * @param Roster $roster
+     * @return void
      */
     public function delete(Roster $roster): void
     {
@@ -246,8 +248,8 @@ final readonly class RosterService
             'year' => $result->year,
             'month' => $result->month,
             'assignments' => $assignments,
-            'reports' => $this->presenter->reports($result->coverageShortages, $result->hoursShortfalls),
-            'summary' => $this->presenter->summary(
+            'reports' => $this->reportService->reports($result->coverageShortages, $result->hoursShortfalls),
+            'summary' => $this->reportService->summary(
                 count($result->assignments),
                 $result->coverageShortages,
                 $result->hoursShortfalls,
