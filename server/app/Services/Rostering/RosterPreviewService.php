@@ -21,17 +21,19 @@ final readonly class RosterPreviewService
 {
     public function __construct(
         private RosterGenerator $generator,
+        private RosterReportPresenter $presenter,
     ) {}
 
     /**
      * Generate a roster preview payload for the requested period.
      *
+     * @param int $year
+     * @param int $month
      * @return array{
      *     year: int,
      *     month: int,
      *     assignments: AnonymousResourceCollection,
-     *     coverage_shortages: list<array<string, mixed>>,
-     *     hours_shortfalls: list<array<string, mixed>>,
+     *     reports: array{coverage_shortages: list<array<string, mixed>>, hours_shortfalls: list<array<string, mixed>>},
      *     summary: array<string, mixed>
      * }
      *
@@ -51,19 +53,18 @@ final readonly class RosterPreviewService
             'year' => $result->year,
             'month' => $result->month,
             'assignments' => RosterAssignmentResource::collection($enrichedAssignments),
-            'coverage_shortages' => array_map(
-                fn (array $shortage): array => $this->enrichCoverageShortage($shortage, $lookups),
+            'reports' => $this->presenter->reports($result->coverageShortages, $result->hoursShortfalls),
+            'summary' => $this->presenter->summary(
+                count($result->assignments),
                 $result->coverageShortages,
-            ),
-            'hours_shortfalls' => array_map(
-                fn (array $shortfall): array => $this->enrichHoursShortfall($shortfall, $lookups),
                 $result->hoursShortfalls,
             ),
-            'summary' => $this->buildSummary($result),
         ];
     }
 
     /**
+     * Enrich an assignment with the worker, shift, and role data.
+     * 
      * @param  array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}  $assignment
      * @param  array{
      *     workers: Collection<int, Worker>,
@@ -86,68 +87,6 @@ final readonly class RosterPreviewService
             'role_name' => $role?->name,
             'work_date' => $assignment['work_date']->toDateString(),
             'source' => $assignment['source'],
-        ];
-    }
-
-    /**
-     * Enrich a coverage shortage with the shift and role names.
-     * 
-     * @param array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int} $shortage
-     * @param array{workers: Collection<int, Worker>, shifts: Collection<int, Shift>, roles: Collection<int, Role>} $lookups
-     * @return array<string, mixed>
-     */
-    private function enrichCoverageShortage(array $shortage, array $lookups): array
-    {
-        $shift = $lookups['shifts']->get($shortage['shift_id']);
-        $role = $lookups['roles']->get($shortage['role_id']);
-        $missing = $shortage['required'] - $shortage['assigned'];
-
-        return [
-            'work_date' => $shortage['work_date']->toDateString(),
-            'shift_id' => $shortage['shift_id'],
-            'shift_code' => $shift?->code,
-            'role_id' => $shortage['role_id'],
-            'role_name' => $role?->name,
-            'required' => $shortage['required'],
-            'assigned' => $shortage['assigned'],
-            'missing' => $missing,
-        ];
-    }
-
-    /**
-     * Enrich a hours shortfall with the worker name.
-     *
-     * @param array{workers: Collection<int, Worker>} $lookups
-     * @return array<string, mixed>
-     */
-    private function enrichHoursShortfall(array $shortfall, array $lookups): array
-    {
-        $worker = $lookups['workers']->get($shortfall['worker_id']);
-        $shortfallHours = $shortfall['min_hours'] - $shortfall['scheduled_hours'];
-
-        return [
-            'worker_id' => $shortfall['worker_id'],
-            'worker_name' => $worker?->full_name,
-            'min_hours' => $shortfall['min_hours'],
-            'scheduled_hours' => $shortfall['scheduled_hours'],
-            'shortfall_hours' => $shortfallHours,
-        ];
-    }
-
-    /**
-     * Build the summary of the generation result.
-     *
-     * @param GenerationResult $result
-     * @return array<string, mixed>
-     */
-    private function buildSummary(GenerationResult $result): array
-    {
-        return [
-            'assignment_count' => count($result->assignments),
-            'coverage_shortage_count' => count($result->coverageShortages),
-            'hours_shortfall_count' => count($result->hoursShortfalls),
-            'has_coverage_shortages' => $result->hasCoverageShortages(),
-            'has_hours_shortfalls' => $result->hasHoursShortfalls(),
         ];
     }
 

@@ -66,11 +66,17 @@ final class RosterController extends Controller
             (int) $request->user()->id,
         );
 
+        if ($request->boolean('publish')) {
+            $roster = $this->rosterService->publish($roster);
+        }
+
         return $this->response(
             success: true,
-            message: 'Roster saved as draft successfully.',
+            message: $request->boolean('publish')
+                ? 'Roster published successfully.'
+                : 'Roster saved as draft successfully.',
             status: 201,
-            data: RosterResource::make($roster),
+            data: RosterResource::make($this->rosterService->loadDetails($roster)),
         );
     }
 
@@ -98,11 +104,18 @@ final class RosterController extends Controller
      */
     public function show(Request $request, Roster $roster): JsonResponse
     {
+        $date = $request->query('date');
+        $shiftId = $request->query('shift_id');
+
         return $this->response(
             success: true,
             message: 'Roster retrieved successfully.',
             status: 200,
-            data: RosterResource::make($this->rosterService->loadDetails($roster, $request)),
+            data: RosterResource::make($this->rosterService->loadDetails(
+                $roster,
+                $date === null ? null : (string) $date,
+                $shiftId === null ? null : (int) $shiftId,
+            )),
         );
     }
 

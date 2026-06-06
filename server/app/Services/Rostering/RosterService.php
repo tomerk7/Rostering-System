@@ -7,7 +7,6 @@ namespace App\Services\Rostering;
 use App\Exceptions\Rostering\RosterStatusException;
 use App\Models\Roster;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Http\Request;
 
 /**
  * Loads and persists saved rosters for the HTTP API.
@@ -24,6 +23,7 @@ final readonly class RosterService
     public function __construct(
         private RosterGenerator $generator,
         private RosterPersister $persister,
+        private RosterReportService $reportService,
     ) {}
 
     /**
@@ -41,13 +41,15 @@ final readonly class RosterService
     }
 
     /**
-     * Load one roster with enriched assignments, optionally filtered by date or shift.
-     * 
+     * Load one roster with enriched assignments, reports, and summary,
+     * optionally filtering the listed assignments by date or shift.
+     *
      * @param Roster $roster
-     * @param Request $request
+     * @param string|null $date
+     * @param int|null $shiftId
      * @return Roster
      */
-    public function loadDetails(Roster $roster, Request $request): Roster
+    public function loadDetails(Roster $roster, ?string $date = null, ?int $shiftId = null): Roster
     {
         $assignmentsQuery = $roster->assignments()
             ->with(['worker.role', 'shift'])
@@ -55,15 +57,21 @@ final readonly class RosterService
             ->orderBy('shift_id')
             ->orderBy('worker_id');
 
-        if ($request->filled('date')) {
-            $assignmentsQuery->whereDate('work_date', (string) $request->query('date'));
+        if ($date !== null && $date !== '') {
+            $assignmentsQuery->whereDate('work_date', $date);
         }
 
-        if ($request->filled('shift_id')) {
-            $assignmentsQuery->where('shift_id', (int) $request->query('shift_id'));
+        if ($shiftId !== null) {
+            $assignmentsQuery->where('shift_id', $shiftId);
         }
 
         $roster->setRelation('assignments', $assignmentsQuery->get());
+        $roster->setAttribute('assignments_count', $roster->assignments()->count());
+        $roster->loadMissing('creator');
+
+        $report = $this->reportService->build($roster);
+        $roster->setAttribute('reports', $report['reports']);
+        $roster->setAttribute('summary', $report['summary']);
 
         return $roster;
     }

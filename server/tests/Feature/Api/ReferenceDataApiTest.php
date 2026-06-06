@@ -52,7 +52,8 @@ final class ReferenceDataApiTest extends TestCase
             ->assertJsonPath('data.roles.0.code', 'general_guard')
             ->assertJsonPath('data.shifts.0.code', 'A')
             ->assertJsonCount(3, 'data.roles')
-            ->assertJsonCount(3, 'data.shifts');
+            ->assertJsonCount(3, 'data.shifts')
+            ->assertJsonCount(9, 'data.shift_role_requirements');
     }
 
     public function test_reference_data_seeder_is_idempotent(): void

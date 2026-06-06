@@ -71,8 +71,10 @@ final class RosterApiTest extends TestCase
                     'year',
                     'month',
                     'assignments',
-                    'coverage_shortages',
-                    'hours_shortfalls',
+                    'reports' => [
+                        'coverage_shortages',
+                        'hours_shortfalls',
+                    ],
                     'summary' => [
                         'assignment_count',
                         'coverage_shortage_count',
@@ -122,7 +124,7 @@ final class RosterApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.0.id', $roster->id)
-            ->assertJsonPath('data.0.assignment_count', 1);
+            ->assertJsonPath('data.0.assignments_count', 1);
     }
 
     public function test_roster_can_be_shown_with_enriched_assignments_and_filters(): void
@@ -163,15 +165,55 @@ final class RosterApiTest extends TestCase
         $response
             ->assertCreated()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.worker_id', $worker->id)
-            ->assertJsonPath('data.shift_code', 'A')
-            ->assertJsonPath('data.source', AssignmentSource::Manual->value);
+            ->assertJsonPath('data.id', $roster->id)
+            ->assertJsonPath('data.assignments_count', 1)
+            ->assertJsonPath('data.assignments.0.worker_id', $worker->id)
+            ->assertJsonPath('data.assignments.0.shift_code', 'A')
+            ->assertJsonPath('data.assignments.0.source', AssignmentSource::Manual->value);
 
         $this->assertDatabaseHas('roster_assignments', [
             'roster_id' => $roster->id,
             'worker_id' => $worker->id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-01 00:00:00',
+            'source' => AssignmentSource::Manual->value,
+        ]);
+    }
+
+    public function test_manual_assignment_worker_can_be_changed_on_a_draft_roster(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->create(['created_by' => $this->user->id]);
+
+        $original = $this->assignableWorker();
+
+        $assignment = RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $original->id,
+            'shift_id' => $this->shiftA->id,
+            'work_date' => '2026-06-04',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $replacement = Worker::query()
+            ->active()
+            ->whereHas('contract')
+            ->whereKeyNot($original->id)
+            ->where('role_id', $original->role_id)
+            ->firstOrFail();
+
+        $this->putJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}", [
+            'worker_id' => $replacement->id,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.assignments.0.worker_id', $replacement->id)
+            ->assertJsonPath('data.assignments.0.source', AssignmentSource::Manual->value);
+
+        $this->assertDatabaseHas('roster_assignments', [
+            'id' => $assignment->id,
+            'worker_id' => $replacement->id,
             'source' => AssignmentSource::Manual->value,
         ]);
     }

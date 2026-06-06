@@ -6,13 +6,12 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-final class PreviewRosterRequest extends FormRequest
+final class UpdateAssignmentRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
-     * 
-     * @return bool
      */
     public function authorize(): bool
     {
@@ -27,9 +26,7 @@ final class PreviewRosterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'month' => ['required', 'integer', 'between:1,12'],
-            'publish' => ['sometimes', 'boolean'],
+            'worker_id' => ['required', 'integer', Rule::exists('workers', 'id')],
         ];
     }
 }
