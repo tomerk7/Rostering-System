@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\Workers\WorkerContractException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ImportWorkersRequest;
 use App\Http\Requests\StoreWorkerRequest;
@@ -307,7 +308,16 @@ final class WorkerController extends Controller
      */
     public function update(UpdateWorkerRequest $request, Worker $worker): JsonResponse
     {
-        $worker = $this->workerService->update($worker, $request->validated());
+        try {
+            $worker = $this->workerService->update($worker, $request->validated());
+        } catch (WorkerContractException $exception) {
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['contract.max_monthly_hours' => [$exception->getMessage()]],
+            );
+        }
 
         return $this->response(
             success: true,

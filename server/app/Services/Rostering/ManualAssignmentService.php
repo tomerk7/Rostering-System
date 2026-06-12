@@ -23,7 +23,7 @@ final readonly class ManualAssignmentService
      * Constructor.
      */
     public function __construct(
-        private RosterService $rosterService,
+        private RosterReportService $reportService,
     ) {}
 
     /**
@@ -34,7 +34,10 @@ final readonly class ManualAssignmentService
     public function create(Roster $roster, string $workerId, int $shiftId, string $workDate): RosterAssignment
     {
         $date = CarbonImmutable::parse($workDate)->startOfDay();
-        $this->assertDateInRosterMonth($roster, $date);
+
+        if ($date->year !== $roster->year || $date->month !== $roster->month) {
+            throw ManualAssignmentException::dateOutsideRosterMonth();
+        }
 
         $worker = Worker::query()
             ->active()
@@ -63,7 +66,7 @@ final readonly class ManualAssignmentService
                 'source' => AssignmentSource::Manual,
             ]);
 
-            $this->rosterService->refreshReports($roster);
+            $this->reportService->refreshReports($roster);
 
             return $assignment;
         });
@@ -116,7 +119,7 @@ final readonly class ManualAssignmentService
                 'source' => AssignmentSource::Manual,
             ]);
 
-            $this->rosterService->refreshReports($roster);
+            $this->reportService->refreshReports($roster);
 
             return $assignment;
         });
@@ -139,23 +142,8 @@ final readonly class ManualAssignmentService
         DB::transaction(function () use ($roster, $assignment): void {
             $assignment->delete();
 
-            $this->rosterService->refreshReports($roster);
+            $this->reportService->refreshReports($roster);
         });
-    }
-
-    /**
-     * Assert that the work date is within the roster month.
-     *
-     * @param Roster $roster
-     * @param CarbonImmutable $date
-     * @return void
-     * @throws ManualAssignmentException
-     */
-    private function assertDateInRosterMonth(Roster $roster, CarbonImmutable $date): void
-    {
-        if ($date->year !== $roster->year || $date->month !== $roster->month) {
-            throw ManualAssignmentException::dateOutsideRosterMonth();
-        }
     }
 
     /**

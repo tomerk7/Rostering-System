@@ -14,7 +14,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('rosters', function (Blueprint $table) {
-            $table->string('status')->default('ready')->after('month');
+            $table->string('status')->default('ready')->after('period_start');
         });
     }
 

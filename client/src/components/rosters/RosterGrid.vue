@@ -13,13 +13,14 @@ const props = defineProps({
   workersById: { type: Map, required: true },
   editable: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
+  showNavigation: { type: Boolean, default: true },
+  fullMonth: { type: Boolean, default: false },
   canGoPrevious: { type: Boolean, default: false },
   canGoNext: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['cell-click', 'remove-assignment', 'previous-week', 'next-week'])
 
-const onlyIssues = ref(false)
 const compact = ref(false)
 
 const todayIso = (() => {
@@ -59,22 +60,21 @@ const sortedShifts = computed(() =>
 )
 
 /**
- * Grid rows, optionally filtered to understaffed slots only.
+ * Grid rows for the visible week range.
  *
  * @returns {object[]}
  */
-const visibleRows = computed(() => {
-  if (props.loading) {
-    return []
-  }
-  if (!onlyIssues.value) {
-    return grid.value.rows
-  }
-  return grid.value.rows.filter((row) => row.shifts.some((cell) => cell.isUnderstaffed))
-})
+const visibleRows = computed(() => (props.loading ? [] : grid.value.rows))
 
 /**
- * Count of understaffed slots in the current week.
+ * Label for the visible roster period in hint text.
+ *
+ * @returns {string}
+ */
+const periodLabel = computed(() => (props.fullMonth ? 'this month' : 'this week'))
+
+/**
+ * Count of understaffed slots in the visible range.
  *
  * @returns {number}
  */
@@ -202,7 +202,7 @@ function firstShortRoleId(cell) {
           Coverage by day and shift.
           <template v-if="issueCount">
             <strong class="roster-grid__hint-flag">{{ issueCount }}</strong>
-            understaffed slot{{ issueCount === 1 ? '' : 's' }} this week.
+            understaffed slot{{ issueCount === 1 ? '' : 's' }} {{ periodLabel }}.
           </template>
           <template v-else>
             All slots fully staffed.
@@ -210,27 +210,31 @@ function firstShortRoleId(cell) {
         </p>
       </div>
 
-      <nav
-        class="roster-grid__navigation"
-        aria-label="Roster weeks"
-      >
-        <button
-          type="button"
-          class="button"
-          :disabled="loading || !canGoPrevious"
-          @click="emit('previous-week')"
+      <div class="roster-grid__controls">
+        <slot name="view-toggle" />
+        <nav
+          v-if="showNavigation"
+          class="roster-grid__navigation"
+          aria-label="Roster weeks"
         >
-          Previous
-        </button>
-        <button
-          type="button"
-          class="button"
-          :disabled="loading || !canGoNext"
-          @click="emit('next-week')"
-        >
-          Next
-        </button>
-      </nav>
+          <button
+            type="button"
+            class="button"
+            :disabled="loading || !canGoPrevious"
+            @click="emit('previous-week')"
+          >
+            Previous
+          </button>
+          <button
+            type="button"
+            class="button"
+            :disabled="loading || !canGoNext"
+            @click="emit('next-week')"
+          >
+            Next
+          </button>
+        </nav>
+      </div>
     </header>
 
     <div class="roster-grid__toolbar">
@@ -252,13 +256,6 @@ function firstShortRoleId(cell) {
       <div class="roster-grid__filters">
         <label class="roster-grid__toggle">
           <input
-            v-model="onlyIssues"
-            type="checkbox"
-          >
-          Only understaffed
-        </label>
-        <label class="roster-grid__toggle">
-          <input
             v-model="compact"
             type="checkbox"
           >
@@ -267,7 +264,10 @@ function firstShortRoleId(cell) {
       </div>
     </div>
 
-    <div class="roster-grid__table-wrap">
+    <div
+      class="roster-grid__table-wrap"
+      :class="{ 'roster-grid__table-wrap--full-month': fullMonth }"
+    >
       <table
         class="roster-grid__table"
         :class="{ 'roster-grid__table--compact': compact }"
@@ -294,7 +294,7 @@ function firstShortRoleId(cell) {
               :colspan="sortedShifts.length + 1"
               class="roster-grid__loading"
             >
-              Loading week...
+              Loading roster...
             </td>
           </tr>
           <tr v-else-if="!visibleRows.length">
@@ -302,7 +302,7 @@ function firstShortRoleId(cell) {
               :colspan="sortedShifts.length + 1"
               class="roster-grid__loading"
             >
-              No understaffed slots this week.
+              No roster data for {{ periodLabel }}.
             </td>
           </tr>
           <tr
@@ -432,7 +432,8 @@ function firstShortRoleId(cell) {
 }
 
 .roster-grid__header,
-.roster-grid__navigation {
+.roster-grid__navigation,
+.roster-grid__controls {
   display: flex;
   gap: 0.5rem;
 }
@@ -440,6 +441,10 @@ function firstShortRoleId(cell) {
 .roster-grid__header {
   align-items: flex-end;
   justify-content: space-between;
+}
+
+.roster-grid__controls {
+  align-items: center;
 }
 
 .roster-grid__hint {
@@ -516,10 +521,14 @@ function firstShortRoleId(cell) {
 /* Table shell */
 .roster-grid__table-wrap {
   position: relative;
-  max-height: 70vh;
+  max-height: 55vh;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 0.75rem;
+}
+
+.roster-grid__table-wrap--full-month {
+  max-height: 75vh;
 }
 
 .roster-grid__table {
@@ -531,7 +540,7 @@ function firstShortRoleId(cell) {
 
 .roster-grid__table th,
 .roster-grid__table td {
-  padding: 0.625rem;
+  padding: 0.5rem;
   vertical-align: top;
   border-bottom: 1px solid var(--line);
 }

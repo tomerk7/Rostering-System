@@ -28,7 +28,7 @@ final class StoreWorkerRequest extends FormRequest
     {
         return [
             'full_name' => ['required', 'string', 'max:255'],
-            'israeli_id' => ['required', 'string', 'size:9', new IsraeliId, Rule::unique('workers', 'israeli_id')],
+            'israeli_id' => ['required', 'string', new IsraeliId, Rule::unique('workers', 'israeli_id')],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')],
             'is_active' => ['required', 'boolean'],
 

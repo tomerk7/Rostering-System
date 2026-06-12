@@ -10,6 +10,8 @@ use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
+use App\Services\Rostering\RosterReportService;
+use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -18,6 +20,18 @@ use Illuminate\Support\Facades\DB;
 
 final readonly class WorkerService
 {
+    /**
+     * Constructor.
+     * 
+     * @param RosterReportService $reportService
+     * @param WorkerContractValidator $contractValidator
+     * @return void
+     */
+    public function __construct(
+        private RosterReportService $reportService,
+        private WorkerContractValidator $contractValidator,
+    ) {}
+
     private const array RELATIONS = [
         'role',
         'contract.availability.shift',
@@ -100,6 +114,11 @@ final readonly class WorkerService
      */
     public function update(Worker $worker, array $data): Worker
     {
+        $this->contractValidator->assertMaxHoursAllowed(
+            $worker->israeli_id,
+            (int) $data['contract']['max_monthly_hours'],
+        );
+
         return DB::transaction(function () use ($worker, $data): Worker {
             $worker->update([
                 'full_name' => $data['full_name'],
@@ -116,7 +135,11 @@ final readonly class WorkerService
 
             $this->replaceAvailability($contract, $data);
 
-            return $worker->load(self::RELATIONS);
+            $updatedWorker = $worker->load(self::RELATIONS);
+
+            $this->refreshRosterReports();
+
+            return $updatedWorker;
         });
     }
 
@@ -191,6 +214,16 @@ final readonly class WorkerService
                 ])
                 ->values(),
         ];
+    }
+
+    /**
+     * Recompute persisted roster coverage shortages and hours-shortfall alerts.
+     *
+     * @throws Exception
+     */
+    private function refreshRosterReports(): void
+    {
+        $this->reportService->refreshAllReports();
     }
 
     /**

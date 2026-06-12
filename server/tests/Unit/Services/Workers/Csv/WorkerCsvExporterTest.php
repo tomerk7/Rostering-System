@@ -37,7 +37,7 @@ final class WorkerCsvExporterTest extends TestCase
 
         $this->seed(ReferenceDataSeeder::class);
 
-        $this->csvService = new WorkerCsvService();
+        $this->csvService = $this->app->make(WorkerCsvService::class);
         $this->generalGuardRole = Role::query()->where('code', 'general_guard')->firstOrFail();
         $this->supervisorRole = Role::query()->where('code', 'supervisor')->firstOrFail();
         $this->morningShift = Shift::query()->where('code', 'A')->firstOrFail();
@@ -48,7 +48,7 @@ final class WorkerCsvExporterTest extends TestCase
     {
         $csv = $this->captureWriteTo();
 
-        self::assertSame($this->csv([WorkerCsvService::HEADERS]), $csv);
+        self::assertSame($this->csv([$this->csvService->headers()]), $csv);
     }
 
     public function test_write_to_exports_workers_ordered_by_israeli_id_with_canonical_columns(): void
@@ -80,7 +80,7 @@ final class WorkerCsvExporterTest extends TestCase
         $rows = $this->parseCsv($csv);
 
         self::assertCount(3, $rows);
-        self::assertSame(WorkerCsvService::HEADERS, $rows[0]);
+        self::assertSame($this->csvService->headers(), $rows[0]);
         self::assertSame([
             'First Worker',
             $firstWorker->israeli_id,
@@ -89,7 +89,9 @@ final class WorkerCsvExporterTest extends TestCase
             '72.00',
             '100',
             '180',
-            'Fri:B;Sat:B',
+            '',
+            '5-6',
+            '',
         ], $rows[1]);
         self::assertSame([
             'Second Worker',
@@ -99,7 +101,9 @@ final class WorkerCsvExporterTest extends TestCase
             '50.25',
             '80',
             '160',
-            'Sun:A|B;Tue:A|B;Thu:A|B',
+            '0|2|4',
+            '0|2|4',
+            '',
         ], $rows[2]);
     }
 

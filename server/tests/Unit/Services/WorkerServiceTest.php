@@ -7,9 +7,12 @@ namespace Tests\Unit\Services;
 use App\Models\Contract;
 use App\Models\ContractAvailability;
 use App\Models\Role;
+use App\Enums\AssignmentSource;
+use App\Exceptions\Workers\WorkerContractException;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
 use App\Models\Shift;
+use App\Models\User;
 use App\Models\Worker;
 use App\Services\Workers\WorkerService;
 use Database\Seeders\ReferenceDataSeeder;
@@ -38,7 +41,7 @@ final class WorkerServiceTest extends TestCase
 
         $this->seed(ReferenceDataSeeder::class);
 
-        $this->service = new WorkerService();
+        $this->service = $this->app->make(WorkerService::class);
         $this->generalGuardRole = Role::query()->where('code', 'general_guard')->firstOrFail();
         $this->supervisorRole = Role::query()->where('code', 'supervisor')->firstOrFail();
         $this->morningShift = Shift::query()->where('code', 'A')->firstOrFail();
@@ -223,6 +226,47 @@ final class WorkerServiceTest extends TestCase
                 ->values()
                 ->all(),
         );
+    }
+
+    public function test_update_rejects_lower_max_hours_when_roster_assignments_exceed_it(): void
+    {
+        $user = User::factory()->create();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(83111111),
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        for ($day = 1; $day <= 20; $day++) {
+            RosterAssignment::query()->create([
+                'roster_id' => $roster->id,
+                'worker_id' => $worker->israeli_id,
+                'shift_id' => $this->morningShift->id,
+                'work_date' => sprintf('2026-06-%02d', $day),
+                'source' => AssignmentSource::Auto,
+            ]);
+        }
+
+        $this->expectException(WorkerContractException::class);
+        $this->expectExceptionMessage('Remove this worker from the roster(s) first: June 2026 (160 hours assigned).');
+
+        $this->service->update($worker, $this->workerData([
+            'israeli_id' => $worker->israeli_id,
+            'contract' => [
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 120,
+            ],
+        ]));
     }
 
     public function test_update_creates_contract_when_worker_does_not_have_one(): void

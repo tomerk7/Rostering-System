@@ -22,9 +22,11 @@ final class RosterFactory extends Factory
      */
     public function definition(): array
     {
+        $year = fake()->numberBetween(2024, 2027);
+        $month = fake()->numberBetween(1, 12);
+
         return [
-            'year' => fake()->numberBetween(2024, 2027),
-            'month' => fake()->numberBetween(1, 12),
+            'period_start' => Carbon::create($year, $month, 1)->toDateString(),
             'status' => RosterStatus::Ready,
             'generated_at' => Carbon::now(),
             'published_at' => Carbon::now(),
@@ -38,8 +40,7 @@ final class RosterFactory extends Factory
     public function forPeriod(int $year, int $month): static
     {
         return $this->state(fn (array $attributes): array => [
-            'year' => $year,
-            'month' => $month,
+            'period_start' => Carbon::create($year, $month, 1)->toDateString(),
         ]);
     }
 }

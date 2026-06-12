@@ -11,8 +11,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
-#[Fillable(['year', 'month', 'status', 'generated_at', 'published_at', 'created_by'])]
+#[Fillable(['period_start', 'status', 'generated_at', 'published_at', 'created_by'])]
 final class Roster extends Model
 {
     use HasFactory;
@@ -54,7 +55,26 @@ final class Roster extends Model
      */
     public function scopeForPeriod(Builder $query, int $year, int $month): Builder
     {
-        return $query->where('year', $year)->where('month', $month);
+        return $query->whereDate(
+            'period_start',
+            Carbon::create($year, $month, 1)->toDateString(),
+        );
+    }
+
+    /**
+     * Get the roster year derived from period_start.
+     */
+    public function getYearAttribute(): int
+    {
+        return (int) $this->period_start->year;
+    }
+
+    /**
+     * Get the roster month derived from period_start.
+     */
+    public function getMonthAttribute(): int
+    {
+        return (int) $this->period_start->month;
     }
 
     /**
@@ -65,8 +85,7 @@ final class Roster extends Model
     protected function casts(): array
     {
         return [
-            'year' => 'integer',
-            'month' => 'integer',
+            'period_start' => 'date',
             'status' => RosterStatus::class,
             'generated_at' => 'datetime',
             'published_at' => 'datetime',

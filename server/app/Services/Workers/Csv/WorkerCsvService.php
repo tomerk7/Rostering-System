@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Workers\Csv;
 
 use App\Enums\RoleCode;
-use App\Enums\ShiftCode;
+use App\Events\WorkersImported;
+use App\Exceptions\Workers\WorkerContractException;
 use App\Jobs\ExportWorkersJob;
 use App\Jobs\ImportWorkersJob;
 use App\Models\Contract;
@@ -14,6 +15,7 @@ use App\Models\Role;
 use App\Models\Shift;
 use App\Models\Worker;
 use App\Rules\IsraeliId;
+use App\Services\Workers\WorkerContractValidator;
 use Generator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -33,26 +35,47 @@ use Throwable;
 /**
  * Worker CSV import/export and queued import/export orchestration.
  *
- * Columns are matched by position (zero-based index), not header name; the
- * header row is documentation only. See prompts/docs/csv-schema.md.
+ * Fixed columns 0-6 hold worker/contract fields. Columns 7+ are shift columns
+ * identified by header label (e.g. Shift_A). Each shift cell holds
+ * a cron-style day expression. See prompts/db schema/schema.md.
  */
 final class WorkerCsvService
 {
     public const int FULL_NAME = 0;
+
     public const int ISRAELI_ID = 1;
+
     public const int ROLE = 2;
+
     public const int STATUS = 3;
+
     public const int HOURLY_COST = 4;
+
     public const int MIN_MONTHLY_HOURS = 5;
+
     public const int MAX_MONTHLY_HOURS = 6;
-    public const int AVAILABILITY = 7;
+
+    public const int SHIFT_COLUMN_OFFSET = 7;
 
     /**
-     * Fixed column order, written verbatim as the export header row.
+     * In-cell separator for day tokens. A pipe is used so commas never trigger Excel quoting.
+     */
+    public const string VALUE_SEPARATOR = '|';
+
+    public const string DAY_RANGE_SEPARATOR = '-';
+
+    public const string STATUS_ACTIVE = 'Active';
+
+    public const string STATUS_INACTIVE = 'Inactive';
+
+    public const string DEFAULT_STATUS = self::STATUS_ACTIVE;
+
+    /**
+     * Fixed column labels written before the dynamic shift columns.
      *
      * @var list<string>
      */
-    public const array HEADERS = [
+    public const array FIXED_HEADERS = [
         'full_name',
         'israeli_id',
         'role',
@@ -60,52 +83,6 @@ final class WorkerCsvService
         'hourly_cost',
         'min_monthly_hours',
         'max_monthly_hours',
-        'availability',
-    ];
-
-    /**
-     * In-cell separator for multi-value columns (days, shifts). A pipe is used
-     * so commas never trigger Excel quoting.
-     */
-    public const string VALUE_SEPARATOR = '|';
-
-    /**
-     * Separator between day groups in the availability column.
-     */
-    public const string DAY_GROUP_SEPARATOR = ';';
-
-    public const string STATUS_ACTIVE = 'Active';
-    public const string STATUS_INACTIVE = 'Inactive';
-    public const string DEFAULT_STATUS = self::STATUS_ACTIVE;
-
-    /**
-     * CSV day token (lowercased) to day_of_week (0 = Sunday .. 6 = Saturday).
-     *
-     * @var array<string, int>
-     */
-    public const array DAY_OF_WEEK_BY_TOKEN = [
-        'sun' => 0,
-        'mon' => 1,
-        'tue' => 2,
-        'wed' => 3,
-        'thu' => 4,
-        'fri' => 5,
-        'sat' => 6,
-    ];
-
-    /**
-     * day_of_week (0..6) to CSV day token, used on export.
-     *
-     * @var array<int, string>
-     */
-    public const array DAY_TOKEN_BY_NUMBER = [
-        0 => 'Sun',
-        1 => 'Mon',
-        2 => 'Tue',
-        3 => 'Wed',
-        4 => 'Thu',
-        5 => 'Fri',
-        6 => 'Sat',
     ];
 
     private const string IMPORT_STORAGE_DIR = 'worker-imports';
@@ -118,11 +95,47 @@ final class WorkerCsvService
      */
     private const int CHUNK_SIZE = 1000;
 
+    /** @var Collection<int, Shift>|null */
+    private ?Collection $orderedShifts = null;
+
+    /** @var array<string, string>|null */
+    private ?array $shiftCodeByColumnLabel = null;
+
+    /**
+     * Constructor.
+     * 
+     * @param WorkerContractValidator $contractValidator
+     * @return void
+     */
+    public function __construct(
+        private readonly WorkerContractValidator $contractValidator,
+    ) {}
+
+    /**
+     * Build the full CSV header row: fixed columns plus one column per shift.
+     *
+     * @return list<string>
+     */
+    public function headers(): array
+    {
+        $shiftLabels = $this->orderedShifts()
+            ->map(fn (Shift $shift): string => self::shiftColumnLabel($shift))
+            ->values()
+            ->all();
+
+        return array_merge(self::FIXED_HEADERS, $shiftLabels);
+    }
+
+    /**
+     * Format a shift code as the CSV column header (Shift_A, Shift_B, Shift_C).
+     */
+    public static function shiftColumnLabel(Shift $shift): string
+    {
+        return 'Shift_'.strtoupper($shift->code);
+    }
+
     /**
      * Store an uploaded CSV and queue it for import.
-     *
-     * @param UploadedFile $file
-     * @return string
      */
     public function queueImport(UploadedFile $file): string
     {
@@ -142,10 +155,6 @@ final class WorkerCsvService
 
     /**
      * Process a queued worker CSV import.
-     *
-     * @param string $importId
-     * @param string $storedPath
-     * @return void
      */
     public function processImport(string $importId, string $storedPath): void
     {
@@ -165,9 +174,6 @@ final class WorkerCsvService
 
     /**
      * Remove a stored import CSV from disk.
-     *
-     * @param string $storedPath
-     * @return void
      */
     public function removeImportFile(string $storedPath): void
     {
@@ -188,8 +194,6 @@ final class WorkerCsvService
 
     /**
      * Delete import CSVs left behind when a queued job never ran.
-     *
-     * @return void
      */
     private function purgeAbandonedImportFiles(): void
     {
@@ -207,11 +211,6 @@ final class WorkerCsvService
 
     /**
      * Record a failed worker CSV import and remove the stored file.
-     *
-     * @param string $importId
-     * @param string $storedPath
-     * @param string $message
-     * @return void
      */
     public function markImportFailed(string $importId, string $storedPath, string $message): void
     {
@@ -226,7 +225,6 @@ final class WorkerCsvService
     /**
      * Return the current state of a queued worker CSV import.
      *
-     * @param string $importId
      * @return array{
      *     status: 'not_found'|'processing'|'completed'|'failed',
      *     import_id: string,
@@ -266,13 +264,11 @@ final class WorkerCsvService
 
     /**
      * Queue a worker CSV export.
-     *
-     * @return string
      */
     public function queueExport(): string
     {
         $exportId = (string) Str::uuid();
-        $storedPath = self::EXPORT_STORAGE_DIR . "/{$exportId}.csv";
+        $storedPath = self::EXPORT_STORAGE_DIR."/{$exportId}.csv";
 
         Cache::put($this->exportCacheKey($exportId), [
             'status' => 'processing',
@@ -285,10 +281,6 @@ final class WorkerCsvService
 
     /**
      * Process a queued worker CSV export.
-     *
-     * @param string $exportId
-     * @param string $storedPath
-     * @return void
      */
     public function processExport(string $exportId, string $storedPath): void
     {
@@ -296,12 +288,12 @@ final class WorkerCsvService
 
         $handle = fopen(Storage::disk('local')->path($storedPath), 'w');
 
-        if (!$handle) {
+        if (! $handle) {
             throw new RuntimeException("Unable to open export file for writing: {$storedPath}");
         }
 
         try {
-            fputcsv($handle, self::HEADERS);
+            fputcsv($handle, $this->headers());
 
             Worker::query()
                 ->with(['role', 'contract.availability.shift'])
@@ -317,17 +309,12 @@ final class WorkerCsvService
         Cache::put($this->exportCacheKey($exportId), [
             'status' => 'completed',
             'stored_path' => $storedPath,
-            'filename' => 'workers-' . now()->format('Y-m-d') . '.csv',
+            'filename' => 'workers-'.now()->format('Y-m-d').'.csv',
         ], now()->addHour());
     }
 
     /**
      * Record a failed worker CSV export and remove the stored file.
-     *
-     * @param string $exportId
-     * @param string $storedPath
-     * @param string $message
-     * @return void
      */
     public function markExportFailed(string $exportId, string $storedPath, string $message): void
     {
@@ -388,9 +375,6 @@ final class WorkerCsvService
 
     /**
      * Stream a completed queued export and remove the stored file.
-     *
-     * @param string $exportId
-     * @return StreamedResponse
      */
     public function streamQueuedExport(string $exportId): StreamedResponse
     {
@@ -444,19 +428,35 @@ final class WorkerCsvService
         $total = 0;
         $errors = [];
 
+        $headerResult = $this->parseHeaderRow($path);
+        $errors = array_merge($errors, $headerResult['errors']);
+
+        /** @var array<int, array{label: string, code: string}> $shiftColumnMap */
+        $shiftColumnMap = $headerResult['map'];
+
+        if ($shiftColumnMap === []) {
+            return [
+                'total' => 0,
+                'imported' => 0,
+                'created' => 0,
+                'updated' => 0,
+                'skipped' => 0,
+                'errors' => $errors,
+            ];
+        }
+
         /** @var list<array<string, mixed>> $rows validated, persistence-ready rows */
         $rows = [];
 
         /** @var array<string, int> $seenIds line number where each israeli_id was first seen */
         $seenIds = [];
 
-        foreach ($this->readRows($path) as $line => $row) {
+        foreach ($this->readDataRows($path) as $line => $row) {
             $total++;
 
-            $result = $this->validateRow($row);
+            $result = $this->validateRow($row, $shiftColumnMap);
 
-            // Record validation errors and skip the invalid row.
-            if (!empty($result['errors'])) {
+            if (! empty($result['errors'])) {
                 foreach ($result['errors'] as $field => $messages) {
                     foreach ($messages as $message) {
                         $errors[] = ['line' => $line, 'field' => $field, 'message' => $message];
@@ -488,6 +488,10 @@ final class WorkerCsvService
 
         ['created' => $created, 'updated' => $updated] = $this->persist($rows, $errors);
 
+        if ($created + $updated > 0) {
+            WorkersImported::dispatch($created, $updated);
+        }
+
         return [
             'total' => $total,
             'imported' => $created + $updated,
@@ -507,7 +511,6 @@ final class WorkerCsvService
      *     skipped: int,
      *     errors: list<array{line: int, field: string, message: string}>
      * } $result
-     *
      * @return array{
      *     status: 'completed',
      *     import_id: string,
@@ -530,9 +533,6 @@ final class WorkerCsvService
 
     /**
      * Build a cache key for a queued worker CSV import.
-     *
-     * @param string $importId
-     * @return string
      */
     private function importCacheKey(string $importId): string
     {
@@ -541,9 +541,6 @@ final class WorkerCsvService
 
     /**
      * Build a cache key for a queued worker CSV export.
-     *
-     * @param string $exportId
-     * @return string
      */
     private function exportCacheKey(string $exportId): string
     {
@@ -553,63 +550,80 @@ final class WorkerCsvService
     /**
      * Build a single CSV row for a worker in fixed column order.
      *
-     * @return array<int, string>
+     * @return list<string>
      */
     private function toRow(Worker $worker): array
     {
         $contract = $worker->contract;
 
+        /** @var array<string, list<int>> $daysByShiftCode */
+        $daysByShiftCode = [];
+
+        if ($contract !== null) {
+            foreach ($contract->availability as $slot) {
+                $daysByShiftCode[(string) $slot->shift->code][] = (int) $slot->day_of_week;
+            }
+        }
+
         $row = [
-            self::FULL_NAME => $worker->full_name,
-            self::ISRAELI_ID => $worker->israeli_id,
-            self::ROLE => RoleCode::tryFrom($worker->role->code)?->label() ?? $worker->role->code,
-            self::STATUS => $worker->is_active
-                ? self::STATUS_ACTIVE
-                : self::STATUS_INACTIVE,
-            self::HOURLY_COST => (string) $contract?->hourly_cost,
-            self::MIN_MONTHLY_HOURS => (string) $contract?->min_monthly_hours,
-            self::MAX_MONTHLY_HOURS => (string) $contract?->max_monthly_hours,
-            self::AVAILABILITY => $this->availability($contract),
+            $worker->full_name,
+            $worker->israeli_id,
+            RoleCode::tryFrom($worker->role->code)?->label() ?? $worker->role->code,
+            $worker->is_active ? self::STATUS_ACTIVE : self::STATUS_INACTIVE,
+            (string) $contract?->hourly_cost,
+            (string) $contract?->min_monthly_hours,
+            (string) $contract?->max_monthly_hours,
         ];
 
-        ksort($row);
+        foreach ($this->orderedShifts() as $shift) {
+            $days = $daysByShiftCode[$shift->code] ?? [];
+            $row[] = $this->compressDays($days);
+        }
 
         return $row;
     }
 
     /**
-     * Serialize per-weekday shift availability, e.g. Sun:C;Mon:A|B;Wed:C.
+     * Compress sorted day numbers into a cron-style expression.
      *
-     * @param object|null $contract
-     * @return string
+     * @param  list<int>  $days
      */
-    private function availability(?object $contract): string
+    private function compressDays(array $days): string
     {
-        if ($contract === null) {
+        if ($days === []) {
             return '';
         }
 
-        /** @var array<string, list<string>> $byDay */
-        $byDay = [];
+        $days = array_values(array_unique($days));
+        sort($days);
 
-        foreach ($contract->availability as $slot) {
-            $dayToken = self::DAY_TOKEN_BY_NUMBER[(int) $slot->day_of_week];
-            $byDay[$dayToken][] = (string) $slot->shift->code;
+        if ($days === range(0, 6)) {
+            return '0-6';
         }
 
-        $groups = [];
+        $parts = [];
+        $start = $days[0];
+        $previous = $days[0];
 
-        foreach (self::DAY_TOKEN_BY_NUMBER as $dayToken) {
-            if (! isset($byDay[$dayToken])) {
+        for ($index = 1, $count = count($days); $index < $count; $index++) {
+            if ($days[$index] === $previous + 1) {
+                $previous = $days[$index];
+
                 continue;
             }
 
-            $codes = $byDay[$dayToken];
-            sort($codes);
-            $groups[] = $dayToken . ':' . implode(self::VALUE_SEPARATOR, $codes);
+            $parts[] = $start === $previous
+                ? (string) $start
+                : $start.self::DAY_RANGE_SEPARATOR.$previous;
+            $start = $days[$index];
+            $previous = $days[$index];
         }
 
-        return implode(self::DAY_GROUP_SEPARATOR, $groups);
+        $parts[] = $start === $previous
+            ? (string) $start
+            : $start.self::DAY_RANGE_SEPARATOR.$previous;
+
+        return implode(self::VALUE_SEPARATOR, $parts);
     }
 
     /**
@@ -642,7 +656,7 @@ final class WorkerCsvService
                     $errors[] = [
                         'line' => (int) $row['line'],
                         'field' => 'row',
-                        'message' => 'Failed to import row: ' . $exception->getMessage(),
+                        'message' => 'Failed to import row: '.$exception->getMessage(),
                     ];
                 }
             }
@@ -758,11 +772,84 @@ final class WorkerCsvService
     }
 
     /**
+     * Parse the header row and map shift column indices to shift codes.
+     *
+     * @return array{
+     *     map: array<int, array{label: string, code: string}>,
+     *     errors: list<array{line: int, field: string, message: string}>
+     * }
+     */
+    private function parseHeaderRow(string $path): array
+    {
+        $file = new SplFileObject($path, 'r');
+        $file->setFlags(
+            SplFileObject::READ_CSV
+            | SplFileObject::READ_AHEAD
+            | SplFileObject::SKIP_EMPTY
+            | SplFileObject::DROP_NEW_LINE,
+        );
+
+        $headerRow = $file->fgetcsv();
+
+        if (! is_array($headerRow) || $headerRow === [null]) {
+            return [
+                'map' => [],
+                'errors' => [[
+                    'line' => 1,
+                    'field' => 'header',
+                    'message' => 'The CSV header row is missing or invalid.',
+                ]],
+            ];
+        }
+
+        $errors = [];
+        $map = [];
+        $knownLabels = $this->shiftCodeByColumnLabel();
+
+        for ($index = self::SHIFT_COLUMN_OFFSET, $count = count($headerRow); $index < $count; $index++) {
+            $label = trim((string) ($headerRow[$index] ?? ''));
+
+            if ($label === '') {
+                continue;
+            }
+
+            if (! isset($knownLabels[$label])) {
+                $errors[] = [
+                    'line' => 1,
+                    'field' => $label,
+                    'message' => "Unknown shift column \"{$label}\"; expected one of: "
+                        .implode(', ', array_keys($knownLabels)).'.',
+                ];
+
+                continue;
+            }
+
+            $map[$index] = [
+                'label' => $label,
+                'code' => $knownLabels[$label],
+            ];
+        }
+
+        if ($map === [] && $errors === []) {
+            $errors[] = [
+                'line' => 1,
+                'field' => 'header',
+                'message' => 'The CSV must include at least one shift availability column.',
+            ];
+        }
+
+        return [
+            'map' => $map,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
      * Stream data rows from the CSV, skipping the header line.
      *
      * @return Generator<int, list<string|null>>
      */
-    private function readRows(string $path): Generator
+    private function readDataRows(string $path): Generator
     {
         $file = new SplFileObject($path, 'r');
         $file->setFlags(
@@ -779,7 +866,6 @@ final class WorkerCsvService
 
             $line = $index + 1;
 
-            // Skipping the header line.
             if ($line === 1) {
                 continue;
             }
@@ -793,9 +879,10 @@ final class WorkerCsvService
      * Validate a single raw CSV row by column index.
      *
      * @param  list<string|null>  $row
+     * @param  array<int, array{label: string, code: string}>  $shiftColumnMap
      * @return array{data: array<string, mixed>|null, errors: array<string, list<string>>}
      */
-    private function validateRow(array $row): array
+    private function validateRow(array $row, array $shiftColumnMap): array
     {
         $fields = $this->mapRow($row);
 
@@ -804,11 +891,22 @@ final class WorkerCsvService
         /** @var array<string, list<string>> $messages */
         $messages = $validator->fails() ? $validator->errors()->messages() : [];
 
-        $availabilityResult = $this->parseAvailability((string) ($fields['availability'] ?? ''));
+        $availabilityResult = $this->parseShiftColumns($row, $shiftColumnMap);
 
         if ($availabilityResult['errors'] !== []) {
             foreach ($availabilityResult['errors'] as $field => $fieldMessages) {
                 $messages[$field] = array_merge($messages[$field] ?? [], $fieldMessages);
+            }
+        }
+
+        if ($messages === [] && Worker::query()->whereKey((string) $fields['israeli_id'])->exists()) {
+            try {
+                $this->contractValidator->assertMaxHoursAllowed(
+                    (string) $fields['israeli_id'],
+                    (int) $fields['max_monthly_hours'],
+                );
+            } catch (WorkerContractException $exception) {
+                $messages['max_monthly_hours'][] = $exception->getMessage();
             }
         }
 
@@ -840,7 +938,6 @@ final class WorkerCsvService
             'hourly_cost' => $this->cell($row, self::HOURLY_COST),
             'min_monthly_hours' => $this->cell($row, self::MIN_MONTHLY_HOURS),
             'max_monthly_hours' => $this->cell($row, self::MAX_MONTHLY_HOURS),
-            'availability' => $this->cell($row, self::AVAILABILITY),
         ];
     }
 
@@ -848,9 +945,6 @@ final class WorkerCsvService
      * Build the validated, persistence-ready payload from valid fields.
      *
      * @param  array<string, mixed>  $fields
-     * @return array<string, mixed>
-     */
-    /**
      * @param  list<array{day_of_week: int, shift_code: string}>  $slots
      * @return array<string, mixed>
      */
@@ -879,13 +973,12 @@ final class WorkerCsvService
     {
         return [
             'full_name' => ['required', 'string', 'max:255'],
-            'israeli_id' => ['required', 'string', 'size:9', new IsraeliId],
+            'israeli_id' => ['required', 'string', new IsraeliId],
             'role' => ['required', Rule::in(array_keys(RoleCode::codeByCsvLabel()))],
             'status' => ['required', Rule::in([self::STATUS_ACTIVE, self::STATUS_INACTIVE])],
             'hourly_cost' => ['required', 'numeric', 'min:0', 'max:999999.99'],
             'min_monthly_hours' => ['required', 'integer', 'min:0', 'max:744'],
             'max_monthly_hours' => ['required', 'integer', 'min:0', 'max:744', 'gte:min_monthly_hours'],
-            'availability' => ['required', 'string', 'max:255'],
         ];
     }
 
@@ -898,83 +991,51 @@ final class WorkerCsvService
     {
         return [
             'required' => 'The :attribute is required.',
-            'israeli_id.size' => 'The israeli_id must be exactly 9 digits.',
             'role.in' => 'Unknown role; expected General Guard, Supervisor, or Screener.',
             'status.in' => 'Unknown status; expected Active or Inactive.',
             'max_monthly_hours.gte' => 'max_monthly_hours must be greater than or equal to min_monthly_hours.',
-            'availability.required' => 'The availability is required.',
         ];
     }
 
     /**
-     * Parse the combined availability column into day/shift pairs.
+     * Parse shift-column cells into day/shift availability pairs.
      *
+     * @param  list<string|null>  $row
+     * @param  array<int, array{label: string, code: string}>  $shiftColumnMap
      * @return array{
      *     slots: list<array{day_of_week: int, shift_code: string}>,
      *     errors: array<string, list<string>>
      * }
      */
-    private function parseAvailability(string $value): array
+    private function parseShiftColumns(array $row, array $shiftColumnMap): array
     {
-        $value = trim($value);
-
-        if ($value === '') {
-            return [
-                'slots' => [],
-                'errors' => ['availability' => ['The availability is required.']],
-            ];
-        }
-
         $slots = [];
         $seen = [];
         $errors = [];
 
-        foreach (explode(self::DAY_GROUP_SEPARATOR, $value) as $group) {
-            $group = trim($group);
+        foreach ($shiftColumnMap as $columnIndex => $shiftColumn) {
+            $expression = $this->cell($row, $columnIndex) ?? '';
+            $field = $shiftColumn['label'];
 
-            if ($group === '') {
-                $errors['availability'][] = 'Empty day group in availability.';
-
+            if ($expression === '') {
                 continue;
             }
 
-            $parts = explode(':', $group, 2);
+            $dayResult = $this->parseDayExpression($expression);
 
-            if (count($parts) !== 2) {
-                $errors['availability'][] = "Invalid availability group \"{$group}\"; expected Day:Shift|Shift.";
-
-                continue;
-            }
-
-            $dayToken = strtolower(trim($parts[0]));
-            $shiftPart = trim($parts[1]);
-
-            if ($shiftPart === '') {
-                $errors['availability'][] = "Day group \"{$group}\" must list at least one shift.";
-
-                continue;
-            }
-
-            if (! isset(self::DAY_OF_WEEK_BY_TOKEN[$dayToken])) {
-                $errors['availability'][] = "Unknown day token \"{$parts[0]}\"; expected Sun, Mon, Tue, Wed, Thu, Fri, or Sat.";
-
-                continue;
-            }
-
-            $dayOfWeek = self::DAY_OF_WEEK_BY_TOKEN[$dayToken];
-            $shiftCodes = $this->tokens($shiftPart, strtoupper(...));
-
-            foreach ($shiftCodes as $shiftCode) {
-                if (! in_array($shiftCode, ShiftCode::values(), true)) {
-                    $errors['availability'][] = "Unknown shift token \"{$shiftCode}\"; expected A, B, or C.";
-
-                    continue;
+            if ($dayResult['errors'] !== []) {
+                foreach ($dayResult['errors'] as $message) {
+                    $errors[$field][] = $message;
                 }
 
-                $key = "{$dayOfWeek}:{$shiftCode}";
+                continue;
+            }
+
+            foreach ($dayResult['days'] as $dayOfWeek) {
+                $key = "{$dayOfWeek}:{$shiftColumn['code']}";
 
                 if (isset($seen[$key])) {
-                    $errors['availability'][] = "Duplicate availability for {$parts[0]} shift {$shiftCode}.";
+                    $errors[$field][] = "Duplicate availability for day {$dayOfWeek}.";
 
                     continue;
                 }
@@ -982,17 +1043,105 @@ final class WorkerCsvService
                 $seen[$key] = true;
                 $slots[] = [
                     'day_of_week' => $dayOfWeek,
-                    'shift_code' => $shiftCode,
+                    'shift_code' => $shiftColumn['code'],
                 ];
             }
         }
 
         if ($slots === [] && $errors === []) {
-            $errors['availability'][] = 'The availability is required.';
+            $errors['availability'][] = 'At least one shift availability column must be set.';
         }
 
         return [
             'slots' => $slots,
+            'errors' => $errors,
+        ];
+    }
+
+    /**
+     * Parse a cron-style day expression into day-of-week numbers.
+     *
+     * @return array{days: list<int>, errors: list<string>}
+     */
+    private function parseDayExpression(string $expression): array
+    {
+        $expression = trim($expression);
+
+        if ($expression === '') {
+            return ['days' => [], 'errors' => []];
+        }
+
+        $days = [];
+        $errors = [];
+
+        foreach (explode(self::VALUE_SEPARATOR, $expression) as $token) {
+            $token = trim($token);
+
+            if ($token === '') {
+                $errors[] = 'Empty day token in expression.';
+
+                continue;
+            }
+
+            if (str_contains($token, self::DAY_RANGE_SEPARATOR)) {
+                $rangeParts = explode(self::DAY_RANGE_SEPARATOR, $token, 2);
+
+                if (count($rangeParts) !== 2 || $rangeParts[1] === '') {
+                    $errors[] = "Invalid day range \"{$token}\"; expected format like 1-5.";
+
+                    continue;
+                }
+
+                if (! ctype_digit($rangeParts[0]) || ! ctype_digit($rangeParts[1])) {
+                    $errors[] = "Invalid day range \"{$token}\"; day numbers must be 0-6.";
+
+                    continue;
+                }
+
+                $start = (int) $rangeParts[0];
+                $end = (int) $rangeParts[1];
+
+                if ($start < 0 || $start > 6 || $end < 0 || $end > 6) {
+                    $errors[] = "Day range \"{$token}\" must use day numbers 0 (Sunday) through 6 (Saturday).";
+
+                    continue;
+                }
+
+                if ($start > $end) {
+                    $errors[] = "Day range \"{$token}\" must have start <= end.";
+
+                    continue;
+                }
+
+                for ($day = $start; $day <= $end; $day++) {
+                    $days[] = $day;
+                }
+
+                continue;
+            }
+
+            if (! ctype_digit($token)) {
+                $errors[] = "Invalid day token \"{$token}\"; expected a number 0-6 or a range like 1-5.";
+
+                continue;
+            }
+
+            $day = (int) $token;
+
+            if ($day < 0 || $day > 6) {
+                $errors[] = "Invalid day token \"{$token}\"; day numbers must be 0 (Sunday) through 6 (Saturday).";
+
+                continue;
+            }
+
+            $days[] = $day;
+        }
+
+        $days = array_values(array_unique($days));
+        sort($days);
+
+        return [
+            'days' => $days,
             'errors' => $errors,
         ];
     }
@@ -1014,24 +1163,32 @@ final class WorkerCsvService
     }
 
     /**
-     * Split a pipe-separated cell into trimmed, case-normalized tokens.
+     * Get the ordered shifts.
      *
-     * @param  callable(string): string  $normalizer
-     * @return list<string>
+     * @return Collection<int, Shift>
      */
-    private function tokens(?string $value, callable $normalizer): array
+    private function orderedShifts(): Collection
     {
-        if ($value === null || $value === '') {
-            return [];
+        if ($this->orderedShifts === null) {
+            $this->orderedShifts = Shift::query()->orderBy('start_time')->get();
         }
 
-        $tokens = [];
+        return $this->orderedShifts;
+    }
 
-        // Trim and normalize each day or shift value.
-        foreach (explode(self::VALUE_SEPARATOR, $value) as $token) {
-            $tokens[] = $normalizer(trim($token));
+    /**
+     * Get the shift code by column label.
+     *
+     * @return array<string, string>
+     */
+    private function shiftCodeByColumnLabel(): array
+    {
+        if ($this->shiftCodeByColumnLabel === null) {
+            $this->shiftCodeByColumnLabel = $this->orderedShifts()
+                ->mapWithKeys(fn (Shift $shift): array => [self::shiftColumnLabel($shift) => $shift->code])
+                ->all();
         }
 
-        return $tokens;
+        return $this->shiftCodeByColumnLabel;
     }
 }

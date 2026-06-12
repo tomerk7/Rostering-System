@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Api;
 
+use App\Enums\AssignmentSource;
+use App\Enums\RosterAlertType;
+use App\Events\WorkersImported;
 use App\Models\Contract;
 use App\Models\ContractAvailability;
 use App\Models\Role;
 use App\Models\Roster;
+use App\Models\RosterAlert;
 use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\User;
@@ -16,6 +20,8 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\TestCase;
@@ -34,6 +40,8 @@ final class WorkerApiTest extends TestCase
 
     private Shift $eveningShift;
 
+    private WorkerCsvService $csvService;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -41,6 +49,8 @@ final class WorkerApiTest extends TestCase
         $this->seed(ReferenceDataSeeder::class);
 
         Sanctum::actingAs(User::factory()->create());
+
+        $this->csvService = $this->app->make(WorkerCsvService::class);
 
         $this->role = Role::query()->where('code', 'general_guard')->firstOrFail();
         $this->supervisorRole = Role::query()->where('code', 'supervisor')->firstOrFail();
@@ -150,6 +160,440 @@ final class WorkerApiTest extends TestCase
             'contract_id' => $contract->id,
             'day_of_week' => 4,
             'shift_id' => $this->dayShift->id,
+        ]);
+    }
+
+    public function test_worker_update_rejects_lower_max_hours_when_roster_assignments_exceed_it(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(43345678),
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        for ($day = 1; $day <= 20; $day++) {
+            RosterAssignment::query()->create([
+                'roster_id' => $roster->id,
+                'worker_id' => $worker->israeli_id,
+                'shift_id' => $this->morningShift->id,
+                'work_date' => sprintf('2026-06-%02d', $day),
+                'source' => AssignmentSource::Auto,
+            ]);
+        }
+
+        $payload = $this->workerPayload([
+            'israeli_id' => $worker->israeli_id,
+            'contract' => [
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 120,
+            ],
+        ]);
+
+        $response = $this->putJson("/api/workers/{$worker->israeli_id}", $payload);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonValidationErrors(['contract.max_monthly_hours']);
+
+        self::assertSame(
+            'Cannot lower max monthly hours to 120. Remove this worker from the roster(s) first: June 2026 (160 hours assigned).',
+            $response->json('errors.contract.max_monthly_hours.0')
+                ?? $response->json('errors')['contract.max_monthly_hours'][0]
+                ?? null,
+        );
+
+        $this->assertDatabaseHas('contracts', [
+            'worker_id' => $worker->israeli_id,
+            'max_monthly_hours' => 240,
+        ]);
+    }
+
+    public function test_worker_update_allows_lower_max_hours_when_assignments_fit(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(44345678),
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-01',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $payload = $this->workerPayload([
+            'israeli_id' => $worker->israeli_id,
+            'contract' => [
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 120,
+            ],
+        ]);
+
+        $this->putJson("/api/workers/{$worker->israeli_id}", $payload)
+            ->assertOk()
+            ->assertJsonPath('data.contract.max_monthly_hours', 120);
+    }
+
+    public function test_worker_edit_refreshes_hours_shortfall_alert_on_existing_rosters(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(52345678),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-01',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        RosterAlert::query()->create([
+            'roster_id' => $roster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+            'scheduled_hours' => 50,
+        ]);
+
+        $this->putJson("/api/workers/{$worker->israeli_id}", $this->workerPayload([
+            'full_name' => $worker->full_name,
+            'israeli_id' => $worker->israeli_id,
+            'contract' => [
+                'hourly_cost' => 72.50,
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ],
+        ]))->assertOk();
+
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'type' => RosterAlertType::HoursShortfall->value,
+            'min_hours' => 160,
+            'scheduled_hours' => 8,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+        ]);
+    }
+
+    public function test_worker_edit_refreshes_coverage_shortages_when_role_changes(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345678),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $this->putJson("/api/workers/{$worker->israeli_id}", $this->workerPayload([
+            'full_name' => $worker->full_name,
+            'israeli_id' => $worker->israeli_id,
+            'role_id' => $this->role->id,
+        ]))->assertOk();
+
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-06-05 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+    }
+
+    public function test_worker_import_refreshes_roster_reports(): void
+    {
+        $user = User::query()->firstOrFail();
+        $israeliId = $this->validIsraeliId(72345679);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Import Worker',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->role->id,
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 50,
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-01',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        RosterAlert::query()->create([
+            'roster_id' => $roster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+            'scheduled_hours' => 50,
+        ]);
+
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Import Worker Updated',
+                israeliId: $israeliId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '55.00',
+                minMonthlyHours: '160',
+                maxMonthlyHours: '240',
+                shiftA: '0|1',
+            ),
+        ])->assertOk();
+
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'type' => RosterAlertType::HoursShortfall->value,
+            'min_hours' => 160,
+            'scheduled_hours' => 8,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+        ]);
+    }
+
+    public function test_worker_import_dispatches_one_aggregate_event(): void
+    {
+        Event::fake([WorkersImported::class]);
+
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'First Imported Worker',
+                israeliId: $this->validIsraeliId(74345679),
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '55.00',
+                minMonthlyHours: '120',
+                maxMonthlyHours: '200',
+                shiftA: '0|1',
+            ),
+            $this->csvRow(
+                fullName: 'Second Imported Worker',
+                israeliId: $this->validIsraeliId(75345679),
+                role: 'Supervisor',
+                status: 'Active',
+                hourlyCost: '75.00',
+                minMonthlyHours: '120',
+                maxMonthlyHours: '200',
+                shiftA: '0|1',
+            ),
+        ])->assertOk();
+
+        Event::assertDispatchedTimes(WorkersImported::class, 1);
+        Event::assertDispatched(
+            WorkersImported::class,
+            static fn (WorkersImported $event): bool => $event->created === 2
+                && $event->updated === 0,
+        );
+    }
+
+    public function test_worker_import_rejects_lower_max_hours_when_roster_assignments_exceed_it(): void
+    {
+        $user = User::query()->firstOrFail();
+        $israeliId = $this->validIsraeliId(74345679);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Dana Import',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->supervisorRole->id,
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 75,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        for ($day = 1; $day <= 20; $day++) {
+            RosterAssignment::query()->create([
+                'roster_id' => $roster->id,
+                'worker_id' => $worker->israeli_id,
+                'shift_id' => $this->morningShift->id,
+                'work_date' => sprintf('2026-06-%02d', $day),
+                'source' => AssignmentSource::Auto,
+            ]);
+        }
+
+        $response = $this->importCsv([
+            $this->csvRow(
+                fullName: 'Dana Import',
+                israeliId: $israeliId,
+                role: 'Supervisor',
+                status: 'Active',
+                hourlyCost: '75.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '120',
+                shiftA: '0-6',
+            ),
+        ]);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('data.skipped', 1)
+            ->assertJsonPath('errors.0.field', 'max_monthly_hours')
+            ->assertJsonPath(
+                'errors.0.message',
+                'Cannot lower max monthly hours to 120. Remove this worker from the roster(s) first: June 2026 (160 hours assigned).',
+            );
+
+        $this->assertDatabaseHas('contracts', [
+            'worker_id' => $worker->israeli_id,
+            'max_monthly_hours' => 240,
+        ]);
+    }
+
+    public function test_worker_import_removes_assignments_outside_updated_availability(): void
+    {
+        $user = User::query()->firstOrFail();
+        $israeliId = $this->validIsraeliId(73345679);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Dana Import',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->supervisorRole->id,
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 75,
+                'min_monthly_hours' => 8,
+                'max_monthly_hours' => 180,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 1)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-01-01',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Dana Import',
+                israeliId: $israeliId,
+                role: 'Supervisor',
+                status: 'Active',
+                hourlyCost: '75.00',
+                minMonthlyHours: '8',
+                maxMonthlyHours: '180',
+                shiftA: '0-3',
+            ),
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-01-01 00:00:00',
+        ]);
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-01-01 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'type' => RosterAlertType::HoursShortfall->value,
+            'min_hours' => 8,
+            'scheduled_hours' => 0,
         ]);
     }
 
@@ -306,7 +750,8 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '50.25',
                 minMonthlyHours: '80',
                 maxMonthlyHours: '160',
-                availability: 'Sun:A|B;Tue:A|B;Thu:A|B',
+                shiftA: '0|2|4',
+                shiftB: '0|2|4',
             ),
         ]);
 
@@ -364,7 +809,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '75.50',
                 minMonthlyHours: '100',
                 maxMonthlyHours: '180',
-                availability: 'Fri:C;Sat:C',
+                shiftC: '5-6',
             ),
         ]);
 
@@ -397,8 +842,8 @@ final class WorkerApiTest extends TestCase
     public function test_worker_reimporting_same_csv_is_idempotent(): void
     {
         $rows = [
-            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', 'Sun:A|B;Mon:A|B'),
-            $this->csvRow('Second Worker', $this->validIsraeliId(10234567), 'Supervisor', 'Inactive', '72.00', '100', '180', 'Tue:B|C;Wed:B|C'),
+            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', '0|1', '0|1'),
+            $this->csvRow('Second Worker', $this->validIsraeliId(10234567), 'Supervisor', 'Inactive', '72.00', '100', '180', '', '2|3', '2|3'),
         ];
 
         $first = $this->importCsv($rows);
@@ -436,7 +881,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '-1',
                 minMonthlyHours: '160',
                 maxMonthlyHours: '80',
-                availability: 'Mon:A;Mon:A;Mon:D',
+                shiftA: '7',
             ),
         ]);
 
@@ -451,11 +896,15 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('data.skipped', 1);
 
         self::assertContains('israeli_id', $fields);
+        self::assertSame(1, count(array_filter(
+            $errors,
+            static fn (array $error): bool => $error['field'] === 'israeli_id' && $error['line'] === 2,
+        )));
         self::assertContains('role', $fields);
         self::assertContains('status', $fields);
         self::assertContains('hourly_cost', $fields);
         self::assertContains('max_monthly_hours', $fields);
-        self::assertContains('availability', $fields);
+        self::assertContains('Shift_A', $fields);
         self::assertSame([2], array_values(array_unique(array_column($errors, 'line'))));
 
         $this->assertDatabaseCount('workers', 0);
@@ -467,9 +916,9 @@ final class WorkerApiTest extends TestCase
         $validIsraeliId = $this->validIsraeliId(11234567);
 
         $response = $this->importCsv([
-            $this->csvRow('Valid Worker', $validIsraeliId, 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A|B;Tue:A|B'),
-            $this->csvRow('Bad ID', '12345', 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A'),
-            $this->csvRow('Bad Range', $this->validIsraeliId(12234567), 'Supervisor', 'Active', '50.00', '160', '80', 'Mon:A'),
+            $this->csvRow('Valid Worker', $validIsraeliId, 'General Guard', 'Active', '50.00', '80', '160', '', '1|2', '1|2'),
+            $this->csvRow('Bad ID', '12345', 'General Guard', 'Active', '50.00', '80', '160', '', '1', ''),
+            $this->csvRow('Bad Range', $this->validIsraeliId(12234567), 'Supervisor', 'Active', '50.00', '160', '80', '', '1', ''),
         ]);
 
         $response
@@ -606,7 +1055,7 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('meta.total', 0);
     }
 
-    private function importFile(string $path): \Illuminate\Testing\TestResponse
+    private function importFile(string $path): TestResponse
     {
         $upload = new UploadedFile($path, 'workers.csv', 'text/csv', null, true);
 
@@ -616,9 +1065,9 @@ final class WorkerApiTest extends TestCase
     /**
      * Import CSV rows with the canonical header.
      *
-     * @param list<array<int, string>> $rows
+     * @param  list<array<int, string>>  $rows
      */
-    private function importCsv(array $rows): \Illuminate\Testing\TestResponse
+    private function importCsv(array $rows): TestResponse
     {
         return $this->importFile($this->writeTempCsv($this->csv($rows)));
     }
@@ -626,13 +1075,13 @@ final class WorkerApiTest extends TestCase
     /**
      * Build CSV contents using the fixed worker CSV column order.
      *
-     * @param list<array<int, string>> $rows
+     * @param  list<array<int, string>>  $rows
      */
     private function csv(array $rows): string
     {
         $handle = fopen('php://temp', 'r+');
 
-        fputcsv($handle, WorkerCsvService::HEADERS);
+        fputcsv($handle, $this->csvService->headers());
 
         foreach ($rows as $row) {
             fputcsv($handle, $row);
@@ -658,17 +1107,21 @@ final class WorkerApiTest extends TestCase
         string $hourlyCost,
         string $minMonthlyHours,
         string $maxMonthlyHours,
-        string $availability,
+        string $shiftA = '',
+        string $shiftB = '',
+        string $shiftC = '',
     ): array {
         return [
-            WorkerCsvService::FULL_NAME => $fullName,
-            WorkerCsvService::ISRAELI_ID => $israeliId,
-            WorkerCsvService::ROLE => $role,
-            WorkerCsvService::STATUS => $status,
-            WorkerCsvService::HOURLY_COST => $hourlyCost,
-            WorkerCsvService::MIN_MONTHLY_HOURS => $minMonthlyHours,
-            WorkerCsvService::MAX_MONTHLY_HOURS => $maxMonthlyHours,
-            WorkerCsvService::AVAILABILITY => $availability,
+            $fullName,
+            $israeliId,
+            $role,
+            $status,
+            $hourlyCost,
+            $minMonthlyHours,
+            $maxMonthlyHours,
+            $shiftA,
+            $shiftB,
+            $shiftC,
         ];
     }
 
@@ -690,7 +1143,7 @@ final class WorkerApiTest extends TestCase
 
     private function writeTempCsv(string $contents): string
     {
-        $path = tempnam(sys_get_temp_dir(), 'workers_csv_') . '.csv';
+        $path = tempnam(sys_get_temp_dir(), 'workers_csv_').'.csv';
         file_put_contents($path, $contents);
 
         return $path;
@@ -706,8 +1159,8 @@ final class WorkerApiTest extends TestCase
     /**
      * Assert that a worker's contract availability matches exactly.
      *
-     * @param list<int> $expectedDays
-     * @param list<int> $expectedShiftIds
+     * @param  list<int>  $expectedDays
+     * @param  list<int>  $expectedShiftIds
      */
     private function assertAvailability(Worker $worker, array $expectedDays, array $expectedShiftIds): void
     {
@@ -732,7 +1185,7 @@ final class WorkerApiTest extends TestCase
     /**
      * Build a valid worker API payload with optional overrides.
      *
-     * @param array<string, mixed> $overrides
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
     private function workerPayload(array $overrides = []): array
@@ -761,8 +1214,8 @@ final class WorkerApiTest extends TestCase
     }
 
     /**
-     * @param list<int> $days
-     * @param list<int> $shiftIds
+     * @param  list<int>  $days
+     * @param  list<int>  $shiftIds
      * @return list<array{day_of_week: int, shift_id: int}>
      */
     private function availabilityPairs(array $days, array $shiftIds): array

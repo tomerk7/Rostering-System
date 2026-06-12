@@ -16,15 +16,15 @@ const auth = useAuthStore()
     <div class="home__actions">
       <RouterLink
         class="button button--primary"
-        :to="{ name: 'workers' }"
-      >
-        Manage workers
-      </RouterLink>
-      <RouterLink
-        class="button"
         :to="{ name: 'rosters.generate' }"
       >
         Generate roster
+      </RouterLink>
+      <RouterLink
+        class="button"
+        :to="{ name: 'workers' }"
+      >
+        Manage workers
       </RouterLink>
     </div>
   </main>

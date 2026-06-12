@@ -50,17 +50,19 @@ function shortfallGap(shortfall) {
       aria-controls="roster-alerts-body"
       @click="isExpanded = !isExpanded"
     >
-      <h2 class="roster-alerts__title">
-        Hour shortfalls
-      </h2>
-      <p class="roster-alerts__meta">
-        {{ hoursCount }} worker{{ hoursCount === 1 ? '' : 's' }} below minimum hours
-        <span
-          class="roster-alerts__chevron"
-          :class="{ 'roster-alerts__chevron--expanded': isExpanded }"
-          aria-hidden="true"
-        >▸</span>
-      </p>
+      <div class="roster-alerts__header-text">
+        <h2 class="roster-alerts__title">
+          Hour shortfalls
+        </h2>
+        <p class="roster-alerts__meta">
+          {{ hoursCount }} worker{{ hoursCount === 1 ? '' : 's' }} below minimum hours
+        </p>
+      </div>
+      <span
+        class="roster-alerts__chevron"
+        :class="{ 'roster-alerts__chevron--expanded': isExpanded }"
+        aria-hidden="true"
+      />
     </button>
 
     <div
@@ -72,7 +74,7 @@ function shortfallGap(shortfall) {
         <li
           v-for="shortfall in sortedHoursShortfalls"
           :key="shortfall.worker_id"
-          class="roster-alerts__item roster-alerts__item--info"
+          class="roster-alerts__item"
         >
           <span class="roster-alerts__item-main">{{ workerName(shortfall) }}</span>
           <span class="roster-alerts__item-meta">
@@ -86,70 +88,89 @@ function shortfallGap(shortfall) {
 
 <style scoped>
 .roster-alerts {
-  padding: 0.625rem 0.75rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.5rem;
-}
-
-.roster-alerts--warning {
-  border-color: #fdba74;
-  background: #fffaf5;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 0.625rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
 }
 
 .roster-alerts__header {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  align-items: baseline;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
   width: 100%;
   padding: 0;
   font: inherit;
   color: inherit;
   text-align: left;
-  cursor: default;
+  cursor: pointer;
   background: none;
   border: none;
 }
 
-.roster-alerts--warning .roster-alerts__header {
-  cursor: pointer;
+.roster-alerts__header-text {
+  min-width: 0;
 }
 
 .roster-alerts__title {
   margin: 0;
   font-size: 0.9375rem;
+  font-weight: 700;
+  color: #92400e;
 }
 
 .roster-alerts__meta {
-  margin: 0;
-  font-size: 0.75rem;
-  color: #64748b;
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  color: #b45309;
 }
 
 .roster-alerts__chevron {
-  display: inline-block;
-  margin-left: 0.25rem;
-  font-size: 0.625rem;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.roster-alerts__chevron::before {
+  content: '';
+  width: 0.375rem;
+  height: 0.375rem;
+  border-right: 2px solid #b45309;
+  border-bottom: 2px solid #b45309;
+  transform: rotate(-45deg) translate(-1px, -1px);
   transition: transform 0.15s ease;
 }
 
-.roster-alerts__chevron--expanded {
-  transform: rotate(90deg);
+.roster-alerts__chevron--expanded::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.roster-alerts__header:hover .roster-alerts__chevron {
+  background: #fde68a;
 }
 
 .roster-alerts__scroll {
-  max-height: 10rem;
-  margin-top: 0.5rem;
-  padding-top: 0.5rem;
+  max-height: 8rem;
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
   overflow-y: auto;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid #fde68a;
 }
 
 .roster-alerts__list {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.375rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -158,28 +179,25 @@ function shortfallGap(shortfall) {
 .roster-alerts__item {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem 0.5rem;
+  gap: 0.25rem 0.75rem;
   align-items: baseline;
   justify-content: space-between;
-  padding: 0.375rem 0.5rem;
-  font-size: 0.75rem;
-  border-radius: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  background: #fff;
+  border: 1px solid #fde68a;
+  border-radius: 0.5rem;
 }
 
 .roster-alerts__item-main {
-  color: #334155;
+  font-weight: 600;
+  color: #78350f;
 }
 
 .roster-alerts__item-meta {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.roster-alerts__item--info {
-  background: #dbeafe;
-}
-
-.roster-alerts__item--info .roster-alerts__item-meta {
-  color: #1e40af;
+  color: #b45309;
 }
 </style>

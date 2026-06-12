@@ -24,6 +24,8 @@ const loading = ref(false)
 const submitting = ref(false)
 const formError = ref('')
 const fieldErrors = ref({})
+const successMessage = ref('')
+let successTimeoutId = null
 
 const form = reactive({
   full_name: '',
@@ -58,7 +60,35 @@ const submitLabel = computed(() => {
 
 onMounted(async () => {
   await loadForm()
+
+  if (route.query.saved === '1') {
+    showSuccess('Worker created successfully.')
+    const { saved, ...rest } = route.query
+    router.replace({ query: rest })
+  }
 })
+
+function showSuccess(message) {
+  successMessage.value = message
+
+  if (successTimeoutId !== null) {
+    clearTimeout(successTimeoutId)
+  }
+
+  successTimeoutId = setTimeout(() => {
+    successMessage.value = ''
+    successTimeoutId = null
+  }, 3000)
+}
+
+function clearSuccess() {
+  successMessage.value = ''
+
+  if (successTimeoutId !== null) {
+    clearTimeout(successTimeoutId)
+    successTimeoutId = null
+  }
+}
 
 function slotKey(dayOfWeek, shiftId) {
   return `${dayOfWeek}:${shiftId}`
@@ -125,15 +155,21 @@ async function submitForm() {
   submitting.value = true
   formError.value = ''
   fieldErrors.value = {}
+  clearSuccess()
 
   try {
     const payload = buildPayload()
 
     if (workerIsraeliId.value !== null) {
-      await updateWorker(workerIsraeliId.value, payload)
+      const response = await updateWorker(workerIsraeliId.value, payload)
+      showSuccess(response.message ?? 'Worker updated successfully.')
     } else {
       const response = await createWorker(payload)
-      await router.push({ name: 'workers.edit', params: { id: response.data.israeli_id } })
+      await router.push({
+        name: 'workers.edit',
+        params: { id: response.data.israeli_id },
+        query: { saved: '1' },
+      })
     }
   } catch (error) {
     if (isAxiosError(error) && error.response?.status === 422) {
@@ -207,6 +243,14 @@ function fieldError(field) {
     </header>
 
     <section class="panel">
+      <p
+        v-if="successMessage"
+        class="form-success"
+        role="status"
+      >
+        {{ successMessage }}
+      </p>
+
       <div
         v-if="formError"
         class="alert"
@@ -441,6 +485,16 @@ function fieldError(field) {
 @import '@/assets/ui/button.css';
 @import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
+
+.form-success {
+  margin: 0 0 0.75rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 0.375rem;
+}
 
 .worker-form {
   display: flex;

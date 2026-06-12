@@ -28,6 +28,7 @@ const showAssignmentModal = ref(false)
 const assignmentError = ref('')
 const assignmentContext = ref(null)
 const weekAnchor = ref('')
+const viewMode = ref('week')
 
 /**
  * Formatted month and year label for the loaded roster.
@@ -93,6 +94,19 @@ const canGoNext = computed(
     && weekRange.value.endDate < monthRange.value.endDate,
 )
 
+/**
+ * Date range shown in the grid for the active view mode.
+ *
+ * @returns {{ startDate: string, endDate: string }|null}
+ */
+const gridRange = computed(() => {
+  if (viewMode.value === 'month') {
+    return monthRange.value
+  }
+
+  return weekRange.value
+})
+
 onMounted(async () => {
   await loadRoster()
 })
@@ -125,7 +139,28 @@ async function loadRoster() {
       ].join('-')
     : getMonthRange(roster.year, roster.month).startDate
 
-  await loadWeek(weekAnchor.value)
+  await loadVisibleRange()
+}
+
+/**
+ * Load assignments for the active grid range.
+ *
+ * @returns {Promise<boolean>}
+ */
+async function loadVisibleRange() {
+  const roster = rostersStore.roster
+  const range = gridRange.value
+
+  if (!roster || !range) {
+    return false
+  }
+
+  const response = await rostersStore.fetchAssignments(roster.id, {
+    fromDate: range.startDate,
+    toDate: range.endDate,
+  })
+
+  return Boolean(response)
 }
 
 /**
@@ -135,23 +170,8 @@ async function loadRoster() {
  * @returns {Promise<boolean>}
  */
 async function loadWeek(anchorDate) {
-  const roster = rostersStore.roster
-  if (!roster) {
-    return false
-  }
-
-  const range = getRosterWeekRange(roster.year, roster.month, anchorDate)
-  const response = await rostersStore.fetchAssignments(roster.id, {
-    fromDate: range.startDate,
-    toDate: range.endDate,
-  })
-
-  if (!response) {
-    return false
-  }
-
   weekAnchor.value = anchorDate
-  return true
+  return loadVisibleRange()
 }
 
 /**
@@ -162,6 +182,21 @@ async function loadWeek(anchorDate) {
  */
 async function moveWeek(days) {
   await loadWeek(addDays(weekAnchor.value, days))
+}
+
+/**
+ * Switch between week and full-month grid views.
+ *
+ * @param {'week'|'month'} mode
+ * @returns {Promise<void>}
+ */
+async function setViewMode(mode) {
+  if (viewMode.value === mode) {
+    return
+  }
+
+  viewMode.value = mode
+  await loadVisibleRange()
 }
 
 /**
@@ -203,7 +238,7 @@ async function submitAssignment(payload) {
   const roster = await rostersStore.addManualAssignment(rostersStore.roster.id, payload)
 
   if (roster) {
-    await loadWeek(weekAnchor.value)
+    await loadVisibleRange()
     closeAssignmentModal()
     return
   }
@@ -232,7 +267,7 @@ async function removeAssignment(assignmentId) {
   )
 
   if (roster) {
-    await loadWeek(weekAnchor.value)
+    await loadVisibleRange()
   }
 }
 
@@ -395,9 +430,9 @@ async function regenerateRoster() {
         />
 
         <RosterGrid
-          v-if="weekRange"
-          :start-date="weekRange.startDate"
-          :end-date="weekRange.endDate"
+          v-if="gridRange"
+          :start-date="gridRange.startDate"
+          :end-date="gridRange.endDate"
           :shifts="referenceData.reference.shifts"
           :requirements="referenceData.reference.shift_role_requirements"
           :roles="referenceData.reference.roles"
@@ -406,13 +441,40 @@ async function regenerateRoster() {
           :workers-by-id="referenceData.workersById"
           :editable="true"
           :loading="rostersStore.assignmentsLoading"
+          :show-navigation="viewMode === 'week'"
+          :full-month="viewMode === 'month'"
           :can-go-previous="canGoPrevious"
           :can-go-next="canGoNext"
           @cell-click="openAssignmentModal"
           @remove-assignment="removeAssignment"
           @previous-week="moveWeek(-7)"
           @next-week="moveWeek(7)"
-        />
+        >
+          <template #view-toggle>
+            <div
+              class="roster-view-toggle"
+              role="group"
+              aria-label="Roster grid view"
+            >
+              <button
+                type="button"
+                class="button"
+                :class="{ 'button--primary': viewMode === 'week' }"
+                @click="setViewMode('week')"
+              >
+                Week
+              </button>
+              <button
+                type="button"
+                class="button"
+                :class="{ 'button--primary': viewMode === 'month' }"
+                @click="setViewMode('month')"
+              >
+                Full month
+              </button>
+            </div>
+          </template>
+        </RosterGrid>
       </template>
     </section>
 
@@ -424,8 +486,8 @@ async function regenerateRoster() {
       :shifts="referenceData.reference?.shifts ?? []"
       :roles="referenceData.reference?.roles"
       :initial-date="assignmentContext?.workDate"
-      :min-date="weekRange?.startDate"
-      :max-date="weekRange?.endDate"
+      :min-date="monthRange?.startDate"
+      :max-date="monthRange?.endDate"
       :initial-shift-id="assignmentContext?.shiftId"
       :initial-role-id="assignmentContext?.roleId"
       :saving="rostersStore.assignmentLoading"
@@ -440,4 +502,9 @@ async function regenerateRoster() {
 @import '@/assets/ui/button.css';
 @import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
+
+.roster-view-toggle {
+  display: inline-flex;
+  gap: 0.375rem;
+}
 </style>

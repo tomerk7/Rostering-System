@@ -426,8 +426,10 @@ function availabilitySummary(worker) {
         </header>
 
         <p class="modal__hint">
-          One row per worker. Columns are read by position: full_name, israeli_id, role, status,
-          hourly_cost, min_monthly_hours, max_monthly_hours, availability (e.g. Sun:C;Mon:A|B).
+          One row per worker. Fixed columns: full_name, israeli_id, role, status,
+          hourly_cost, min_monthly_hours, max_monthly_hours. Then one column per shift
+          (Shift_A, Shift_B, Shift_C) with a day expression such as 1-5, 0|6, or 0-6
+          (0=Sunday through 6=Saturday). Leave a shift cell empty when unavailable.
         </p>
 
         <label class="field">

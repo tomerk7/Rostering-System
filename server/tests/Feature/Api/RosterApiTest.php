@@ -148,6 +148,15 @@ final class RosterApiTest extends TestCase
             ->assertJsonPath('data.status', 'processing');
     }
 
+    public function test_show_returns_friendly_not_found_for_missing_roster(): void
+    {
+        $this->getJson('/api/rosters/999999')
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Roster not found.')
+            ->assertJsonMissingPath('exception');
+    }
+
     public function test_generating_replaces_the_existing_roster_for_the_month(): void
     {
         $first = $this->postJson('/api/rosters', ['month' => self::MONTH])

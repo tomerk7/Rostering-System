@@ -18,7 +18,7 @@ final class ReferenceDataSeederTest extends TestCase
 
     public function test_reference_data_returns_empty_collections_when_database_is_empty(): void
     {
-        $data = (new WorkerService())->referenceData();
+        $data = $this->app->make(WorkerService::class)->referenceData();
 
         self::assertCount(0, $data['roles']);
         self::assertCount(0, $data['shifts']);

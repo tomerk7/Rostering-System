@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -16,18 +15,15 @@ return new class extends Migration
     {
         Schema::create('rosters', function (Blueprint $table) {
             $table->id();
-            $table->smallInteger('year');
-            $table->smallInteger('month');
+            $table->date('period_start');
             $table->timestamp('generated_at')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->timestamps();
 
             // Exactly one roster per calendar month.
-            $table->unique(['year', 'month']);
+            $table->unique('period_start');
         });
-
-        DB::statement('ALTER TABLE rosters ADD CONSTRAINT rosters_month_range CHECK (month BETWEEN 1 AND 12)');
     }
 
     /**

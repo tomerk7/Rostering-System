@@ -1,0 +1,36 @@
+full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,Shift_A,Shift_B,Shift_C
+Ziv Asulin,010000061,General Guard,Active,49.22,120,200,0-6,0-6,0-6
+Maya Dahan,010000049,General Guard,Active,53.08,120,160,0-6,0-6,0-6
+Shira Katz,010000044,General Guard,Active,53.29,140,160,0-6,0-6,0-6
+Maya Goldberg,010000067,Screener,Active,60.08,140,240,0-6,0-6,0-6
+Itai Elkayam,010000076,Supervisor,Active,84.25,120,200,0-6,0-6,0-6
+Ido Golan,010000070,Screener,Active,59.37,120,220,0-6,0-6,0-6
+Yael Mizrahi,010000046,General Guard,Active,50.22,140,180,0-6,0-6,0-6
+Bar Mizrahi,010000073,Supervisor,Active,86.87,140,180,0-6,0-6,0-6
+Nadav Levi,010000050,General Guard,Active,51.70,140,240,0-6,0-6,0-6
+Gili Goldberg,010000074,Supervisor,Active,72.93,100,120,0-6,0-6,0-6
+Keren Mizrahi,010000042,General Guard,Active,52.95,140,240,0-6,0-6,0-6
+Omri Ohana,010000047,General Guard,Active,50.96,120,180,0-6,0-6,0-6
+Dana Ohana,010000043,General Guard,Active,49.54,100,120,0-6,0-6,0-6
+Yael Klein,010000072,Supervisor,Active,77.19,100,120,0-6,0-6,0-6
+Bar Rosen,010000057,General Guard,Active,53.96,140,240,0-6,0-6,0-6
+Omer Friedman,010000045,General Guard,Active,54.84,100,180,0-6,0-6,0-6
+Amit Cohen,010000060,General Guard,Active,51.95,100,120,0-6,0-6,0-6
+Maya Mor,010000075,Supervisor,Active,83.71,100,200,0-6,0-6,0-6
+Keren Saban,010000056,General Guard,Active,49.14,120,160,0-6,0-6,0-6
+Adi Biton,010000053,General Guard,Active,51.21,100,140,0-6,0-6,0-6
+Eitan Saban,010000062,General Guard,Active,52.77,160,240,0-6,0-6,0-6
+Nadav Ben-David,010000063,General Guard,Active,52.77,160,260,0-6,0-6,0-6
+Dana Mor,010000054,General Guard,Active,55.31,140,180,0-6,0-6,0-6
+Dana Bar,010000051,General Guard,Active,49.76,140,160,0-6,0-6,0-6
+Avi Peretz,010000068,Screener,Active,62.86,100,160,0-6,0-6,0-6
+Elad Mor,010000048,General Guard,Active,53.61,100,200,0-6,0-6,0-6
+Shira Friedman,010000064,Screener,Active,58.26,100,120,0-6,0-6,0-6
+Tamar Vaknin,010000065,Screener,Active,62.14,140,200,0-6,0-6,0-6
+Lior Mizrahi,010000066,Screener,Active,57.00,160,200,0-6,0-6,0-6
+Chen Golan,010000059,General Guard,Active,49.75,120,220,0-6,0-6,0-6
+Amit Levi,010000071,Screener,Active,64.58,100,200,0-6,0-6,0-6
+Tamar Saban,010000055,General Guard,Active,53.24,160,240,0-6,0-6,0-6
+Dor Peretz,010000069,Screener,Active,63.58,120,160,0-6,0-6,0-6
+Omer Klein,010000058,General Guard,Active,51.43,160,220,0-6,0-6,0-6
+Tamar Katz,010000052,General Guard,Active,49.83,100,160,0-6,0-6,0-6
