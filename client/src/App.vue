@@ -35,6 +35,12 @@ async function onLogout() {
       >
         Workers
       </RouterLink>
+      <RouterLink
+        class="app-nav__link"
+        :to="{ name: 'rosters.benchmark' }"
+      >
+        Benchmark
+      </RouterLink>
     </nav>
     <div class="app-nav__actions">
       <span

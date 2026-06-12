@@ -10,6 +10,7 @@ import {
   getRoster,
   listRosters,
   regenerateRoster,
+  runBenchmark,
 } from '@/api/rosters'
 import { runStoreRequest } from '@/stores/storeRequest'
 
@@ -26,8 +27,10 @@ export const useRostersStore = defineStore('rosters', {
     assignedHoursByWorker: {},
     currentYear: null,
     selectedMonth: null,
+    benchmark: null,
     loading: false,
     generating: false,
+    benchmarking: false,
     deletingId: null,
     assignmentLoading: false,
     assignmentsLoading: false,
@@ -169,6 +172,25 @@ export const useRostersStore = defineStore('rosters', {
           this.applyRosterUpdate(roster)
 
           return roster
+        },
+      })
+    },
+
+    /**
+     * Run a plain vs cost-optimized benchmark for the given month.
+     *
+     * @param {number} month
+     * @returns {Promise<object|null>}
+     */
+    runBenchmark(month) {
+      return runStoreRequest(this, {
+        loadingKey: 'benchmarking',
+        fallback: 'Could not run benchmark. Please try again.',
+        request: async () => {
+          const response = await runBenchmark({ month: Number(month) })
+          this.benchmark = response.data
+
+          return response.data
         },
       })
     },

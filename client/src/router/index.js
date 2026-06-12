@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
+import RosterBenchmarkView from '@/views/RosterBenchmarkView.vue'
 import RosterDetailsView from '@/views/RosterDetailsView.vue'
 import RosterGenerateView from '@/views/RosterGenerateView.vue'
 import RostersView from '@/views/RostersView.vue'
@@ -46,6 +47,12 @@ const router = createRouter({
       path: '/rosters',
       name: 'rosters',
       component: RostersView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rosters/benchmark',
+      name: 'rosters.benchmark',
+      component: RosterBenchmarkView,
       meta: { requiresAuth: true },
     },
     {

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Http\Controllers\Api\RosterAssignmentController;
+use App\Http\Controllers\Api\RosterBenchmarkController;
 use App\Http\Controllers\Api\RosterController;
 use App\Http\Controllers\Api\WorkerController;
 use Illuminate\Http\Request;
@@ -26,6 +27,8 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::post('workers/{worker}/restore', [WorkerController::class, 'restore']);
 
     Route::apiResource('workers', WorkerController::class);
+
+    Route::post('rosters/benchmark', RosterBenchmarkController::class);
 
     Route::apiResource('rosters', RosterController::class)
         ->only(['index', 'show', 'store', 'destroy'])

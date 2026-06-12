@@ -89,6 +89,18 @@ export async function regenerateRoster(rosterId, payload = {}) {
 }
 
 /**
+ * Run a plain vs cost-optimized generation benchmark for the given month.
+ *
+ * @param {object} payload
+ * @returns {Promise<object>}
+ */
+export async function runBenchmark(payload) {
+  const { data } = await api.post('/api/rosters/benchmark', payload)
+
+  return data
+}
+
+/**
  * Delete a roster by id.
  *
  * @param {number|string} rosterId

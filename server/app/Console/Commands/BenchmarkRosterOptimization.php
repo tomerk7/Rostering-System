@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Services\Rostering\RosterGenerator;
+use App\Exceptions\Rostering\BenchmarkException;
+use App\Services\Rostering\RosterBenchmark;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Compare a plain greedy roster against the cost-optimized one for a month.
@@ -21,113 +21,45 @@ final class BenchmarkRosterOptimization extends Command
 
     protected $description = 'Compare greedy vs cost-optimized roster generation for a month (nothing is saved)';
 
-    public function handle(RosterGenerator $generator): int
+    public function handle(RosterBenchmark $benchmark): int
     {
         $year = (int) $this->argument('year');
         $month = (int) $this->argument('month');
 
-        $costs = DB::table('contracts')->pluck('hourly_cost', 'worker_id');
-        $minHours = DB::table('contracts')->pluck('min_monthly_hours', 'worker_id');
-        $maxHours = DB::table('contracts')->pluck('max_monthly_hours', 'worker_id');
+        $this->info("Generating {$year}-{$month} twice (plain, then optimized)...");
 
-        if ($costs->isEmpty()) {
-            $this->error('No contracts found — seed some workers first.');
+        try {
+            $result = $benchmark->run($year, $month);
+        } catch (BenchmarkException $exception) {
+            $this->error($exception->getMessage());
 
             return self::FAILURE;
         }
 
-        $this->info("Generating {$year}-{$month} twice (plain, then optimized)...");
-
-        $startedAt = microtime(true);
-        $plain = $generator->generate($year, $month);
-        $plainSeconds = microtime(true) - $startedAt;
-
-        $startedAt = microtime(true);
-        $optimized = $generator->generate($year, $month, optimizeCost: true);
-        $optimizedSeconds = microtime(true) - $startedAt;
-
-        $totalCost = static function (array $assignments) use ($costs): float {
-            $total = 0.0;
-
-            foreach ($assignments as $assignment) {
-                $total += (float) $costs[$assignment['worker_id']] * 8;
-            }
-
-            return $total;
-        };
-
-        $scheduledHours = static function (array $assignments): array {
-            $scheduled = [];
-
-            foreach ($assignments as $assignment) {
-                $scheduled[$assignment['worker_id']] = ($scheduled[$assignment['worker_id']] ?? 0) + 8;
-            }
-
-            return $scheduled;
-        };
-
-        $shortfallHours = static function (array $assignments) use ($minHours, $scheduledHours): int {
-            $scheduled = $scheduledHours($assignments);
-            $total = 0;
-
-            foreach ($minHours as $workerId => $min) {
-                $total += max(0, (int) $min - ($scheduled[$workerId] ?? 0));
-            }
-
-            return $total;
-        };
-
-        $maxViolations = static function (array $assignments) use ($maxHours, $scheduledHours): int {
-            $scheduled = $scheduledHours($assignments);
-            $count = 0;
-
-            foreach ($maxHours as $workerId => $max) {
-                if (($scheduled[$workerId] ?? 0) > (int) $max) {
-                    $count++;
-                }
-            }
-
-            return $count;
-        };
-
-        $hoursStdDev = static function (array $assignments) use ($scheduledHours): float {
-            $scheduled = array_values($scheduledHours($assignments));
-
-            if (count($scheduled) < 2) {
-                return 0.0;
-            }
-
-            $mean = array_sum($scheduled) / count($scheduled);
-            $variance = array_sum(array_map(fn ($h) => ($h - $mean) ** 2, $scheduled)) / count($scheduled);
-
-            return sqrt($variance);
-        };
-
-        $costPlain = $totalCost($plain->assignments);
-        $costOptimized = $totalCost($optimized->assignments);
-        $saved = $costPlain - $costOptimized;
+        $plain = $result->plain;
+        $optimized = $result->optimized;
 
         $this->table(
             ['Metric', 'Plain (greedy)', 'Optimized (greedy + SA)'],
             [
-                ['Assignments', count($plain->assignments), count($optimized->assignments)],
-                ['Coverage shortages', count($plain->coverageShortages), count($optimized->coverageShortages)],
-                ['Total cost', number_format($costPlain, 2), number_format($costOptimized, 2)],
-                ['Min-hours shortfall (workers)', count($plain->hoursShortfalls), count($optimized->hoursShortfalls)],
-                ['Min-hours shortfall (hours)', $shortfallHours($plain->assignments), $shortfallHours($optimized->assignments)],
-                ['Max-hours violations (workers)', $maxViolations($plain->assignments), $maxViolations($optimized->assignments)],
-                ['Hours std deviation', sprintf('%.2f', $hoursStdDev($plain->assignments)), sprintf('%.2f', $hoursStdDev($optimized->assignments))],
-                ['Generation time', sprintf('%.2fs', $plainSeconds), sprintf('%.2fs', $optimizedSeconds)],
+                ['Assignments', $plain['assignments'], $optimized['assignments']],
+                ['Coverage shortages', $plain['coverage_shortages'], $optimized['coverage_shortages']],
+                ['Total cost', number_format($plain['total_cost'], 2), number_format($optimized['total_cost'], 2)],
+                ['Min-hours shortfall (workers)', $plain['min_hours_shortfall_workers'], $optimized['min_hours_shortfall_workers']],
+                ['Min-hours shortfall (hours)', $plain['min_hours_shortfall_hours'], $optimized['min_hours_shortfall_hours']],
+                ['Max-hours violations (workers)', $plain['max_hours_violations'], $optimized['max_hours_violations']],
+                ['Hours std deviation', sprintf('%.2f', $plain['hours_std_dev']), sprintf('%.2f', $optimized['hours_std_dev'])],
+                ['Generation time', sprintf('%.2fs', $plain['generation_seconds']), sprintf('%.2fs', $optimized['generation_seconds'])],
             ],
         );
 
         $this->info(sprintf(
             'Saved: %s (%.2f%%)',
-            number_format($saved, 2),
-            $costPlain > 0 ? ($saved / $costPlain) * 100 : 0,
+            number_format($result->savedAmount, 2),
+            $result->savedPercent,
         ));
 
-        if (count($plain->assignments) !== count($optimized->assignments)) {
+        if (! $result->assignmentsMatch) {
             $this->error('Coverage changed between runs — this should never happen, investigate!');
 
             return self::FAILURE;
