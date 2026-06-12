@@ -4,21 +4,21 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\RosterStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GenerateRosterRequest;
 use App\Http\Resources\RosterResource;
 use App\Models\Roster;
 use App\Services\Rostering\RosterService;
+use Exception;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Exception;
 
 final class RosterController extends Controller
 {
     /**
      * Constructor.
      *
-     * @param RosterService $rosterService
      * @return void
      */
     public function __construct(
@@ -26,34 +26,28 @@ final class RosterController extends Controller
     ) {}
 
     /**
-     * Generate and persist a roster for the given month in the current year,
-     * replacing any existing roster for the same period.
+     * Queue generation of a roster for the given month in the current year.
      *
-     * @param GenerateRosterRequest $request
-     * @return JsonResponse
      *
      * @throws Exception
      */
     public function store(GenerateRosterRequest $request): JsonResponse
     {
-        $roster = $this->rosterService->store(
+        $roster = $this->rosterService->queueStore(
             (int) now()->year,
             (int) $request->validated('month'),
             (int) $request->user()->id,
         );
 
-        return $this->response(
-            success: true,
-            message: 'Roster generated successfully.',
-            status: 201,
-            data: RosterResource::make($this->rosterService->loadDetails($roster)),
+        return $this->rosterGenerationResponse(
+            $roster,
+            processingStatus: 202,
+            completedStatus: 201,
         );
     }
 
     /**
      * List saved rosters with assignment counts.
-     *
-     * @return JsonResponse
      */
     public function index(): JsonResponse
     {
@@ -70,15 +64,12 @@ final class RosterController extends Controller
 
     /**
      * Show one roster with enriched assignments, optionally filtered by date or shift.
-     *
-     * @param Request $request
-     * @param Roster $roster
-     * @return JsonResponse
      */
     public function show(Request $request, Roster $roster): JsonResponse
     {
         $date = $request->query('date');
         $shiftId = $request->query('shift_id');
+        $includeAssignments = $request->boolean('include_assignments', true);
 
         return $this->response(
             success: true,
@@ -88,35 +79,30 @@ final class RosterController extends Controller
                 $roster,
                 $date !== null ? (string) $date : null,
                 $shiftId !== null ? (int) $shiftId : null,
+                $includeAssignments,
             )),
         );
     }
 
     /**
-     * Regenerate assignments for an existing roster.
+     * Queue regeneration of assignments for an existing roster.
      *
-     * @param Roster $roster
-     * @return JsonResponse
      *
      * @throws Exception
      */
     public function regenerate(Roster $roster): JsonResponse
     {
-        $roster = $this->rosterService->regenerate($roster);
+        $roster = $this->rosterService->queueRegeneration($roster);
 
-        return $this->response(
-            success: true,
-            message: 'Roster regenerated successfully.',
-            status: 200,
-            data: RosterResource::make($this->rosterService->loadDetails($roster)),
+        return $this->rosterGenerationResponse(
+            $roster,
+            processingStatus: 202,
+            completedMessage: 'Roster regenerated successfully.',
         );
     }
 
     /**
      * Delete a roster.
-     *
-     * @param Roster $roster
-     * @return JsonResponse
      */
     public function destroy(Roster $roster): JsonResponse
     {
@@ -127,5 +113,36 @@ final class RosterController extends Controller
             message: 'Roster deleted successfully.',
             status: 200,
         );
+    }
+
+    /**
+     * Return an API response for a roster generation request.
+     */
+    private function rosterGenerationResponse(
+        Roster $roster,
+        int $processingStatus = 200,
+        int $completedStatus = 200,
+        string $completedMessage = 'Roster generated successfully.',
+    ): JsonResponse {
+        return match ($roster->status) {
+            RosterStatus::Processing => $this->response(
+                success: true,
+                message: 'Roster generation is processing.',
+                status: $processingStatus,
+                data: RosterResource::make($roster),
+            ),
+            RosterStatus::Failed => $this->response(
+                success: false,
+                message: 'Roster generation failed.',
+                status: 500,
+                data: RosterResource::make($roster),
+            ),
+            RosterStatus::Ready => $this->response(
+                success: true,
+                message: $completedMessage,
+                status: $completedStatus,
+                data: RosterResource::make($this->rosterService->loadDetails($roster->fresh())),
+            ),
+        };
     }
 }

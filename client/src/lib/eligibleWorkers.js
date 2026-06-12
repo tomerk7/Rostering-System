@@ -33,9 +33,14 @@ function isAvailableForSlot(worker, workDate, shiftId) {
  * @param {object[]} assignments
  * @param {number|string} workerId
  * @param {Map<number, object>} shiftsById
+ * @param {Record<string, number>} assignedHoursByWorker
  * @returns {number}
  */
-function assignedHoursForWorker(assignments, workerId, shiftsById) {
+function assignedHoursForWorker(assignments, workerId, shiftsById, assignedHoursByWorker) {
+  if (Object.hasOwn(assignedHoursByWorker, workerId)) {
+    return assignedHoursByWorker[workerId]
+  }
+
   return assignments
     .filter((assignment) => assignment.worker_id === workerId)
     .reduce((total, assignment) => {
@@ -63,10 +68,20 @@ function shiftsOnDateForWorker(assignments, workerId, workDate) {
  * Check whether a worker may be manually assigned to a slot.
  *
  * @param {object} worker
- * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object> }} options
+ * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
  * @returns {boolean}
  */
-export function isWorkerEligibleForAssignment(worker, { workDate, shiftId, roleId, assignments, shiftsById }) {
+export function isWorkerEligibleForAssignment(
+  worker,
+  {
+    workDate,
+    shiftId,
+    roleId,
+    assignments,
+    shiftsById,
+    assignedHoursByWorker = {},
+  },
+) {
   if (!workDate || !shiftId || !worker.contract) {
     return false
   }
@@ -93,7 +108,12 @@ export function isWorkerEligibleForAssignment(worker, { workDate, shiftId, roleI
 
   const shift = shiftsById.get(shiftId)
   const maxHours = worker.contract.max_monthly_hours ?? 0
-  const nextHours = assignedHoursForWorker(assignments, worker.israeli_id, shiftsById) + (shift?.duration_hours ?? 0)
+  const nextHours = assignedHoursForWorker(
+    assignments,
+    worker.israeli_id,
+    shiftsById,
+    assignedHoursByWorker,
+  ) + (shift?.duration_hours ?? 0)
 
   return nextHours <= maxHours
 }
@@ -102,7 +122,7 @@ export function isWorkerEligibleForAssignment(worker, { workDate, shiftId, roleI
  * Filter workers to those eligible for a manual assignment slot.
  *
  * @param {object[]} workers
- * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object> }} options
+ * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
  * @returns {object[]}
  */
 export function filterEligibleWorkers(workers, options) {

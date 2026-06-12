@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\RosterStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,15 +12,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['year', 'month', 'generated_at', 'published_at', 'created_by'])]
+#[Fillable(['year', 'month', 'status', 'generated_at', 'published_at', 'created_by'])]
 final class Roster extends Model
 {
     use HasFactory;
 
     /**
      * Get the user that created the roster.
-     * 
-     * @return BelongsTo
      */
     public function creator(): BelongsTo
     {
@@ -28,8 +27,6 @@ final class Roster extends Model
 
     /**
      * Get the assignments for the roster.
-     * 
-     * @return HasMany
      */
     public function assignments(): HasMany
     {
@@ -37,12 +34,23 @@ final class Roster extends Model
     }
 
     /**
+     * Get the worker alerts for the roster.
+     */
+    public function alerts(): HasMany
+    {
+        return $this->hasMany(RosterAlert::class);
+    }
+
+    /**
+     * Get the coverage shortages for the roster.
+     */
+    public function coverageShortages(): HasMany
+    {
+        return $this->hasMany(CoverageShortage::class);
+    }
+
+    /**
      * Scope the query to only include rosters for a specific period.
-     * 
-     * @param Builder $query
-     * @param int $year
-     * @param int $month
-     * @return Builder
      */
     public function scopeForPeriod(Builder $query, int $year, int $month): Builder
     {
@@ -59,6 +67,7 @@ final class Roster extends Model
         return [
             'year' => 'integer',
             'month' => 'integer',
+            'status' => RosterStatus::class,
             'generated_at' => 'datetime',
             'published_at' => 'datetime',
         ];

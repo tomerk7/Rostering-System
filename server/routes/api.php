@@ -30,6 +30,7 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::post('rosters/{roster}/regenerate', [RosterController::class, 'regenerate'])
         ->whereNumber('roster');
     Route::scopeBindings()->group(function (): void {
+        Route::get('rosters/{roster}/assignments', [RosterAssignmentController::class, 'index']);
         Route::post('rosters/{roster}/assignments', [RosterAssignmentController::class, 'store']);
         Route::put('rosters/{roster}/assignments/{assignment}', [RosterAssignmentController::class, 'update']);
         Route::delete('rosters/{roster}/assignments/{assignment}', [RosterAssignmentController::class, 'destroy']);

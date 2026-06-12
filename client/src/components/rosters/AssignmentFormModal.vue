@@ -7,8 +7,11 @@ const props = defineProps({
   workers: { type: Array, required: true },
   shifts: { type: Array, required: true },
   assignments: { type: Array, default: () => [] },
+  assignedHoursByWorker: { type: Object, default: () => ({}) },
   roles: { type: Array, default: undefined },
   initialDate: { type: String, default: undefined },
+  minDate: { type: String, default: undefined },
+  maxDate: { type: String, default: undefined },
   initialShiftId: { type: Number, default: undefined },
   initialRoleId: { type: Number, default: undefined },
   saving: { type: Boolean, default: false },
@@ -21,15 +24,41 @@ const workerId = ref('')
 const shiftId = ref('')
 const workDate = ref('')
 
+/**
+ * Roles indexed by id for quick lookup.
+ *
+ * @returns {Map<number, object>}
+ */
 const rolesById = computed(() => new Map((props.roles ?? []).map((role) => [role.id, role])))
+
+/**
+ * Shifts indexed by id for quick lookup.
+ *
+ * @returns {Map<number, object>}
+ */
 const shiftsById = computed(() => new Map(props.shifts.map((shift) => [shift.id, shift])))
 
+/**
+ * Role suggested from the clicked grid cell, if any.
+ *
+ * @returns {object|null}
+ */
 const suggestedRole = computed(() =>
   props.initialRoleId ? rolesById.value.get(props.initialRoleId) : null,
 )
 
+/**
+ * Whether both work date and shift are selected.
+ *
+ * @returns {boolean}
+ */
 const hasSlotSelection = computed(() => workDate.value !== '' && shiftId.value !== '')
 
+/**
+ * Workers eligible for the selected date, shift, and constraints.
+ *
+ * @returns {object[]}
+ */
 const filteredWorkers = computed(() => {
   if (!hasSlotSelection.value) {
     return []
@@ -41,6 +70,7 @@ const filteredWorkers = computed(() => {
     roleId: props.initialRoleId ?? null,
     assignments: props.assignments,
     shiftsById: shiftsById.value,
+    assignedHoursByWorker: props.assignedHoursByWorker,
   })
 })
 
@@ -62,14 +92,21 @@ watch([workDate, shiftId, filteredWorkers], () => {
     return
   }
 
-  const selectedId = Number(workerId.value)
-  const stillEligible = filteredWorkers.value.some((worker) => worker.israeli_id === selectedId)
+  const selectedId = String(workerId.value)
+  const stillEligible = filteredWorkers.value.some(
+    (worker) => String(worker.israeli_id) === selectedId,
+  )
 
   if (!stillEligible) {
     workerId.value = ''
   }
 })
 
+/**
+ * Emit a submit event when the form is valid.
+ *
+ * @returns {void}
+ */
 function onSubmit() {
   if (workerId.value === '' || shiftId.value === '' || workDate.value === '') {
     return
@@ -172,6 +209,8 @@ function onSubmit() {
             v-model="workDate"
             class="input"
             type="date"
+            :min="minDate"
+            :max="maxDate"
             required
           >
         </label>

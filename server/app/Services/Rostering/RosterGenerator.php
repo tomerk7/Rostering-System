@@ -51,6 +51,56 @@ final readonly class RosterGenerator
     }
 
     /**
+     * Recompute coverage shortages and hours shortfalls from saved assignments.
+     *
+     * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable}>  $savedAssignments
+     * @return array{
+     *     coverageShortages: list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>,
+     *     hoursShortfalls: list<array{worker_id: string, min_hours: int, scheduled_hours: int}>
+     * }
+     *
+     * @throws Exception
+     */
+    public function recomputeReports(int $year, int $month, array $savedAssignments): array
+    {
+        $slots = $this->buildSlots($year, $month);
+        $workers = $this->resolveWorkers();
+
+        /** @var array<int, int> $durationHoursByShiftId */
+        $durationHoursByShiftId = [];
+
+        foreach ($slots as $slot) {
+            $durationHoursByShiftId[$slot->shiftId] = $slot->durationHours;
+        }
+
+        $assignments = [];
+
+        foreach ($savedAssignments as $savedAssignment) {
+            $workerId = $savedAssignment['worker_id'];
+
+            if (! isset($workers[$workerId])) {
+                continue;
+            }
+
+            $shiftId = $savedAssignment['shift_id'];
+            $durationHours = $durationHoursByShiftId[$shiftId] ?? 0;
+
+            $workers[$workerId]->assignedHours += $durationHours;
+
+            $assignments[] = [
+                'worker_id' => $workerId,
+                'shift_id' => $shiftId,
+                'work_date' => $savedAssignment['work_date'],
+            ];
+        }
+
+        return [
+            'coverageShortages' => $this->engine->validateCoverage($slots, $assignments, $workers),
+            'hoursShortfalls' => $this->engine->reportHoursShortfalls($workers),
+        ];
+    }
+
+    /**
      * Return staffing shortages grouped by role, date, and shift.
      *
      * @return list<array{role_id: int, work_date: CarbonImmutable, shift_id: int, required_workers: int, available_workers: int}>

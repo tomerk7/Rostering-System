@@ -20,6 +20,13 @@ use Illuminate\Support\Facades\DB;
 final readonly class ManualAssignmentService
 {
     /**
+     * Constructor.
+     */
+    public function __construct(
+        private RosterService $rosterService,
+    ) {}
+
+    /**
      * Add a manual assignment after validating every hard constraint.
      *
      * @throws ManualAssignmentException
@@ -47,13 +54,19 @@ final readonly class ManualAssignmentService
         $this->assertDailyShiftLimit($roster, $workerId, $date);
         $this->assertWithinMaxHours($roster, $worker, $shift);
 
-        return DB::transaction(static fn (): RosterAssignment => RosterAssignment::query()->create([
-            'roster_id' => $roster->id,
-            'worker_id' => $workerId,
-            'shift_id' => $shiftId,
-            'work_date' => $date->toDateString(),
-            'source' => AssignmentSource::Manual,
-        ]));
+        return DB::transaction(function () use ($roster, $workerId, $shiftId, $date): RosterAssignment {
+            $assignment = RosterAssignment::query()->create([
+                'roster_id' => $roster->id,
+                'worker_id' => $workerId,
+                'shift_id' => $shiftId,
+                'work_date' => $date->toDateString(),
+                'source' => AssignmentSource::Manual,
+            ]);
+
+            $this->rosterService->refreshReports($roster);
+
+            return $assignment;
+        });
     }
 
     /**
@@ -62,7 +75,7 @@ final readonly class ManualAssignmentService
      *
      * @param Roster $roster
      * @param RosterAssignment $assignment
-     * @param int $workerId
+     * @param string $workerId
      * @return RosterAssignment
      * @throws ManualAssignmentException
      */
@@ -97,11 +110,13 @@ final readonly class ManualAssignmentService
         $this->assertDailyShiftLimit($roster, $workerId, $date);
         $this->assertWithinMaxHours($roster, $worker, $shift);
 
-        return DB::transaction(static function () use ($assignment, $workerId): RosterAssignment {
+        return DB::transaction(function () use ($roster, $assignment, $workerId): RosterAssignment {
             $assignment->update([
                 'worker_id' => $workerId,
                 'source' => AssignmentSource::Manual,
             ]);
+
+            $this->rosterService->refreshReports($roster);
 
             return $assignment;
         });
@@ -121,8 +136,10 @@ final readonly class ManualAssignmentService
             throw ManualAssignmentException::assignmentNotInRoster();
         }
 
-        DB::transaction(static function () use ($assignment): void {
+        DB::transaction(function () use ($roster, $assignment): void {
             $assignment->delete();
+
+            $this->rosterService->refreshReports($roster);
         });
     }
 

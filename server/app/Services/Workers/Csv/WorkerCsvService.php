@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services\Workers\Csv;
 
+use App\Enums\RoleCode;
+use App\Enums\ShiftCode;
 use App\Jobs\ExportWorkersJob;
 use App\Jobs\ImportWorkersJob;
 use App\Models\Contract;
@@ -77,28 +79,6 @@ final class WorkerCsvService
     public const string DEFAULT_STATUS = self::STATUS_ACTIVE;
 
     /**
-     * CSV role label (lowercased) to roles.code.
-     *
-     * @var array<string, string>
-     */
-    public const array ROLE_CODE_BY_LABEL = [
-        'general guard' => 'general_guard',
-        'supervisor' => 'supervisor',
-        'screener' => 'screener',
-    ];
-
-    /**
-     * roles.code to CSV role label, used on export.
-     *
-     * @var array<string, string>
-     */
-    public const array ROLE_LABEL_BY_CODE = [
-        'general_guard' => 'General Guard',
-        'supervisor' => 'Supervisor',
-        'screener' => 'Screener',
-    ];
-
-    /**
      * CSV day token (lowercased) to day_of_week (0 = Sunday .. 6 = Saturday).
      *
      * @var array<string, int>
@@ -127,13 +107,6 @@ final class WorkerCsvService
         5 => 'Fri',
         6 => 'Sat',
     ];
-
-    /**
-     * Allowed shift codes.
-     *
-     * @var list<string>
-     */
-    public const array SHIFT_CODES = ['A', 'B', 'C'];
 
     private const string IMPORT_STORAGE_DIR = 'worker-imports';
 
@@ -589,7 +562,7 @@ final class WorkerCsvService
         $row = [
             self::FULL_NAME => $worker->full_name,
             self::ISRAELI_ID => $worker->israeli_id,
-            self::ROLE => self::ROLE_LABEL_BY_CODE[$worker->role->code] ?? $worker->role->code,
+            self::ROLE => RoleCode::tryFrom($worker->role->code)?->label() ?? $worker->role->code,
             self::STATUS => $worker->is_active
                 ? self::STATUS_ACTIVE
                 : self::STATUS_INACTIVE,
@@ -886,7 +859,7 @@ final class WorkerCsvService
         return [
             'full_name' => trim((string) $fields['full_name']),
             'israeli_id' => (string) $fields['israeli_id'],
-            'role_code' => self::ROLE_CODE_BY_LABEL[$fields['role']],
+            'role_code' => RoleCode::codeByCsvLabel()[$fields['role']],
             'is_active' => $fields['status'] === self::STATUS_ACTIVE,
             'contract' => [
                 'hourly_cost' => round((float) $fields['hourly_cost'], 2),
@@ -907,7 +880,7 @@ final class WorkerCsvService
         return [
             'full_name' => ['required', 'string', 'max:255'],
             'israeli_id' => ['required', 'string', 'size:9', new IsraeliId],
-            'role' => ['required', Rule::in(array_keys(self::ROLE_CODE_BY_LABEL))],
+            'role' => ['required', Rule::in(array_keys(RoleCode::codeByCsvLabel()))],
             'status' => ['required', Rule::in([self::STATUS_ACTIVE, self::STATUS_INACTIVE])],
             'hourly_cost' => ['required', 'numeric', 'min:0', 'max:999999.99'],
             'min_monthly_hours' => ['required', 'integer', 'min:0', 'max:744'],
@@ -992,7 +965,7 @@ final class WorkerCsvService
             $shiftCodes = $this->tokens($shiftPart, strtoupper(...));
 
             foreach ($shiftCodes as $shiftCode) {
-                if (! in_array($shiftCode, self::SHIFT_CODES, true)) {
+                if (! in_array($shiftCode, ShiftCode::values(), true)) {
                     $errors['availability'][] = "Unknown shift token \"{$shiftCode}\"; expected A, B, or C.";
 
                     continue;

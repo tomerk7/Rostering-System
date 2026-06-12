@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Enums\RoleCode;
+use App\Enums\ShiftCode;
 use App\Models\Role;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
@@ -12,21 +14,21 @@ use Illuminate\Database\Seeder;
 final class ReferenceDataSeeder extends Seeder
 {
     public const ROLES = [
-        ['code' => 'general_guard', 'name' => 'General Guard'],
-        ['code' => 'supervisor', 'name' => 'Supervisor'],
-        ['code' => 'screener', 'name' => 'Screener'],
+        ['code' => RoleCode::GeneralGuard->value, 'name' => 'General Guard'],
+        ['code' => RoleCode::Supervisor->value, 'name' => 'Supervisor'],
+        ['code' => RoleCode::Screener->value, 'name' => 'Screener'],
     ];
 
     public const SHIFTS = [
-        ['code' => 'A', 'label' => 'morning', 'start_time' => '00:00:00', 'end_time' => '08:00:00', 'duration_hours' => 8],
-        ['code' => 'B', 'label' => 'day', 'start_time' => '08:00:00', 'end_time' => '16:00:00', 'duration_hours' => 8],
-        ['code' => 'C', 'label' => 'evening', 'start_time' => '16:00:00', 'end_time' => '00:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::A->value, 'label' => 'morning', 'start_time' => '00:00:00', 'end_time' => '08:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::B->value, 'label' => 'day', 'start_time' => '08:00:00', 'end_time' => '16:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::C->value, 'label' => 'evening', 'start_time' => '16:00:00', 'end_time' => '00:00:00', 'duration_hours' => 8],
     ];
 
     public const REQUIRED_COUNTS_BY_ROLE_CODE = [
-        'general_guard' => 6,
-        'supervisor' => 1,
-        'screener' => 2,
+        RoleCode::GeneralGuard->value => 6,
+        RoleCode::Supervisor->value => 1,
+        RoleCode::Screener->value => 2,
     ];
 
     /**

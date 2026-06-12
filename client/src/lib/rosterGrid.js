@@ -9,6 +9,78 @@ function padMonthDay(value) {
 }
 
 /**
+ * Convert a local Date to an ISO calendar date.
+ *
+ * @param {Date} date
+ * @returns {string}
+ */
+function toIsoDate(date) {
+  return [
+    date.getFullYear(),
+    padMonthDay(date.getMonth() + 1),
+    padMonthDay(date.getDate()),
+  ].join('-')
+}
+
+/**
+ * Add calendar days to an ISO date.
+ *
+ * @param {string} isoDate
+ * @param {number} days
+ * @returns {string}
+ */
+export function addDays(isoDate, days) {
+  const date = new Date(`${isoDate}T00:00:00`)
+  date.setDate(date.getDate() + days)
+
+  return toIsoDate(date)
+}
+
+/**
+ * Return the first and last dates of a roster month.
+ *
+ * @param {number} year
+ * @param {number} month
+ * @returns {{ startDate: string, endDate: string }}
+ */
+export function getMonthRange(year, month) {
+  return {
+    startDate: toIsoDate(new Date(year, month - 1, 1)),
+    endDate: toIsoDate(new Date(year, month, 0)),
+  }
+}
+
+/**
+ * Return the seven-day roster page containing an anchor, starting from day one.
+ *
+ * @param {number} year
+ * @param {number} month
+ * @param {string} anchorDate
+ * @returns {{ startDate: string, endDate: string }}
+ */
+export function getRosterWeekRange(year, month, anchorDate) {
+  const monthRange = getMonthRange(year, month)
+  const monthStart = new Date(`${monthRange.startDate}T00:00:00`)
+  const monthEnd = new Date(`${monthRange.endDate}T00:00:00`)
+  let anchor = new Date(`${anchorDate}T00:00:00`)
+
+  if (anchor < monthStart || anchor > monthEnd) {
+    anchor = monthStart
+  }
+
+  const dayOffset = Math.floor((anchor.getDate() - 1) / 7) * 7
+  const weekStart = new Date(monthStart)
+  weekStart.setDate(weekStart.getDate() + dayOffset)
+  const weekEnd = new Date(weekStart)
+  weekEnd.setDate(weekEnd.getDate() + 6)
+
+  return {
+    startDate: toIsoDate(weekStart),
+    endDate: toIsoDate(weekEnd > monthEnd ? monthEnd : weekEnd),
+  }
+}
+
+/**
  * Build ISO date strings for every day in a calendar month.
  *
  * @param {number} year
@@ -24,6 +96,52 @@ export function getDatesInMonth(year, month) {
   }
 
   return dates
+}
+
+/**
+ * Build ISO date strings for an inclusive date range.
+ *
+ * @param {string} startDate
+ * @param {string} endDate
+ * @returns {string[]}
+ */
+export function getDatesBetween(startDate, endDate) {
+  const dates = []
+  const current = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+
+  while (current <= end) {
+    dates.push(toIsoDate(current))
+    current.setDate(current.getDate() + 1)
+  }
+
+  return dates
+}
+
+/**
+ * Format an inclusive date range for the roster heading.
+ *
+ * @param {string} startDate
+ * @param {string} endDate
+ * @returns {string}
+ */
+export function formatDateRange(startDate, endDate) {
+  const start = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  const sameYear = start.getFullYear() === end.getFullYear()
+
+  const startLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: sameYear ? undefined : 'numeric',
+  }).format(start)
+  const endLabel = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(end)
+
+  return `${startLabel} - ${endLabel}`
 }
 
 /**
@@ -206,15 +324,15 @@ function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
 }
 
 /**
- * Build the full month grid model for roster display and editing.
+ * Build the visible date-range grid model for roster display and editing.
  *
- * @param {{ year: number, month: number, shifts: object[], requirements: object[], roles: object[], assignments: object[], reports: object, workersById: Map<number|string, object> }} params
+ * @param {{ startDate: string, endDate: string, shifts: object[], requirements: object[], roles: object[], assignments: object[], reports: object, workersById: Map<number|string, object> }} params
  * @returns {object}
  */
 export function buildRosterGrid(params) {
   const {
-    year,
-    month,
+    startDate,
+    endDate,
     shifts,
     requirements,
     roles,
@@ -229,7 +347,7 @@ export function buildRosterGrid(params) {
   const assignmentCounts = countAssignmentsBySlotRole(assignments, workersById)
   const sortedShifts = [...shifts].sort((left, right) => left.code.localeCompare(right.code))
 
-  const rows = getDatesInMonth(year, month).map((workDate) => {
+  const rows = getDatesBetween(startDate, endDate).map((workDate) => {
     const shiftCells = sortedShifts.map((shift) => {
       const shiftRequirements = requirementsByShift.get(shift.id) ?? []
 
@@ -269,9 +387,7 @@ export function buildRosterGrid(params) {
   })
 
   return {
-    year,
-    month,
-    monthLabel: formatMonthYear(year, month),
+    rangeLabel: formatDateRange(startDate, endDate),
     rows,
   }
 }

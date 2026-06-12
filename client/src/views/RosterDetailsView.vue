@@ -6,18 +6,34 @@ import { useRosterReference } from '@/composables/useRosterReference'
 import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
 import RosterGrid from '@/components/rosters/RosterGrid.vue'
-import { formatMonthYear } from '@/lib/rosterGrid'
+import {
+  addDays,
+  formatMonthYear,
+  getMonthRange,
+  getRosterWeekRange,
+} from '@/lib/rosterGrid'
 
 const route = useRoute()
 const router = useRouter()
 const rostersStore = useRostersStore()
 const referenceData = useRosterReference()
 
+/**
+ * Roster id from the route params.
+ *
+ * @returns {number}
+ */
 const rosterId = computed(() => Number(route.params.id))
 const showAssignmentModal = ref(false)
 const assignmentError = ref('')
 const assignmentContext = ref(null)
+const weekAnchor = ref('')
 
+/**
+ * Formatted month and year label for the loaded roster.
+ *
+ * @returns {string}
+ */
 const periodLabel = computed(() => {
   if (!rostersStore.roster) {
     return ''
@@ -26,7 +42,56 @@ const periodLabel = computed(() => {
   return formatMonthYear(rostersStore.roster.year, rostersStore.roster.month)
 })
 
+/**
+ * Active workers from reference data.
+ *
+ * @returns {object[]}
+ */
 const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
+
+/**
+ * Inclusive date range for the roster month.
+ *
+ * @returns {{ startDate: string, endDate: string }|null}
+ */
+const monthRange = computed(() => {
+  const roster = rostersStore.roster
+
+  return roster ? getMonthRange(roster.year, roster.month) : null
+})
+/**
+ * Inclusive date range for the visible week.
+ *
+ * @returns {{ startDate: string, endDate: string }|null}
+ */
+const weekRange = computed(() => {
+  const roster = rostersStore.roster
+
+  if (!roster || !weekAnchor.value) {
+    return null
+  }
+
+  return getRosterWeekRange(roster.year, roster.month, weekAnchor.value)
+})
+/**
+ * Whether the grid can navigate to the previous week within the month.
+ *
+ * @returns {boolean}
+ */
+const canGoPrevious = computed(
+  () => weekRange.value && monthRange.value
+    && weekRange.value.startDate > monthRange.value.startDate,
+)
+
+/**
+ * Whether the grid can navigate to the next week within the month.
+ *
+ * @returns {boolean}
+ */
+const canGoNext = computed(
+  () => weekRange.value && monthRange.value
+    && weekRange.value.endDate < monthRange.value.endDate,
+)
 
 onMounted(async () => {
   await loadRoster()
@@ -36,22 +101,98 @@ watch(rosterId, async () => {
   await loadRoster()
 })
 
+/**
+ * Load roster metadata, reference data, and the initial week.
+ *
+ * @returns {Promise<void>}
+ */
 async function loadRoster() {
   await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
+
+  const roster = rostersStore.roster
+  if (!roster) {
+    return
+  }
+
+  const today = new Date()
+  const isCurrentMonth = today.getFullYear() === roster.year
+    && today.getMonth() + 1 === roster.month
+  weekAnchor.value = isCurrentMonth
+    ? [
+        today.getFullYear(),
+        String(today.getMonth() + 1).padStart(2, '0'),
+        String(today.getDate()).padStart(2, '0'),
+      ].join('-')
+    : getMonthRange(roster.year, roster.month).startDate
+
+  await loadWeek(weekAnchor.value)
 }
 
+/**
+ * Load assignments for the week containing the anchor date.
+ *
+ * @param {string} anchorDate
+ * @returns {Promise<boolean>}
+ */
+async function loadWeek(anchorDate) {
+  const roster = rostersStore.roster
+  if (!roster) {
+    return false
+  }
+
+  const range = getRosterWeekRange(roster.year, roster.month, anchorDate)
+  const response = await rostersStore.fetchAssignments(roster.id, {
+    fromDate: range.startDate,
+    toDate: range.endDate,
+  })
+
+  if (!response) {
+    return false
+  }
+
+  weekAnchor.value = anchorDate
+  return true
+}
+
+/**
+ * Shift the visible week by a number of days.
+ *
+ * @param {number} days
+ * @returns {Promise<void>}
+ */
+async function moveWeek(days) {
+  await loadWeek(addDays(weekAnchor.value, days))
+}
+
+/**
+ * Open the manual assignment modal, optionally prefilled from a grid cell.
+ *
+ * @param {object|null} [context]
+ * @returns {void}
+ */
 function openAssignmentModal(context = null) {
   assignmentError.value = ''
   assignmentContext.value = context
   showAssignmentModal.value = true
 }
 
+/**
+ * Close the assignment modal and clear its state.
+ *
+ * @returns {void}
+ */
 function closeAssignmentModal() {
   showAssignmentModal.value = false
   assignmentContext.value = null
   assignmentError.value = ''
 }
 
+/**
+ * Add a manual assignment and refresh the current week.
+ *
+ * @param {object} payload
+ * @returns {Promise<void>}
+ */
 async function submitAssignment(payload) {
   if (!rostersStore.roster) {
     return
@@ -62,6 +203,7 @@ async function submitAssignment(payload) {
   const roster = await rostersStore.addManualAssignment(rostersStore.roster.id, payload)
 
   if (roster) {
+    await loadWeek(weekAnchor.value)
     closeAssignmentModal()
     return
   }
@@ -69,6 +211,12 @@ async function submitAssignment(payload) {
   assignmentError.value = rostersStore.validationErrors.assignment?.[0] ?? rostersStore.error
 }
 
+/**
+ * Remove a manual assignment after confirmation.
+ *
+ * @param {number} assignmentId
+ * @returns {Promise<void>}
+ */
 async function removeAssignment(assignmentId) {
   if (!rostersStore.roster) {
     return
@@ -78,9 +226,21 @@ async function removeAssignment(assignmentId) {
     return
   }
 
-  await rostersStore.removeManualAssignment(rostersStore.roster.id, assignmentId)
+  const roster = await rostersStore.removeManualAssignment(
+    rostersStore.roster.id,
+    assignmentId,
+  )
+
+  if (roster) {
+    await loadWeek(weekAnchor.value)
+  }
 }
 
+/**
+ * Confirmation message shown before deleting the roster.
+ *
+ * @returns {string}
+ */
 function deleteConfirmMessage() {
   const roster = rostersStore.roster
 
@@ -91,6 +251,11 @@ function deleteConfirmMessage() {
   return `Delete the ${periodLabel.value} roster? This will remove the schedule for this month.`
 }
 
+/**
+ * Delete the roster and return to the list.
+ *
+ * @returns {Promise<void>}
+ */
 async function deleteRoster() {
   if (!rostersStore.roster) {
     return
@@ -107,10 +272,20 @@ async function deleteRoster() {
   }
 }
 
+/**
+ * Confirmation message shown before regenerating the roster.
+ *
+ * @returns {string}
+ */
 function regenerateConfirmMessage() {
   return `Regenerate the ${periodLabel.value} roster? This will replace all assignments and remove any manual edits.`
 }
 
+/**
+ * Regenerate the roster and reload the view.
+ *
+ * @returns {Promise<void>}
+ */
 async function regenerateRoster() {
   const roster = rostersStore.roster
 
@@ -220,8 +395,9 @@ async function regenerateRoster() {
         />
 
         <RosterGrid
-          :year="rostersStore.roster.year"
-          :month="rostersStore.roster.month"
+          v-if="weekRange"
+          :start-date="weekRange.startDate"
+          :end-date="weekRange.endDate"
           :shifts="referenceData.reference.shifts"
           :requirements="referenceData.reference.shift_role_requirements"
           :roles="referenceData.reference.roles"
@@ -229,8 +405,13 @@ async function regenerateRoster() {
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
           :editable="true"
+          :loading="rostersStore.assignmentsLoading"
+          :can-go-previous="canGoPrevious"
+          :can-go-next="canGoNext"
           @cell-click="openAssignmentModal"
           @remove-assignment="removeAssignment"
+          @previous-week="moveWeek(-7)"
+          @next-week="moveWeek(7)"
         />
       </template>
     </section>
@@ -239,9 +420,12 @@ async function regenerateRoster() {
       :show="showAssignmentModal"
       :workers="activeWorkers"
       :assignments="rostersStore.assignments"
+      :assigned-hours-by-worker="rostersStore.assignedHoursByWorker"
       :shifts="referenceData.reference?.shifts ?? []"
       :roles="referenceData.reference?.roles"
       :initial-date="assignmentContext?.workDate"
+      :min-date="weekRange?.startDate"
+      :max-date="weekRange?.endDate"
       :initial-shift-id="assignmentContext?.shiftId"
       :initial-role-id="assignmentContext?.roleId"
       :saving="rostersStore.assignmentLoading"

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import {
   addAssignment,
+  listAssignments,
   removeAssignment,
 } from '@/api/rosterAssignments'
 import {
@@ -21,27 +22,21 @@ export const useRostersStore = defineStore('rosters', {
   state: () => ({
     rosters: [],
     roster: null,
+    assignments: [],
+    assignedHoursByWorker: {},
+    assignmentRange: null,
     currentYear: null,
     selectedMonth: null,
     loading: false,
     generating: false,
     deletingId: null,
     assignmentLoading: false,
+    assignmentsLoading: false,
     error: '',
     validationErrors: {},
   }),
 
   getters: {
-    /**
-     * Assignments of the currently loaded roster.
-     *
-     * @param {object} state
-     * @returns {object[]}
-     */
-    assignments(state) {
-      return state.roster?.assignments ?? []
-    },
-
     /**
      * Coverage and hours reports of the currently loaded roster.
      *
@@ -102,8 +97,36 @@ export const useRostersStore = defineStore('rosters', {
         loadingKey: 'loading',
         fallback: 'Could not load roster. Please try again.',
         request: async () => {
-          const response = await getRoster(rosterId)
+          const response = await getRoster(rosterId, { include_assignments: false })
           this.roster = response.data
+          this.assignments = []
+          this.assignedHoursByWorker = {}
+          this.assignmentRange = null
+        },
+      })
+    },
+
+    /**
+     * Load assignments for an inclusive date range.
+     *
+     * @param {number} rosterId
+     * @param {{ fromDate: string, toDate: string }} range
+     * @returns {Promise<object|null>}
+     */
+    fetchAssignments(rosterId, range) {
+      return runStoreRequest(this, {
+        loadingKey: 'assignmentsLoading',
+        fallback: 'Could not load assignments for this week. Please try again.',
+        request: async () => {
+          const response = await listAssignments(rosterId, range)
+          this.assignments = response.data
+          this.assignedHoursByWorker = response.meta?.assigned_hours_by_worker ?? {}
+          this.assignmentRange = {
+            fromDate: response.meta?.from_date ?? range.fromDate,
+            toDate: response.meta?.to_date ?? range.toDate,
+          }
+
+          return response
         },
       })
     },
@@ -187,6 +210,9 @@ export const useRostersStore = defineStore('rosters', {
 
           if (this.roster?.id === rosterId) {
             this.roster = null
+            this.assignments = []
+            this.assignedHoursByWorker = {}
+            this.assignmentRange = null
           }
 
           this.rosters = this.rosters.filter((roster) => roster.id !== rosterId)
@@ -256,7 +282,9 @@ export const useRostersStore = defineStore('rosters', {
      */
     applyRosterUpdate(roster) {
       if (this.roster?.id === roster.id) {
-        this.roster = roster
+        const metadata = { ...roster }
+        delete metadata.assignments
+        this.roster = metadata
       }
 
       this.upsertRosterInList(roster)
