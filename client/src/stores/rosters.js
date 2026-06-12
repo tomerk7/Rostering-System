@@ -1,16 +1,10 @@
 import { defineStore } from 'pinia'
 import {
-  addAssignment,
-  listAssignments,
-  removeAssignment,
-} from '@/api/rosterAssignments'
-import {
   createRoster,
   deleteRoster,
   getRoster,
   listRosters,
   regenerateRoster,
-  runBenchmark,
 } from '@/api/rosters'
 import { runStoreRequest } from '@/stores/storeRequest'
 
@@ -23,17 +17,11 @@ export const useRostersStore = defineStore('rosters', {
   state: () => ({
     rosters: [],
     roster: null,
-    assignments: [],
-    assignedHoursByWorker: {},
     currentYear: null,
     selectedMonth: null,
-    benchmark: null,
     loading: false,
     generating: false,
-    benchmarking: false,
     deletingId: null,
-    assignmentLoading: false,
-    assignmentsLoading: false,
     error: '',
     validationErrors: {},
   }),
@@ -101,29 +89,8 @@ export const useRostersStore = defineStore('rosters', {
         request: async () => {
           const response = await getRoster(rosterId, { include_assignments: false })
           this.roster = response.data
-          this.assignments = []
-          this.assignedHoursByWorker = {}
-        },
-      })
-    },
-
-    /**
-     * Load assignments for an inclusive date range.
-     *
-     * @param {number} rosterId
-     * @param {{ fromDate: string, toDate: string }} range
-     * @returns {Promise<object|null>}
-     */
-    fetchAssignments(rosterId, range) {
-      return runStoreRequest(this, {
-        loadingKey: 'assignmentsLoading',
-        fallback: 'Could not load assignments for this week. Please try again.',
-        request: async () => {
-          const response = await listAssignments(rosterId, range)
-          this.assignments = response.data
-          this.assignedHoursByWorker = response.meta?.assigned_hours_by_worker ?? {}
-
-          return response
+          const { useRosterAssignmentsStore } = await import('@/stores/rosterAssignments')
+          useRosterAssignmentsStore().reset()
         },
       })
     },
@@ -177,45 +144,6 @@ export const useRostersStore = defineStore('rosters', {
     },
 
     /**
-     * Run a plain vs cost-optimized benchmark for the given month.
-     *
-     * @param {number} month
-     * @returns {Promise<object|null>}
-     */
-    runBenchmark(month) {
-      return runStoreRequest(this, {
-        loadingKey: 'benchmarking',
-        fallback: 'Could not run benchmark. Please try again.',
-        request: async () => {
-          const response = await runBenchmark({ month: Number(month) })
-          this.benchmark = response.data
-
-          return response.data
-        },
-      })
-    },
-
-    /**
-     * Add a manual assignment to a roster.
-     *
-     * @param {number} rosterId
-     * @param {object} payload
-     * @returns {Promise<object|null>}
-     */
-    addManualAssignment(rosterId, payload) {
-      return runStoreRequest(this, {
-        loadingKey: 'assignmentLoading',
-        fallback: 'Could not add assignment. Please check the form and try again.',
-        request: async () => {
-          const response = await addAssignment(rosterId, payload)
-          this.applyRosterUpdate(response.data)
-
-          return response.data
-        },
-      })
-    },
-
-    /**
      * Delete a roster by id and remove it from the list.
      *
      * @param {number} rosterId
@@ -233,33 +161,13 @@ export const useRostersStore = defineStore('rosters', {
 
           if (this.roster?.id === rosterId) {
             this.roster = null
-            this.assignments = []
-            this.assignedHoursByWorker = {}
+            const { useRosterAssignmentsStore } = await import('@/stores/rosterAssignments')
+            useRosterAssignmentsStore().reset()
           }
 
           this.rosters = this.rosters.filter((roster) => roster.id !== rosterId)
 
           return true
-        },
-      })
-    },
-
-    /**
-     * Remove a manual assignment from a roster.
-     *
-     * @param {number} rosterId
-     * @param {number} assignmentId
-     * @returns {Promise<object|null>}
-     */
-    removeManualAssignment(rosterId, assignmentId) {
-      return runStoreRequest(this, {
-        loadingKey: 'assignmentLoading',
-        fallback: 'Could not remove assignment. Please try again.',
-        request: async () => {
-          const response = await removeAssignment(rosterId, assignmentId)
-          this.applyRosterUpdate(response.data)
-
-          return response.data
         },
       })
     },

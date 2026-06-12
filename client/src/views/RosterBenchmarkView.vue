@@ -1,12 +1,12 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { useRostersStore } from '@/stores/rosters'
+import { useRosterBenchmarkStore } from '@/stores/rosterBenchmark'
 import Button from '@/components/ui/Button.vue'
 import Field from '@/components/ui/Field.vue'
 import Select from '@/components/ui/Select.vue'
 import Table from '@/components/ui/Table.vue'
 
-const rostersStore = useRostersStore()
+const benchmarkStore = useRosterBenchmarkStore()
 
 const selectedMonth = ref(null)
 
@@ -23,7 +23,7 @@ const currencyFormat = new Intl.NumberFormat('en-US', {
 })
 
 const metricRows = computed(() => {
-  const benchmark = rostersStore.benchmark
+  const benchmark = benchmarkStore.benchmark
 
   if (!benchmark) {
     return []
@@ -44,7 +44,7 @@ const metricRows = computed(() => {
 })
 
 const savedSummary = computed(() => {
-  const benchmark = rostersStore.benchmark
+  const benchmark = benchmarkStore.benchmark
 
   if (!benchmark) {
     return ''
@@ -54,12 +54,12 @@ const savedSummary = computed(() => {
 })
 
 onMounted(() => {
-  rostersStore.clearErrors()
-  rostersStore.benchmark = null
+  benchmarkStore.clearErrors()
+  benchmarkStore.reset()
 })
 
 function onPeriodChange() {
-  rostersStore.clearErrors()
+  benchmarkStore.clearErrors()
 }
 
 async function runBenchmark() {
@@ -67,7 +67,7 @@ async function runBenchmark() {
     return
   }
 
-  await rostersStore.runBenchmark(selectedMonth.value)
+  await benchmarkStore.runBenchmark(selectedMonth.value)
 }
 </script>
 
@@ -124,29 +124,29 @@ async function runBenchmark() {
           <Button
             type="submit"
             variant="primary"
-            :disabled="rostersStore.benchmarking || !canRun"
+            :disabled="benchmarkStore.benchmarking || !canRun"
           >
-            {{ rostersStore.benchmarking ? 'Running benchmark...' : 'Run benchmark' }}
+            {{ benchmarkStore.benchmarking ? 'Running benchmark...' : 'Run benchmark' }}
           </Button>
         </div>
       </form>
 
       <p
-        v-if="rostersStore.benchmarking"
+        v-if="benchmarkStore.benchmarking"
         class="page__description"
       >
         Generating the roster twice — this can take several seconds.
       </p>
 
       <div
-        v-if="rostersStore.error"
+        v-if="benchmarkStore.error"
         class="alert"
         role="alert"
       >
-        {{ rostersStore.error }}
+        {{ benchmarkStore.error }}
       </div>
 
-      <template v-if="rostersStore.benchmark">
+      <template v-if="benchmarkStore.benchmark">
         <Table>
           <thead>
             <tr>
@@ -172,7 +172,7 @@ async function runBenchmark() {
         </p>
 
         <div
-          v-if="rostersStore.benchmark.assignments_match === false"
+          v-if="benchmarkStore.benchmark.assignments_match === false"
           class="alert"
           role="alert"
         >

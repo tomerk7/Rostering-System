@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { exportRoster } from '@/api/rosters'
 import { resolveErrorMessage } from '@/lib/apiError'
 import { useRostersStore } from '@/stores/rosters'
+import { useRosterAssignmentsStore } from '@/stores/rosterAssignments'
 import { useRosterReference } from '@/composables/useRosterReference'
 import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
@@ -19,6 +20,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const rostersStore = useRostersStore()
+const assignmentsStore = useRosterAssignmentsStore()
 const referenceData = useRosterReference()
 
 /**
@@ -181,7 +183,7 @@ async function loadVisibleRange() {
     return false
   }
 
-  const response = await rostersStore.fetchAssignments(roster.id, {
+  const response = await assignmentsStore.fetchAssignments(roster.id, {
     fromDate: range.startDate,
     toDate: range.endDate,
   })
@@ -261,7 +263,7 @@ async function submitAssignment(payload) {
 
   assignmentError.value = ''
 
-  const roster = await rostersStore.addManualAssignment(rostersStore.roster.id, payload)
+  const roster = await assignmentsStore.addManualAssignment(rostersStore.roster.id, payload)
 
   if (roster) {
     await loadVisibleRange()
@@ -269,7 +271,7 @@ async function submitAssignment(payload) {
     return
   }
 
-  assignmentError.value = rostersStore.validationErrors.assignment?.[0] ?? rostersStore.error
+  assignmentError.value = assignmentsStore.validationErrors.assignment?.[0] ?? assignmentsStore.error
 }
 
 /**
@@ -287,7 +289,7 @@ async function removeAssignment(assignmentId) {
     return
   }
 
-  const roster = await rostersStore.removeManualAssignment(
+  const roster = await assignmentsStore.removeManualAssignment(
     rostersStore.roster.id,
     assignmentId,
   )
@@ -511,11 +513,11 @@ async function downloadExport() {
           :shifts="referenceData.reference.shifts"
           :requirements="referenceData.reference.shift_role_requirements"
           :roles="referenceData.reference.roles"
-          :assignments="rostersStore.assignments"
+          :assignments="assignmentsStore.assignments"
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
           :editable="true"
-          :loading="rostersStore.assignmentsLoading"
+          :loading="assignmentsStore.assignmentsLoading"
           :show-navigation="viewMode === 'week'"
           :full-month="viewMode === 'month'"
           :can-go-previous="canGoPrevious"
@@ -552,8 +554,8 @@ async function downloadExport() {
     <AssignmentFormModal
       :show="showAssignmentModal"
       :workers="activeWorkers"
-      :assignments="rostersStore.assignments"
-      :assigned-hours-by-worker="rostersStore.assignedHoursByWorker"
+      :assignments="assignmentsStore.assignments"
+      :assigned-hours-by-worker="assignmentsStore.assignedHoursByWorker"
       :shifts="referenceData.reference?.shifts ?? []"
       :roles="referenceData.reference?.roles"
       :initial-date="assignmentContext?.workDate"
@@ -561,7 +563,7 @@ async function downloadExport() {
       :max-date="monthRange?.endDate"
       :initial-shift-id="assignmentContext?.shiftId"
       :initial-role-id="assignmentContext?.roleId"
-      :saving="rostersStore.assignmentLoading"
+      :saving="assignmentsStore.assignmentLoading"
       :error="assignmentError"
       @close="closeAssignmentModal"
       @submit="submitAssignment"
