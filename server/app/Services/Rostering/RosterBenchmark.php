@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use App\Exceptions\Rostering\BenchmarkException;
+use App\Models\Contract;
 use App\Services\Rostering\Data\BenchmarkResult;
 use App\Services\Rostering\Data\GenerationResult;
 use App\Services\Rostering\Data\WorkerStatsRow;
@@ -41,9 +42,12 @@ final readonly class RosterBenchmark
      */
     public function run(int $year, int $month): BenchmarkResult
     {
-        $costs = DB::table('contracts')->pluck('hourly_cost', 'worker_id');
-        $minHours = DB::table('contracts')->pluck('min_monthly_hours', 'worker_id');
-        $maxHours = DB::table('contracts')->pluck('max_monthly_hours', 'worker_id');
+        $contracts = Contract::query()
+            ->select(['worker_id', 'hourly_cost', 'min_monthly_hours', 'max_monthly_hours'])
+            ->get();
+        $costs = $contracts->pluck('hourly_cost', 'worker_id');
+        $minHours = $contracts->pluck('min_monthly_hours', 'worker_id');
+        $maxHours = $contracts->pluck('max_monthly_hours', 'worker_id');
 
         if ($costs->isEmpty()) {
             throw BenchmarkException::noContracts();
