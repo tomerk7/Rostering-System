@@ -1,3 +1,8 @@
+@import './ui/button.css';
+@import './ui/forms.css';
+@import './ui/table.css';
+@import './ui/pagination.css';
+
 :root {
   color: #0f172a;
   font-family:

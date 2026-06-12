@@ -1,5 +1,6 @@
 <script setup>
 import { useAuthStore } from '@/stores/auth'
+import Button from '@/components/ui/Button.vue'
 
 const auth = useAuthStore()
 </script>
@@ -14,25 +15,20 @@ const auth = useAuthStore()
       Vue client is running.
     </p>
     <div class="home__actions">
-      <RouterLink
-        class="button button--primary"
+      <Button
+        variant="primary"
         :to="{ name: 'rosters.generate' }"
       >
         Generate roster
-      </RouterLink>
-      <RouterLink
-        class="button"
-        :to="{ name: 'workers' }"
-      >
+      </Button>
+      <Button :to="{ name: 'workers' }">
         Manage workers
-      </RouterLink>
+      </Button>
     </div>
   </main>
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-
 .home {
   display: flex;
   flex-direction: column;

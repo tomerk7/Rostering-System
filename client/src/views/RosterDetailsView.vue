@@ -8,6 +8,7 @@ import { useRosterReference } from '@/composables/useRosterReference'
 import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
 import RosterGrid from '@/components/rosters/RosterGrid.vue'
+import Button from '@/components/ui/Button.vue'
 import {
   addDays,
   formatMonthYear,
@@ -416,22 +417,17 @@ async function downloadExport() {
         </h1>
       </div>
       <div class="page__actions">
-        <RouterLink
-          class="button"
-          :to="{ name: 'rosters' }"
-        >
+        <Button :to="{ name: 'rosters' }">
           Back to list
-        </RouterLink>
-        <button
+        </Button>
+        <Button
           v-if="rostersStore.roster"
-          type="button"
-          class="button"
           :disabled="exporting || hasCoverageShortages"
           :title="exportDisabledReason"
           @click="downloadExport"
         >
           {{ exporting ? 'Exporting...' : 'Export CSV' }}
-        </button>
+        </Button>
         <label
           v-if="rostersStore.roster"
           class="check-field"
@@ -442,23 +438,21 @@ async function downloadExport() {
           >
           <span>Schedule by cost efficiency</span>
         </label>
-        <button
+        <Button
           v-if="rostersStore.roster"
-          type="button"
-          class="button button--primary"
+          variant="primary"
           :disabled="rostersStore.generating"
           @click="regenerateRoster"
         >
           {{ rostersStore.generating ? 'Regenerating...' : 'Regenerate' }}
-        </button>
-        <button
-          type="button"
-          class="button button--danger"
+        </Button>
+        <Button
+          variant="danger"
           :disabled="rostersStore.deletingId === rosterId"
           @click="deleteRoster"
         >
           {{ rostersStore.deletingId === rosterId ? 'Deleting...' : 'Delete' }}
-        </button>
+        </Button>
       </div>
     </header>
 
@@ -499,13 +493,9 @@ async function downloadExport() {
         class="empty-state"
       >
         Roster not found.
-        <button
-          type="button"
-          class="button"
-          @click="router.push({ name: 'rosters' })"
-        >
+        <Button @click="router.push({ name: 'rosters' })">
           Back to list
-        </button>
+        </Button>
       </div>
 
       <template v-else-if="referenceData.reference">
@@ -541,22 +531,18 @@ async function downloadExport() {
               role="group"
               aria-label="Roster grid view"
             >
-              <button
-                type="button"
-                class="button"
-                :class="{ 'button--primary': viewMode === 'week' }"
+              <Button
+                :variant="viewMode === 'week' ? 'primary' : 'default'"
                 @click="setViewMode('week')"
               >
                 Week
-              </button>
-              <button
-                type="button"
-                class="button"
-                :class="{ 'button--primary': viewMode === 'month' }"
+              </Button>
+              <Button
+                :variant="viewMode === 'month' ? 'primary' : 'default'"
                 @click="setViewMode('month')"
               >
                 Full month
-              </button>
+              </Button>
             </div>
           </template>
         </RosterGrid>
@@ -584,8 +570,6 @@ async function downloadExport() {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
 
 .roster-view-toggle {

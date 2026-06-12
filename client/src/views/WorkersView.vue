@@ -1,8 +1,14 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useWorkersStore } from '@/stores/workers'
 import { exportWorkers } from '@/api/workers'
 import WorkerImportModal from '@/components/workers/WorkerImportModal.vue'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
+import Table from '@/components/ui/Table.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const workersStore = useWorkersStore()
 
@@ -57,9 +63,6 @@ const statusOptions = [
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
 ]
-
-const canGoBack = computed(() => workersStore.meta.current_page > 1)
-const canGoForward = computed(() => workersStore.meta.current_page < workersStore.meta.last_page)
 
 onMounted(async () => {
   await workersStore.fetchWorkers()
@@ -193,67 +196,55 @@ function availabilitySummary(worker) {
         </p>
       </div>
       <div class="page__actions">
-        <button
-          type="button"
-          class="button"
+        <Button
           :disabled="exporting || workersStore.meta.total === 0 || workersStore.isArchivedView"
           :title="workersStore.meta.total === 0 ? 'Export is available only when workers exist.' : ''"
           @click="downloadExport"
         >
           {{ exporting ? 'Exporting...' : 'Export CSV' }}
-        </button>
-        <button
-          type="button"
-          class="button"
-          @click="openImport"
-        >
+        </Button>
+        <Button @click="openImport">
           Import CSV
-        </button>
-        <button
+        </Button>
+        <Button
           v-if="!workersStore.isArchivedView"
-          type="button"
-          class="button button--danger"
+          variant="danger"
           :disabled="workersStore.meta.total === 0 || workersStore.deletingAll"
           @click="deleteAllWorkers"
         >
           {{ workersStore.deletingAll ? 'Deleting...' : 'Delete all' }}
-        </button>
-        <button
+        </Button>
+        <Button
           v-if="workersStore.isArchivedView"
-          type="button"
-          class="button button--primary"
+          variant="primary"
           :disabled="workersStore.meta.total === 0 || workersStore.restoringAll"
           @click="restoreAllWorkers"
         >
           {{ workersStore.restoringAll ? 'Restoring...' : 'Restore all' }}
-        </button>
-        <RouterLink
+        </Button>
+        <Button
           v-if="!workersStore.isArchivedView"
-          class="button button--primary"
+          variant="primary"
           :to="{ name: 'workers.create' }"
         >
           Add worker
-        </RouterLink>
+        </Button>
       </div>
     </header>
 
     <div class="view-toggle">
-      <button
-        type="button"
-        class="button"
-        :class="{ 'button--primary': !workersStore.isArchivedView }"
+      <Button
+        :variant="!workersStore.isArchivedView ? 'primary' : 'default'"
         @click="showDirectory"
       >
         Directory
-      </button>
-      <button
-        type="button"
-        class="button"
-        :class="{ 'button--primary': workersStore.isArchivedView }"
+      </Button>
+      <Button
+        :variant="workersStore.isArchivedView ? 'primary' : 'default'"
         @click="showArchived"
       >
         Archived
-      </button>
+      </Button>
     </div>
 
     <section class="panel">
@@ -261,22 +252,19 @@ function availabilitySummary(worker) {
         class="toolbar"
         @submit.prevent="workersStore.applyFilters"
       >
-        <label class="field toolbar__search">
-          <span class="field__label">Search</span>
-          <input
+        <Field
+          label="Search"
+          class="toolbar__search"
+        >
+          <Input
             v-model="workersStore.search"
-            class="input"
             type="search"
             placeholder="Name or Israeli ID"
-          >
-        </label>
+          />
+        </Field>
 
-        <label class="field">
-          <span class="field__label">Role</span>
-          <select
-            v-model="workersStore.roleCode"
-            class="input"
-          >
+        <Field label="Role">
+          <Select v-model="workersStore.roleCode">
             <option
               v-for="role in roleOptions"
               :key="role.value"
@@ -284,18 +272,14 @@ function availabilitySummary(worker) {
             >
               {{ role.label }}
             </option>
-          </select>
-        </label>
+          </Select>
+        </Field>
 
-        <label
+        <Field
           v-if="!workersStore.isArchivedView"
-          class="field"
+          label="Status"
         >
-          <span class="field__label">Status</span>
-          <select
-            v-model="workersStore.status"
-            class="input"
-          >
+          <Select v-model="workersStore.status">
             <option
               v-for="status in statusOptions"
               :key="status.value"
@@ -303,25 +287,23 @@ function availabilitySummary(worker) {
             >
               {{ status.label }}
             </option>
-          </select>
-        </label>
+          </Select>
+        </Field>
 
         <div class="toolbar__actions">
-          <button
+          <Button
             type="submit"
-            class="button button--primary"
+            variant="primary"
             :disabled="workersStore.loading"
           >
             Search
-          </button>
-          <button
-            type="button"
-            class="button"
+          </Button>
+          <Button
             :disabled="workersStore.loading"
             @click="resetFilters"
           >
             Reset
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -333,139 +315,116 @@ function availabilitySummary(worker) {
         {{ workersStore.error }}
       </div>
 
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Israeli ID</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Contract</th>
-              <th>Availability</th>
-              <th class="table__actions">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="workersStore.loading">
-              <td
-                colspan="7"
-                class="table__empty"
-              >
-                Loading workers...
+      <Table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Israeli ID</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Contract</th>
+            <th>Availability</th>
+            <th class="table__actions">
+              Actions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="workersStore.loading">
+            <td
+              colspan="7"
+              class="table__empty"
+            >
+              Loading workers...
+            </td>
+          </tr>
+          <tr v-else-if="workersStore.workers.length === 0">
+            <td
+              colspan="7"
+              class="table__empty"
+            >
+              No workers found.
+            </td>
+          </tr>
+          <template v-else>
+            <tr
+              v-for="worker in workersStore.workers"
+              :key="worker.israeli_id"
+            >
+              <td>
+                <strong>{{ worker.full_name }}</strong>
+              </td>
+              <td>{{ worker.israeli_id }}</td>
+              <td>{{ worker.role.name ?? '-' }}</td>
+              <td>
+                <span
+                  v-if="workersStore.isArchivedView"
+                  class="badge badge--muted"
+                >
+                  Archived
+                </span>
+                <span
+                  v-else
+                  class="badge"
+                  :class="worker.is_active ? 'badge--success' : 'badge--muted'"
+                >
+                  {{ worker.is_active ? 'Active' : 'Inactive' }}
+                </span>
+              </td>
+              <td>
+                <span v-if="worker.contract">
+                  {{ formatCurrency(worker.contract.hourly_cost) }} /
+                  {{ worker.contract.min_monthly_hours }}-{{ worker.contract.max_monthly_hours }}h
+                </span>
+                <span v-else>-</span>
+              </td>
+              <td>{{ availabilitySummary(worker) }}</td>
+              <td class="table__actions">
+                <template v-if="workersStore.isArchivedView">
+                  <Button
+                    variant="primary"
+                    :disabled="workersStore.restoringId === worker.israeli_id"
+                    @click="restoreWorker(worker)"
+                  >
+                    {{ workersStore.restoringId === worker.israeli_id ? 'Restoring...' : 'Restore' }}
+                  </Button>
+                </template>
+                <template v-else>
+                  <Button :to="{ name: 'workers.edit', params: { id: worker.israeli_id } }">
+                    Edit
+                  </Button>
+                  <Button
+                    v-if="worker.is_active"
+                    variant="danger"
+                    :disabled="workersStore.deactivatingId === worker.israeli_id"
+                    @click="deactivateWorker(worker)"
+                  >
+                    {{ workersStore.deactivatingId === worker.israeli_id ? 'Deactivating...' : 'Deactivate' }}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    :disabled="workersStore.deletingId === worker.israeli_id"
+                    @click="deleteWorker(worker)"
+                  >
+                    {{ workersStore.deletingId === worker.israeli_id ? 'Deleting...' : 'Delete' }}
+                  </Button>
+                </template>
               </td>
             </tr>
-            <tr v-else-if="workersStore.workers.length === 0">
-              <td
-                colspan="7"
-                class="table__empty"
-              >
-                No workers found.
-              </td>
-            </tr>
-            <template v-else>
-              <tr
-                v-for="worker in workersStore.workers"
-                :key="worker.israeli_id"
-              >
-                <td>
-                  <strong>{{ worker.full_name }}</strong>
-                </td>
-                <td>{{ worker.israeli_id }}</td>
-                <td>{{ worker.role.name ?? '-' }}</td>
-                <td>
-                  <span
-                    v-if="workersStore.isArchivedView"
-                    class="badge badge--muted"
-                  >
-                    Archived
-                  </span>
-                  <span
-                    v-else
-                    class="badge"
-                    :class="worker.is_active ? 'badge--success' : 'badge--muted'"
-                  >
-                    {{ worker.is_active ? 'Active' : 'Inactive' }}
-                  </span>
-                </td>
-                <td>
-                  <span v-if="worker.contract">
-                    {{ formatCurrency(worker.contract.hourly_cost) }} /
-                    {{ worker.contract.min_monthly_hours }}-{{ worker.contract.max_monthly_hours }}h
-                  </span>
-                  <span v-else>-</span>
-                </td>
-                <td>{{ availabilitySummary(worker) }}</td>
-                <td class="table__actions">
-                  <template v-if="workersStore.isArchivedView">
-                    <button
-                      type="button"
-                      class="button button--primary"
-                      :disabled="workersStore.restoringId === worker.israeli_id"
-                      @click="restoreWorker(worker)"
-                    >
-                      {{ workersStore.restoringId === worker.israeli_id ? 'Restoring...' : 'Restore' }}
-                    </button>
-                  </template>
-                  <template v-else>
-                    <RouterLink
-                      class="button"
-                      :to="{ name: 'workers.edit', params: { id: worker.israeli_id } }"
-                    >
-                      Edit
-                    </RouterLink>
-                    <button
-                      v-if="worker.is_active"
-                      type="button"
-                      class="button button--danger"
-                      :disabled="workersStore.deactivatingId === worker.israeli_id"
-                      @click="deactivateWorker(worker)"
-                    >
-                      {{ workersStore.deactivatingId === worker.israeli_id ? 'Deactivating...' : 'Deactivate' }}
-                    </button>
-                    <button
-                      type="button"
-                      class="button button--danger"
-                      :disabled="workersStore.deletingId === worker.israeli_id"
-                      @click="deleteWorker(worker)"
-                    >
-                      {{ workersStore.deletingId === worker.israeli_id ? 'Deleting...' : 'Delete' }}
-                    </button>
-                  </template>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
+          </template>
+        </tbody>
+      </Table>
 
-      <footer class="pagination">
-        <p>
-          Showing {{ workersStore.meta.from ?? 0 }}-{{ workersStore.meta.to ?? 0 }} of
-          {{ workersStore.meta.total }}
-        </p>
-        <div class="pagination__actions">
-          <button
-            type="button"
-            class="button"
-            :disabled="!canGoBack || workersStore.loading"
-            @click="workersStore.setPage(workersStore.meta.current_page - 1)"
-          >
-            Previous
-          </button>
-          <span>Page {{ workersStore.meta.current_page }} of {{ workersStore.meta.last_page }}</span>
-          <button
-            type="button"
-            class="button"
-            :disabled="!canGoForward || workersStore.loading"
-            @click="workersStore.setPage(workersStore.meta.current_page + 1)"
-          >
-            Next
-          </button>
-        </div>
-      </footer>
+      <Pagination
+        :from="workersStore.meta.from ?? 0"
+        :to="workersStore.meta.to ?? 0"
+        :total="workersStore.meta.total"
+        :current-page="workersStore.meta.current_page"
+        :last-page="workersStore.meta.last_page"
+        :loading="workersStore.loading"
+        @previous="workersStore.setPage(workersStore.meta.current_page - 1)"
+        @next="workersStore.setPage(workersStore.meta.current_page + 1)"
+      />
     </section>
 
     <WorkerImportModal
@@ -477,10 +436,7 @@ function availabilitySummary(worker) {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
-@import '@/assets/ui/table.css';
 
 .toolbar {
   display: grid;
@@ -500,38 +456,14 @@ function availabilitySummary(worker) {
   margin-bottom: 1rem;
 }
 
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  color: #64748b;
-}
-
-.pagination p {
-  margin: 0;
-}
-
-.pagination__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
 @media (max-width: 820px) {
   .toolbar {
     grid-template-columns: 1fr;
   }
 
-  .toolbar__actions,
-  .pagination,
-  .pagination__actions {
+  .toolbar__actions {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .pagination {
-    align-items: flex-start;
   }
 }
 </style>

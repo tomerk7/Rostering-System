@@ -9,6 +9,10 @@ import {
   updateWorker,
 } from '@/api/workers'
 import { shiftLabel } from '@/lib/shifts'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -235,12 +239,9 @@ function fieldError(field) {
           Manage personal details, contract limits, and availability.
         </p>
       </div>
-      <RouterLink
-        class="button"
-        :to="{ name: 'workers' }"
-      >
+      <Button :to="{ name: 'workers' }">
         Back to workers
-      </RouterLink>
+      </Button>
     </header>
 
     <section class="panel">
@@ -284,50 +285,43 @@ function fieldError(field) {
           </div>
 
           <div class="form-grid">
-            <label class="field">
-              <span class="field__label">Full name</span>
-              <input
+            <Field
+              label="Full name"
+              :error="fieldError('full_name')"
+            >
+              <Input
                 v-model="form.full_name"
-                class="input"
-                :class="{ 'input--error': fieldError('full_name') }"
+                :error="Boolean(fieldError('full_name'))"
                 type="text"
                 autocomplete="name"
-              >
-              <span
-                v-if="fieldError('full_name')"
-                class="field__error"
-              >
-                {{ fieldError('full_name') }}
-              </span>
-            </label>
+              />
+            </Field>
 
-            <label class="field">
-              <span class="field__label">Israeli ID</span>
-              <input
+            <Field
+              label="Israeli ID"
+              :error="fieldError('israeli_id')"
+            >
+              <Input
                 v-model="form.israeli_id"
-                class="input"
-                :class="{ 'input--error': fieldError('israeli_id') }"
+                :error="Boolean(fieldError('israeli_id'))"
                 type="text"
                 inputmode="numeric"
                 maxlength="9"
                 :disabled="isEdit"
-              >
-              <span
-                v-if="fieldError('israeli_id')"
-                class="field__error"
-              >
-                {{ fieldError('israeli_id') }}
-              </span>
-            </label>
+              />
+            </Field>
 
-            <label class="field">
-              <span class="field__label">Role</span>
-              <select
+            <Field
+              label="Role"
+              :error="fieldError('role_id')"
+            >
+              <Select
                 v-model="form.role_id"
-                class="input"
-                :class="{ 'input--error': fieldError('role_id') }"
+                :error="Boolean(fieldError('role_id'))"
               >
-                <option :value="null">Select role</option>
+                <option :value="null">
+                  Select role
+                </option>
                 <option
                   v-for="role in referenceData.roles"
                   :key="role.id"
@@ -335,14 +329,8 @@ function fieldError(field) {
                 >
                   {{ role.name }}
                 </option>
-              </select>
-              <span
-                v-if="fieldError('role_id')"
-                class="field__error"
-              >
-                {{ fieldError('role_id') }}
-              </span>
-            </label>
+              </Select>
+            </Field>
 
             <label class="check-field">
               <input
@@ -365,59 +353,44 @@ function fieldError(field) {
           </div>
 
           <div class="form-grid form-grid--three">
-            <label class="field">
-              <span class="field__label">Hourly cost</span>
-              <input
+            <Field
+              label="Hourly cost"
+              :error="fieldError('contract.hourly_cost')"
+            >
+              <Input
                 v-model="form.hourly_cost"
-                class="input"
-                :class="{ 'input--error': fieldError('contract.hourly_cost') }"
+                :error="Boolean(fieldError('contract.hourly_cost'))"
                 type="number"
                 min="0"
                 step="0.01"
-              >
-              <span
-                v-if="fieldError('contract.hourly_cost')"
-                class="field__error"
-              >
-                {{ fieldError('contract.hourly_cost') }}
-              </span>
-            </label>
+              />
+            </Field>
 
-            <label class="field">
-              <span class="field__label">Minimum monthly hours</span>
-              <input
+            <Field
+              label="Minimum monthly hours"
+              :error="fieldError('contract.min_monthly_hours')"
+            >
+              <Input
                 v-model="form.min_monthly_hours"
-                class="input"
-                :class="{ 'input--error': fieldError('contract.min_monthly_hours') }"
+                :error="Boolean(fieldError('contract.min_monthly_hours'))"
                 type="number"
                 min="0"
                 max="744"
-              >
-              <span
-                v-if="fieldError('contract.min_monthly_hours')"
-                class="field__error"
-              >
-                {{ fieldError('contract.min_monthly_hours') }}
-              </span>
-            </label>
+              />
+            </Field>
 
-            <label class="field">
-              <span class="field__label">Maximum monthly hours</span>
-              <input
+            <Field
+              label="Maximum monthly hours"
+              :error="fieldError('contract.max_monthly_hours')"
+            >
+              <Input
                 v-model="form.max_monthly_hours"
-                class="input"
-                :class="{ 'input--error': fieldError('contract.max_monthly_hours') }"
+                :error="Boolean(fieldError('contract.max_monthly_hours'))"
                 type="number"
                 min="0"
                 max="744"
-              >
-              <span
-                v-if="fieldError('contract.max_monthly_hours')"
-                class="field__error"
-              >
-                {{ fieldError('contract.max_monthly_hours') }}
-              </span>
-            </label>
+              />
+            </Field>
           </div>
         </section>
 
@@ -463,19 +436,16 @@ function fieldError(field) {
         </section>
 
         <footer class="form-actions">
-          <RouterLink
-            class="button"
-            :to="{ name: 'workers' }"
-          >
+          <Button :to="{ name: 'workers' }">
             Cancel
-          </RouterLink>
-          <button
+          </Button>
+          <Button
             type="submit"
-            class="button button--primary"
+            variant="primary"
             :disabled="submitting"
           >
             {{ submitLabel }}
-          </button>
+          </Button>
         </footer>
       </form>
     </section>
@@ -483,8 +453,6 @@ function fieldError(field) {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
 
 .form-success {

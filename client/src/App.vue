@@ -1,6 +1,7 @@
 <script setup>
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import Button from '@/components/ui/Button.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -47,21 +48,15 @@ async function onLogout() {
         v-if="auth.user"
         class="app-nav__user"
       >{{ auth.user.name }}</span>
-      <button
-        type="button"
-        class="button"
-        @click="onLogout"
-      >
+      <Button @click="onLogout">
         Log out
-      </button>
+      </Button>
     </div>
   </header>
   <router-view />
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-
 .app-nav {
   display: flex;
   align-items: center;

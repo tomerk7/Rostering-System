@@ -1,6 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRostersStore } from '@/stores/rosters'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Select from '@/components/ui/Select.vue'
+import Table from '@/components/ui/Table.vue'
 
 const rostersStore = useRostersStore()
 
@@ -83,12 +87,9 @@ async function runBenchmark() {
         </p>
       </div>
       <div class="page__actions">
-        <RouterLink
-          class="button"
-          :to="{ name: 'rosters' }"
-        >
+        <Button :to="{ name: 'rosters' }">
           Back to list
-        </RouterLink>
+        </Button>
       </div>
     </header>
 
@@ -97,11 +98,9 @@ async function runBenchmark() {
         class="toolbar"
         @submit.prevent="runBenchmark"
       >
-        <label class="field">
-          <span class="field__label">Month</span>
-          <select
+        <Field label="Month">
+          <Select
             v-model="selectedMonth"
-            class="input"
             required
             @change="onPeriodChange"
           >
@@ -118,17 +117,17 @@ async function runBenchmark() {
             >
               {{ month.label }}
             </option>
-          </select>
-        </label>
+          </Select>
+        </Field>
 
         <div class="toolbar__actions">
-          <button
+          <Button
             type="submit"
-            class="button button--primary"
+            variant="primary"
             :disabled="rostersStore.benchmarking || !canRun"
           >
             {{ rostersStore.benchmarking ? 'Running benchmark...' : 'Run benchmark' }}
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -148,27 +147,25 @@ async function runBenchmark() {
       </div>
 
       <template v-if="rostersStore.benchmark">
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Plain (greedy)</th>
-                <th>Optimized (greedy + SA)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in metricRows"
-                :key="row[0]"
-              >
-                <td>{{ row[0] }}</td>
-                <td>{{ row[1] }}</td>
-                <td>{{ row[2] }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Plain (greedy)</th>
+              <th>Optimized (greedy + SA)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in metricRows"
+              :key="row[0]"
+            >
+              <td>{{ row[0] }}</td>
+              <td>{{ row[1] }}</td>
+              <td>{{ row[2] }}</td>
+            </tr>
+          </tbody>
+        </Table>
 
         <p class="benchmark-saved">
           {{ savedSummary }}
@@ -187,10 +184,7 @@ async function runBenchmark() {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
-@import '@/assets/ui/table.css';
 
 .toolbar {
   display: grid;

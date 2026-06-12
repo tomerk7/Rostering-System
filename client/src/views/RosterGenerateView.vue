@@ -2,6 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Select from '@/components/ui/Select.vue'
 
 const router = useRouter()
 const rostersStore = useRostersStore()
@@ -70,12 +73,9 @@ async function generateRoster() {
         </p>
       </div>
       <div class="page__actions">
-        <RouterLink
-          class="button"
-          :to="{ name: 'rosters' }"
-        >
+        <Button :to="{ name: 'rosters' }">
           Back to list
-        </RouterLink>
+        </Button>
       </div>
     </header>
 
@@ -84,11 +84,9 @@ async function generateRoster() {
         class="toolbar roster-toolbar"
         @submit.prevent="generateRoster"
       >
-        <label class="field">
-          <span class="field__label">Month</span>
-          <select
+        <Field label="Month">
+          <Select
             v-model="rostersStore.selectedMonth"
-            class="input"
             required
             @change="onPeriodChange"
           >
@@ -105,8 +103,8 @@ async function generateRoster() {
             >
               {{ month.label }}
             </option>
-          </select>
-        </label>
+          </Select>
+        </Field>
 
         <label class="check-field">
           <input
@@ -117,13 +115,13 @@ async function generateRoster() {
         </label>
 
         <div class="toolbar__actions">
-          <button
+          <Button
             type="submit"
-            class="button button--primary"
+            variant="primary"
             :disabled="rostersStore.generating || !canGenerate"
           >
             {{ rostersStore.generating ? 'Generating...' : 'Generate roster' }}
-          </button>
+          </Button>
         </div>
       </form>
 
@@ -146,8 +144,6 @@ async function generateRoster() {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
 
 .toolbar {

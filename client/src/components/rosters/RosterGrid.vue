@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { buildRosterGrid } from '@/lib/rosterGrid'
 import { shiftLabel } from '@/lib/shifts'
+import Button from '@/components/ui/Button.vue'
 
 const props = defineProps({
   startDate: { type: String, required: true },
@@ -240,22 +241,18 @@ function firstShortRoleId(cell) {
           class="roster-grid__navigation"
           aria-label="Roster weeks"
         >
-          <button
-            type="button"
-            class="button"
+          <Button
             :disabled="loading || !canGoPrevious"
             @click="emit('previous-week')"
           >
             Previous
-          </button>
-          <button
-            type="button"
-            class="button"
+          </Button>
+          <Button
             :disabled="loading || !canGoNext"
             @click="emit('next-week')"
           >
             Next
-          </button>
+          </Button>
         </nav>
       </div>
     </header>
@@ -428,7 +425,6 @@ function firstShortRoleId(cell) {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
 
 .roster-grid {
   --ok: #16a34a;

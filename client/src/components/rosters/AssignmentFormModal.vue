@@ -2,6 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { filterEligibleWorkers } from '@/lib/eligibleWorkers'
 import { shiftLabel } from '@/lib/shifts'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
+import Input from '@/components/ui/Input.vue'
+import Select from '@/components/ui/Select.vue'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -134,13 +138,9 @@ function onSubmit() {
         <h2 class="modal__title">
           Add assignment
         </h2>
-        <button
-          type="button"
-          class="button"
-          @click="emit('close')"
-        >
+        <Button @click="emit('close')">
           Close
-        </button>
+        </Button>
       </header>
 
       <p class="modal__hint">
@@ -159,11 +159,12 @@ function onSubmit() {
         class="assignment-form"
         @submit.prevent="onSubmit"
       >
-        <label class="field">
-          <span class="field__label">Worker</span>
-          <select
+        <Field
+          label="Worker"
+          :hint="hasSlotSelection && filteredWorkers.length === 0 ? 'No workers are eligible for this date and shift.' : undefined"
+        >
+          <Select
             v-model="workerId"
-            class="input"
             required
             :disabled="!hasSlotSelection"
           >
@@ -177,23 +178,17 @@ function onSubmit() {
             >
               {{ worker.full_name }} ({{ worker.role.name ?? worker.role.code }})
             </option>
-          </select>
-          <span
-            v-if="hasSlotSelection && filteredWorkers.length === 0"
-            class="field__hint"
-          >
-            No workers are eligible for this date and shift.
-          </span>
-        </label>
+          </Select>
+        </Field>
 
-        <label class="field">
-          <span class="field__label">Shift</span>
-          <select
+        <Field label="Shift">
+          <Select
             v-model="shiftId"
-            class="input"
             required
           >
-            <option value="">Select shift</option>
+            <option value="">
+              Select shift
+            </option>
             <option
               v-for="shift in shifts"
               :key="shift.id"
@@ -201,20 +196,18 @@ function onSubmit() {
             >
               {{ shift.code }} — {{ shiftLabel(shift) }}
             </option>
-          </select>
-        </label>
+          </Select>
+        </Field>
 
-        <label class="field">
-          <span class="field__label">Date</span>
-          <input
+        <Field label="Date">
+          <Input
             v-model="workDate"
-            class="input"
             type="date"
             :min="minDate"
             :max="maxDate"
             required
-          >
-        </label>
+          />
+        </Field>
 
         <div
           v-if="error"
@@ -225,21 +218,19 @@ function onSubmit() {
         </div>
 
         <footer class="modal__footer">
-          <button
-            type="button"
-            class="button"
+          <Button
             :disabled="saving"
             @click="emit('close')"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
-            class="button button--primary"
+            variant="primary"
             :disabled="saving || workerId === '' || shiftId === '' || workDate === ''"
           >
             {{ saving ? 'Adding...' : 'Add assignment' }}
-          </button>
+          </Button>
         </footer>
       </form>
     </div>
@@ -247,8 +238,6 @@ function onSubmit() {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
 @import '@/assets/ui/modal.css';
 
 .assignment-form {
@@ -260,10 +249,5 @@ function onSubmit() {
 .modal__hint--emphasis {
   color: #c2410c;
   font-weight: 600;
-}
-
-.field__hint {
-  color: #9a3412;
-  font-size: 0.875rem;
 }
 </style>

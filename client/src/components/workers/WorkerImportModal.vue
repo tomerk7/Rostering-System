@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { downloadWorkersSample, importWorkers } from '@/api/workers'
 import { isAxiosError } from 'axios'
+import Button from '@/components/ui/Button.vue'
+import Field from '@/components/ui/Field.vue'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -193,13 +195,9 @@ async function downloadSample() {
             One row per worker. Include a header row with the exact column names below.
           </p>
         </div>
-        <button
-          type="button"
-          class="button"
-          @click="close"
-        >
+        <Button @click="close">
           Close
-        </button>
+        </Button>
       </header>
 
       <div class="import-guide-toggle">
@@ -355,14 +353,12 @@ async function downloadSample() {
         v-if="showGuide"
         class="import-guide__sample"
       >
-        <button
-          type="button"
-          class="button"
+        <Button
           :disabled="downloadingSample"
           @click="downloadSample"
         >
           {{ downloadingSample ? 'Downloading...' : 'Download sample CSV' }}
-        </button>
+        </Button>
       </div>
 
       <div
@@ -375,15 +371,14 @@ async function downloadSample() {
 
       <template v-if="!showGuide">
         <section class="import-upload">
-          <label class="field">
-            <span class="field__label">CSV file</span>
+          <Field label="CSV file">
             <input
               class="input"
               type="file"
               accept=".csv,text/csv"
               @change="onFileChange"
             >
-          </label>
+          </Field>
         </section>
 
         <div
@@ -447,22 +442,19 @@ async function downloadSample() {
         </div>
 
         <footer class="modal__footer">
-          <button
-            type="button"
-            class="button"
+          <Button
             :disabled="importing"
             @click="close"
           >
             Done
-          </button>
-          <button
-            type="button"
-            class="button button--primary"
+          </Button>
+          <Button
+            variant="primary"
             :disabled="importing || importFile === null"
             @click="submitImport"
           >
             {{ importing ? 'Importing...' : 'Import' }}
-          </button>
+          </Button>
         </footer>
       </template>
     </div>
@@ -470,9 +462,6 @@ async function downloadSample() {
 </template>
 
 <style scoped>
-@import '@/assets/ui/button.css';
-@import '@/assets/ui/forms.css';
-@import '@/assets/ui/table.css';
 @import '@/assets/ui/modal.css';
 
 .modal__card--import {
