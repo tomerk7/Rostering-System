@@ -13,35 +13,8 @@ function periodLabel(roster) {
   return formatMonthYear(roster.year, roster.month)
 }
 
-function statusClass(status) {
-  if (status === 'published') {
-    return 'badge--success'
-  }
-
-  return 'badge--muted'
-}
-
-async function publishRoster(roster) {
-  if (!window.confirm(`Publish the ${periodLabel(roster)} roster? This cannot be undone.`)) {
-    return
-  }
-
-  await rostersStore.publish(roster.id)
-  await rostersStore.fetchRosters()
-}
-
 function deleteConfirmMessage(roster) {
-  const period = periodLabel(roster)
-
-  if (roster.status === 'published') {
-    return `Delete the published ${period} roster? This will remove the active schedule for this month.`
-  }
-
-  if (roster.status === 'superseded') {
-    return `Delete the superseded ${period} roster? This cannot be undone.`
-  }
-
-  return `Delete the ${period} draft roster? This cannot be undone.`
+  return `Delete the ${periodLabel(roster)} roster? This will remove the schedule for this month.`
 }
 
 async function deleteRoster(roster) {
@@ -64,7 +37,7 @@ async function deleteRoster(roster) {
           Roster Management
         </h1>
         <p class="page__description">
-          Browse saved rosters, generate new drafts, and open the monthly grid for review.
+          Browse saved rosters, generate new ones, and open the monthly grid for review.
         </p>
       </div>
       <div class="page__actions">
@@ -126,10 +99,7 @@ async function deleteRoster(roster) {
                   <strong>{{ periodLabel(roster) }}</strong>
                 </td>
                 <td>
-                  <span
-                    class="badge"
-                    :class="statusClass(roster.status)"
-                  >
+                  <span class="badge badge--success">
                     {{ roster.status }}
                   </span>
                 </td>
@@ -143,15 +113,6 @@ async function deleteRoster(roster) {
                   >
                     View
                   </RouterLink>
-                  <button
-                    v-if="roster.status === 'draft'"
-                    type="button"
-                    class="button button--primary"
-                    :disabled="rostersStore.publishing"
-                    @click="publishRoster(roster)"
-                  >
-                    Publish
-                  </button>
                   <button
                     type="button"
                     class="button button--danger"

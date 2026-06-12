@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Models\Contract;
-use App\Models\ContractAvailableDay;
-use App\Models\ContractAvailableShift;
+use App\Models\ContractAvailability;
 use App\Models\Shift;
 use App\Models\Worker;
 use Database\Seeders\ReferenceDataSeeder;
@@ -35,7 +34,9 @@ final class ContractFactory extends Factory
     }
 
     /**
-     * Add weekday and shift availability rows after the contract is created.
+     * Add weekday/shift availability rows after the contract is created.
+     *
+     * When both arrays are provided, writes the cross-product of days x shifts.
      *
      * @param array<int, int>|null $daysOfWeek
      * @param array<int, int>|null $shiftIds
@@ -47,17 +48,13 @@ final class ContractFactory extends Factory
             $availableShiftIds = $this->normalizeShiftIds($shiftIds);
 
             foreach ($days as $dayOfWeek) {
-                ContractAvailableDay::query()->firstOrCreate([
-                    'contract_id' => $contract->id,
-                    'day_of_week' => $dayOfWeek,
-                ]);
-            }
-
-            foreach ($availableShiftIds as $shiftId) {
-                ContractAvailableShift::query()->firstOrCreate([
-                    'contract_id' => $contract->id,
-                    'shift_id' => $shiftId,
-                ]);
+                foreach ($availableShiftIds as $shiftId) {
+                    ContractAvailability::query()->firstOrCreate([
+                        'contract_id' => $contract->id,
+                        'day_of_week' => $dayOfWeek,
+                        'shift_id' => $shiftId,
+                    ]);
+                }
             }
         });
     }

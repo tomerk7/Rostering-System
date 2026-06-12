@@ -27,8 +27,7 @@ HEADERS = [
     "hourly_cost",
     "min_monthly_hours",
     "max_monthly_hours",
-    "available_days",
-    "available_shifts",
+    "availability",
 ]
 
 ROLES = ("General Guard", "Supervisor", "Screener")
@@ -86,6 +85,10 @@ def generate_israeli_id(base_number: int) -> str:
 
 def join_tokens(tokens: list[str]) -> str:
     return "|".join(tokens)
+
+
+def format_availability(days: list[str], shifts: list[str]) -> str:
+    return ";".join(f"{day}:{join_tokens(shifts)}" for day in days)
 
 
 def role_counts_for_count(count: int) -> dict[str, int]:
@@ -196,8 +199,7 @@ def build_workers(count: int, profile: str, seed: int) -> list[dict[str, str]]:
                     "hourly_cost": hourly_cost,
                     "min_monthly_hours": min_hours,
                     "max_monthly_hours": max_hours,
-                    "available_days": join_tokens(days),
-                    "available_shifts": join_tokens(shifts),
+                    "availability": format_availability(days, shifts),
                 }
             )
             name_index += 1

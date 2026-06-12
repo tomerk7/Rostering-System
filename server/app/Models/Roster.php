@@ -38,17 +38,6 @@ final class Roster extends Model
     }
 
     /**
-     * Scope the query to only include published rosters.
-     * 
-     * @param Builder $query
-     * @return Builder
-     */
-    public function scopePublished(Builder $query): Builder
-    {
-        return $query->where('status', RosterStatus::Published->value);
-    }
-
-    /**
      * Scope the query to only include rosters for a specific period.
      * 
      * @param Builder $query

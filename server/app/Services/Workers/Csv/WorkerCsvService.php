@@ -7,8 +7,7 @@ namespace App\Services\Workers\Csv;
 use App\Jobs\ExportWorkersJob;
 use App\Jobs\ImportWorkersJob;
 use App\Models\Contract;
-use App\Models\ContractAvailableDay;
-use App\Models\ContractAvailableShift;
+use App\Models\ContractAvailability;
 use App\Models\Role;
 use App\Models\Shift;
 use App\Models\Worker;
@@ -44,8 +43,7 @@ final class WorkerCsvService
     public const int HOURLY_COST = 4;
     public const int MIN_MONTHLY_HOURS = 5;
     public const int MAX_MONTHLY_HOURS = 6;
-    public const int AVAILABLE_DAYS = 7;
-    public const int AVAILABLE_SHIFTS = 8;
+    public const int AVAILABILITY = 7;
 
     /**
      * Fixed column order, written verbatim as the export header row.
@@ -60,8 +58,7 @@ final class WorkerCsvService
         'hourly_cost',
         'min_monthly_hours',
         'max_monthly_hours',
-        'available_days',
-        'available_shifts',
+        'availability',
     ];
 
     /**
@@ -69,6 +66,11 @@ final class WorkerCsvService
      * so commas never trigger Excel quoting.
      */
     public const string VALUE_SEPARATOR = '|';
+
+    /**
+     * Separator between day groups in the availability column.
+     */
+    public const string DAY_GROUP_SEPARATOR = ';';
 
     public const string STATUS_ACTIVE = 'Active';
     public const string STATUS_INACTIVE = 'Inactive';
@@ -145,7 +147,7 @@ final class WorkerCsvService
 
     /**
      * Store an uploaded CSV and queue it for import.
-     * 
+     *
      * @param UploadedFile $file
      * @return string
      */
@@ -167,7 +169,7 @@ final class WorkerCsvService
 
     /**
      * Process a queued worker CSV import.
-     * 
+     *
      * @param string $importId
      * @param string $storedPath
      * @return void
@@ -232,7 +234,7 @@ final class WorkerCsvService
 
     /**
      * Record a failed worker CSV import and remove the stored file.
-     * 
+     *
      * @param string $importId
      * @param string $storedPath
      * @param string $message
@@ -291,7 +293,7 @@ final class WorkerCsvService
 
     /**
      * Queue a worker CSV export.
-     * 
+     *
      * @return string
      */
     public function queueExport(): string
@@ -310,7 +312,7 @@ final class WorkerCsvService
 
     /**
      * Process a queued worker CSV export.
-     * 
+     *
      * @param string $exportId
      * @param string $storedPath
      * @return void
@@ -329,7 +331,7 @@ final class WorkerCsvService
             fputcsv($handle, self::HEADERS);
 
             Worker::query()
-                ->with(['role', 'contract.availableDays', 'contract.availableShifts'])
+                ->with(['role', 'contract.availability.shift'])
                 ->orderBy('israeli_id')
                 ->lazy()
                 ->each(function (Worker $worker) use ($handle): void {
@@ -348,7 +350,7 @@ final class WorkerCsvService
 
     /**
      * Record a failed worker CSV export and remove the stored file.
-     * 
+     *
      * @param string $exportId
      * @param string $storedPath
      * @param string $message
@@ -413,7 +415,7 @@ final class WorkerCsvService
 
     /**
      * Stream a completed queued export and remove the stored file.
-     * 
+     *
      * @param string $exportId
      * @return StreamedResponse
      */
@@ -480,7 +482,8 @@ final class WorkerCsvService
 
             $result = $this->validateRow($row);
 
-            if ($result['errors'] !== []) {
+            // Record validation errors and skip the invalid row.
+            if (!empty($result['errors'])) {
                 foreach ($result['errors'] as $field => $messages) {
                     foreach ($messages as $message) {
                         $errors[] = ['line' => $line, 'field' => $field, 'message' => $message];
@@ -554,7 +557,7 @@ final class WorkerCsvService
 
     /**
      * Build a cache key for a queued worker CSV import.
-     * 
+     *
      * @param string $importId
      * @return string
      */
@@ -565,7 +568,7 @@ final class WorkerCsvService
 
     /**
      * Build a cache key for a queued worker CSV export.
-     * 
+     *
      * @param string $exportId
      * @return string
      */
@@ -593,8 +596,7 @@ final class WorkerCsvService
             self::HOURLY_COST => (string) $contract?->hourly_cost,
             self::MIN_MONTHLY_HOURS => (string) $contract?->min_monthly_hours,
             self::MAX_MONTHLY_HOURS => (string) $contract?->max_monthly_hours,
-            self::AVAILABLE_DAYS => $this->days($contract),
-            self::AVAILABLE_SHIFTS => $this->shifts($contract),
+            self::AVAILABILITY => $this->availability($contract),
         ];
 
         ksort($row);
@@ -603,47 +605,38 @@ final class WorkerCsvService
     }
 
     /**
-     * Pipe-separated day tokens, ordered Sun..Sat for a stable round-trip.
-     * 
+     * Serialize per-weekday shift availability, e.g. Sun:C;Mon:A|B;Wed:C.
+     *
      * @param object|null $contract
      * @return string
      */
-    private function days(?object $contract): string
+    private function availability(?object $contract): string
     {
         if ($contract === null) {
             return '';
         }
 
-        $days = $contract->availableDays
-            ->pluck('day_of_week')
-            ->map(static fn (mixed $day): int => (int) $day)
-            ->sort()
-            ->map(static fn (int $day): string => self::DAY_TOKEN_BY_NUMBER[$day])
-            ->all();
+        /** @var array<string, list<string>> $byDay */
+        $byDay = [];
 
-        return implode(self::VALUE_SEPARATOR, $days);
-    }
-
-    /**
-     * Pipe-separated shift codes, ordered A..C for a stable round-trip.
-     * 
-     * @param object|null $contract
-     * @return string
-     */
-    private function shifts(?object $contract): string
-    {
-        if ($contract === null) {
-            return '';
+        foreach ($contract->availability as $slot) {
+            $dayToken = self::DAY_TOKEN_BY_NUMBER[(int) $slot->day_of_week];
+            $byDay[$dayToken][] = (string) $slot->shift->code;
         }
 
-        $codes = $contract->availableShifts
-            ->pluck('code')
-            ->map(static fn (mixed $code): string => (string) $code)
-            ->sort()
-            ->values()
-            ->all();
+        $groups = [];
 
-        return implode(self::VALUE_SEPARATOR, $codes);
+        foreach (self::DAY_TOKEN_BY_NUMBER as $dayToken) {
+            if (! isset($byDay[$dayToken])) {
+                continue;
+            }
+
+            $codes = $byDay[$dayToken];
+            sort($codes);
+            $groups[] = $dayToken . ':' . implode(self::VALUE_SEPARATOR, $codes);
+        }
+
+        return implode(self::DAY_GROUP_SEPARATOR, $groups);
     }
 
     /**
@@ -773,34 +766,28 @@ final class WorkerCsvService
     ): void {
         $contractIds = $contractIdByWorkerId->values()->all();
 
-        ContractAvailableDay::query()->whereIn('contract_id', $contractIds)->delete();
-        ContractAvailableShift::query()->whereIn('contract_id', $contractIds)->delete();
+        ContractAvailability::query()->whereIn('contract_id', $contractIds)->delete();
 
-        $dayRows = [];
-        $shiftRows = [];
+        $availabilityRows = [];
 
         foreach ($chunk as $row) {
             $workerId = (int) $workerIdByIsraeliId[$row['israeli_id']];
             $contractId = (int) $contractIdByWorkerId[$workerId];
 
-            /** @var array{days: list<int>, shift_codes: list<string>} $availability */
-            $availability = $row['availability'];
+            /** @var list<array{day_of_week: int, shift_code: string}> $slots */
+            $slots = $row['availability'];
 
-            foreach ($availability['days'] as $day) {
-                $dayRows[] = ['contract_id' => $contractId, 'day_of_week' => $day];
-            }
-
-            foreach ($availability['shift_codes'] as $code) {
-                $shiftRows[] = ['contract_id' => $contractId, 'shift_id' => (int) $shiftIdByCode[$code]];
+            foreach ($slots as $slot) {
+                $availabilityRows[] = [
+                    'contract_id' => $contractId,
+                    'day_of_week' => $slot['day_of_week'],
+                    'shift_id' => (int) $shiftIdByCode[$slot['shift_code']],
+                ];
             }
         }
 
-        if ($dayRows !== []) {
-            ContractAvailableDay::query()->insert($dayRows);
-        }
-
-        if ($shiftRows !== []) {
-            ContractAvailableShift::query()->insert($shiftRows);
+        if ($availabilityRows !== []) {
+            ContractAvailability::query()->insert($availabilityRows);
         }
     }
 
@@ -826,6 +813,7 @@ final class WorkerCsvService
 
             $line = $index + 1;
 
+            // Skipping the header line.
             if ($line === 1) {
                 continue;
             }
@@ -847,14 +835,22 @@ final class WorkerCsvService
 
         $validator = Validator::make($fields, $this->rules(), $this->messages());
 
-        if ($validator->fails()) {
-            /** @var array<string, list<string>> $messages */
-            $messages = $validator->errors()->messages();
+        /** @var array<string, list<string>> $messages */
+        $messages = $validator->fails() ? $validator->errors()->messages() : [];
 
+        $availabilityResult = $this->parseAvailability((string) ($fields['availability'] ?? ''));
+
+        if ($availabilityResult['errors'] !== []) {
+            foreach ($availabilityResult['errors'] as $field => $fieldMessages) {
+                $messages[$field] = array_merge($messages[$field] ?? [], $fieldMessages);
+            }
+        }
+
+        if ($messages !== []) {
             return ['data' => null, 'errors' => $messages];
         }
 
-        return ['data' => $this->normalize($fields), 'errors' => []];
+        return ['data' => $this->normalize($fields, $availabilityResult['slots']), 'errors' => []];
     }
 
     /**
@@ -878,8 +874,7 @@ final class WorkerCsvService
             'hourly_cost' => $this->cell($row, self::HOURLY_COST),
             'min_monthly_hours' => $this->cell($row, self::MIN_MONTHLY_HOURS),
             'max_monthly_hours' => $this->cell($row, self::MAX_MONTHLY_HOURS),
-            'available_days' => $this->tokens($this->cell($row, self::AVAILABLE_DAYS), strtolower(...)),
-            'available_shifts' => $this->tokens($this->cell($row, self::AVAILABLE_SHIFTS), strtoupper(...)),
+            'availability' => $this->cell($row, self::AVAILABILITY),
         ];
     }
 
@@ -889,28 +884,12 @@ final class WorkerCsvService
      * @param  array<string, mixed>  $fields
      * @return array<string, mixed>
      */
-    private function normalize(array $fields): array
+    /**
+     * @param  list<array{day_of_week: int, shift_code: string}>  $slots
+     * @return array<string, mixed>
+     */
+    private function normalize(array $fields, array $slots): array
     {
-        /** @var list<string> $days */
-        $days = $fields['available_days'];
-
-        /** @var list<string> $shifts */
-        $shifts = $fields['available_shifts'];
-
-        $dayNumbers = [];
-
-        foreach ($days as $day) {
-            $dayNumbers[self::DAY_OF_WEEK_BY_TOKEN[$day]] = true;
-        }
-
-        $dayNumbers = array_keys($dayNumbers);
-
-        sort($dayNumbers);
-
-        $shiftCodes = array_values(array_unique($shifts));
-
-        sort($shiftCodes);
-
         return [
             'full_name' => trim((string) $fields['full_name']),
             'israeli_id' => (string) $fields['israeli_id'],
@@ -921,10 +900,7 @@ final class WorkerCsvService
                 'min_monthly_hours' => (int) $fields['min_monthly_hours'],
                 'max_monthly_hours' => (int) $fields['max_monthly_hours'],
             ],
-            'availability' => [
-                'days' => $dayNumbers,
-                'shift_codes' => $shiftCodes,
-            ],
+            'availability' => $slots,
         ];
     }
 
@@ -943,10 +919,7 @@ final class WorkerCsvService
             'hourly_cost' => ['required', 'numeric', 'min:0', 'max:999999.99'],
             'min_monthly_hours' => ['required', 'integer', 'min:0', 'max:744'],
             'max_monthly_hours' => ['required', 'integer', 'min:0', 'max:744', 'gte:min_monthly_hours'],
-            'available_days' => ['required', 'array', 'min:1', 'max:7'],
-            'available_days.*' => ['required', 'distinct', Rule::in(array_keys(self::DAY_OF_WEEK_BY_TOKEN))],
-            'available_shifts' => ['required', 'array', 'min:1', 'max:3'],
-            'available_shifts.*' => ['required', 'distinct', Rule::in(self::SHIFT_CODES)],
+            'availability' => ['required', 'string', 'max:255'],
         ];
     }
 
@@ -963,10 +936,98 @@ final class WorkerCsvService
             'role.in' => 'Unknown role; expected General Guard, Supervisor, or Screener.',
             'status.in' => 'Unknown status; expected Active or Inactive.',
             'max_monthly_hours.gte' => 'max_monthly_hours must be greater than or equal to min_monthly_hours.',
-            'available_days.*.in' => 'Unknown day token; expected Sun, Mon, Tue, Wed, Thu, Fri, or Sat.',
-            'available_days.*.distinct' => 'Duplicate day token.',
-            'available_shifts.*.in' => 'Unknown shift token; expected A, B, or C.',
-            'available_shifts.*.distinct' => 'Duplicate shift token.',
+            'availability.required' => 'The availability is required.',
+        ];
+    }
+
+    /**
+     * Parse the combined availability column into day/shift pairs.
+     *
+     * @return array{
+     *     slots: list<array{day_of_week: int, shift_code: string}>,
+     *     errors: array<string, list<string>>
+     * }
+     */
+    private function parseAvailability(string $value): array
+    {
+        $value = trim($value);
+
+        if ($value === '') {
+            return [
+                'slots' => [],
+                'errors' => ['availability' => ['The availability is required.']],
+            ];
+        }
+
+        $slots = [];
+        $seen = [];
+        $errors = [];
+
+        foreach (explode(self::DAY_GROUP_SEPARATOR, $value) as $group) {
+            $group = trim($group);
+
+            if ($group === '') {
+                $errors['availability'][] = 'Empty day group in availability.';
+
+                continue;
+            }
+
+            $parts = explode(':', $group, 2);
+
+            if (count($parts) !== 2) {
+                $errors['availability'][] = "Invalid availability group \"{$group}\"; expected Day:Shift|Shift.";
+
+                continue;
+            }
+
+            $dayToken = strtolower(trim($parts[0]));
+            $shiftPart = trim($parts[1]);
+
+            if ($shiftPart === '') {
+                $errors['availability'][] = "Day group \"{$group}\" must list at least one shift.";
+
+                continue;
+            }
+
+            if (! isset(self::DAY_OF_WEEK_BY_TOKEN[$dayToken])) {
+                $errors['availability'][] = "Unknown day token \"{$parts[0]}\"; expected Sun, Mon, Tue, Wed, Thu, Fri, or Sat.";
+
+                continue;
+            }
+
+            $dayOfWeek = self::DAY_OF_WEEK_BY_TOKEN[$dayToken];
+            $shiftCodes = $this->tokens($shiftPart, strtoupper(...));
+
+            foreach ($shiftCodes as $shiftCode) {
+                if (! in_array($shiftCode, self::SHIFT_CODES, true)) {
+                    $errors['availability'][] = "Unknown shift token \"{$shiftCode}\"; expected A, B, or C.";
+
+                    continue;
+                }
+
+                $key = "{$dayOfWeek}:{$shiftCode}";
+
+                if (isset($seen[$key])) {
+                    $errors['availability'][] = "Duplicate availability for {$parts[0]} shift {$shiftCode}.";
+
+                    continue;
+                }
+
+                $seen[$key] = true;
+                $slots[] = [
+                    'day_of_week' => $dayOfWeek,
+                    'shift_code' => $shiftCode,
+                ];
+            }
+        }
+
+        if ($slots === [] && $errors === []) {
+            $errors['availability'][] = 'The availability is required.';
+        }
+
+        return [
+            'slots' => $slots,
+            'errors' => $errors,
         ];
     }
 
@@ -1000,6 +1061,7 @@ final class WorkerCsvService
 
         $tokens = [];
 
+        // Trim and normalize each day or shift value.
         foreach (explode(self::VALUE_SEPARATOR, $value) as $token) {
             $tokens[] = $normalizer(trim($token));
         }

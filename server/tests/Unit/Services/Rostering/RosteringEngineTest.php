@@ -292,7 +292,7 @@ final class RosteringEngineTest extends TestCase
      * @param  list<int>|null  $days
      * @param  list<int>|null  $shifts
      * @param  array<string, int>  $shiftsPerDate
-     * @return array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}
+     * @return array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}
      */
     private function worker(
         int $role = self::ROLE_GUARD,
@@ -307,13 +307,20 @@ final class RosteringEngineTest extends TestCase
         $days ??= [$this->dayOfWeek];
         $shifts ??= [self::SHIFT_A];
 
+        $availability = [];
+
+        foreach ($days as $day) {
+            foreach ($shifts as $shift) {
+                $availability[$day][$shift] = true;
+            }
+        }
+
         return [
             'role_id' => $role,
             'hourly_cost' => $hourlyCost,
             'min_hours' => $minHours,
             'max_hours' => $maxHours,
-            'days' => array_fill_keys($days, true),
-            'shifts' => array_fill_keys($shifts, true),
+            'availability' => $availability,
             'assigned_hours' => $assignedHours,
             'shifts_per_date' => $shiftsPerDate,
         ];
@@ -343,7 +350,7 @@ final class RosteringEngineTest extends TestCase
     /**
      * A workforce with overlapping availability so scoring tie-breaks matter.
      *
-     * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}>
+     * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}>
      */
     private function workforce(): array
     {

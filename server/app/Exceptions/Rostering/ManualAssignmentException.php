@@ -11,11 +11,6 @@ use RuntimeException;
  */
 final class ManualAssignmentException extends RuntimeException
 {
-    public static function notDraft(): self
-    {
-        return new self('Manual assignments are only allowed on draft rosters.');
-    }
-
     public static function assignmentNotInRoster(): self
     {
         return new self('The assignment does not belong to this roster.');

@@ -1,17 +1,14 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
 import { useRosterReference } from '@/composables/useRosterReference'
-import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
 import RosterGrid from '@/components/rosters/RosterGrid.vue'
-import { formatMonthYear } from '@/lib/rosterGrid'
 
+const router = useRouter()
 const rostersStore = useRostersStore()
 const referenceData = useRosterReference()
-const showAssignmentModal = ref(false)
-const assignmentError = ref('')
-const assignmentContext = ref(null)
 
 const currentYear = new Date().getFullYear()
 
@@ -24,37 +21,26 @@ const canGenerate = computed(
   () => rostersStore.selectedYear != null && rostersStore.selectedMonth != null,
 )
 
-const hasGeneratedDraft = computed(
-  () => rostersStore.generatedDraft != null && referenceData.reference != null,
+const hasGeneratedRoster = computed(
+  () => rostersStore.generatedRoster != null && referenceData.reference != null,
 )
 
-const periodLabel = computed(() => {
-  const draft = rostersStore.generatedDraft
-
-  return draft ? formatMonthYear(draft.year, draft.month) : ''
-})
-
-const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
-
-const modalWorkers = computed(() => {
-  const roleId = assignmentContext.value?.roleId
-
-  return roleId
-    ? activeWorkers.value.filter((worker) => worker.role.id === roleId)
-    : activeWorkers.value
-})
+const hasCoverageShortages = computed(
+  () => (rostersStore.summary?.coverage_shortage_count ?? 0) > 0,
+)
 
 onMounted(() => {
-  rostersStore.clearGeneratedDraft()
-  rostersStore.clearRoster()
+  rostersStore.generatedRoster = null
+  rostersStore.roster = null
   rostersStore.clearErrors()
-  rostersStore.setSelectedMonth(currentYear, null)
+  rostersStore.selectedYear = currentYear
+  rostersStore.selectedMonth = null
   referenceData.load()
 })
 
 function onPeriodChange() {
   rostersStore.clearErrors()
-  rostersStore.clearGeneratedDraft()
+  rostersStore.generatedRoster = null
 }
 
 async function generateRoster() {
@@ -62,59 +48,30 @@ async function generateRoster() {
     return
   }
 
-  await rostersStore.generateDraft(
+  await rostersStore.generate(
     rostersStore.selectedYear,
     rostersStore.selectedMonth,
   )
 }
 
-function openAssignmentModal(context = null) {
-  assignmentError.value = ''
-  assignmentContext.value = context
-  showAssignmentModal.value = true
-}
+async function saveRoster() {
+  const preview = rostersStore.generatedRoster
 
-function closeAssignmentModal() {
-  showAssignmentModal.value = false
-  assignmentContext.value = null
-  assignmentError.value = ''
-}
-
-async function submitAssignment(payload) {
-  const draft = rostersStore.generatedDraft
-
-  if (!draft) {
+  if (!preview) {
     return
   }
 
-  const roster = await rostersStore.addManualAssignment(draft.id, payload)
+  if (hasCoverageShortages.value && !window.confirm(
+    'This roster has coverage shortages. Save it anyway?',
+  )) {
+    return
+  }
+
+  const roster = await rostersStore.save(preview.year, preview.month)
 
   if (roster) {
-    closeAssignmentModal()
-    return
+    await router.push({ name: 'rosters.show', params: { id: roster.id } })
   }
-
-  assignmentError.value = rostersStore.validationErrors.assignment?.[0] ?? rostersStore.error
-}
-
-async function removeAssignment(assignmentId) {
-  const draft = rostersStore.generatedDraft
-
-  if (!draft || !window.confirm('Remove this assignment from the draft roster?')) {
-    return
-  }
-
-  await rostersStore.removeManualAssignment(draft.id, assignmentId)
-}
-
-async function publishGeneratedDraft() {
-  const draft = rostersStore.generatedDraft
-
-  if (!draft || !window.confirm(`Publish the ${periodLabel.value} roster? This cannot be undone.`)) {
-    return
-  }
-
-  await rostersStore.publish(draft.id)
 }
 
 </script>
@@ -130,7 +87,8 @@ async function publishGeneratedDraft() {
           Generate Roster
         </h1>
         <p class="page__description">
-          Select a month and generate a draft roster. Review the result below.
+          Select a month and generate a preview. Review the alerts, then save to
+          persist the roster.
         </p>
       </div>
       <div class="page__actions">
@@ -140,24 +98,6 @@ async function publishGeneratedDraft() {
         >
           Back to list
         </RouterLink>
-        <button
-          v-if="hasGeneratedDraft && rostersStore.generatedDraft.status === 'draft'"
-          type="button"
-          class="button"
-          :disabled="rostersStore.assignmentLoading"
-          @click="openAssignmentModal()"
-        >
-          Add assignment
-        </button>
-        <button
-          v-if="hasGeneratedDraft && rostersStore.generatedDraft.status === 'draft'"
-          type="button"
-          class="button button--primary"
-          :disabled="rostersStore.publishing"
-          @click="publishGeneratedDraft"
-        >
-          {{ rostersStore.publishing ? 'Publishing...' : 'Publish' }}
-        </button>
       </div>
     </header>
 
@@ -208,6 +148,15 @@ async function publishGeneratedDraft() {
           >
             {{ rostersStore.generating ? 'Generating...' : 'Generate' }}
           </button>
+          <button
+            v-if="hasGeneratedRoster"
+            type="button"
+            class="button button--primary"
+            :disabled="rostersStore.saving"
+            @click="saveRoster"
+          >
+            {{ rostersStore.saving ? 'Saving...' : 'Save roster' }}
+          </button>
         </div>
       </form>
 
@@ -231,10 +180,14 @@ async function publishGeneratedDraft() {
         v-if="rostersStore.generating"
         class="empty-state"
       >
-        Generating draft roster...
+        Generating roster...
       </div>
 
-      <template v-else-if="hasGeneratedDraft">
+      <template v-else-if="hasGeneratedRoster">
+        <p class="roster-preview-hint">
+          This is a preview. Nothing is saved until you click Save roster.
+        </p>
+
         <RosterAlertSummary
           :summary="rostersStore.summary"
           :reports="rostersStore.reports"
@@ -244,17 +197,15 @@ async function publishGeneratedDraft() {
         />
 
         <RosterGrid
-          :year="rostersStore.generatedDraft.year"
-          :month="rostersStore.generatedDraft.month"
+          :year="rostersStore.generatedRoster.year"
+          :month="rostersStore.generatedRoster.month"
           :shifts="referenceData.reference.shifts"
           :requirements="referenceData.reference.shift_role_requirements"
           :roles="referenceData.reference.roles"
           :assignments="rostersStore.assignments"
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
-          :editable="rostersStore.generatedDraft.status === 'draft'"
-          @cell-click="openAssignmentModal"
-          @remove-assignment="removeAssignment"
+          :editable="false"
         />
       </template>
 
@@ -262,22 +213,8 @@ async function publishGeneratedDraft() {
         v-else
         class="empty-state"
       >
-        Choose a month and click Generate to create a draft roster.
+        Choose a month and click Generate to create a roster.
       </div>
     </section>
-
-    <AssignmentFormModal
-      :show="showAssignmentModal"
-      :workers="modalWorkers.length ? modalWorkers : activeWorkers"
-      :shifts="referenceData.reference?.shifts ?? []"
-      :roles="referenceData.reference?.roles"
-      :initial-date="assignmentContext?.workDate"
-      :initial-shift-id="assignmentContext?.shiftId"
-      :initial-role-id="assignmentContext?.roleId"
-      :saving="rostersStore.assignmentLoading"
-      :error="assignmentError"
-      @close="closeAssignmentModal"
-      @submit="submitAssignment"
-    />
   </main>
 </template>

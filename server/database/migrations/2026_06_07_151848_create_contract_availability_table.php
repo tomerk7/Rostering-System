@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -11,13 +12,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('contract_available_shifts', function (Blueprint $table) {
+        Schema::create('contract_availability', function (Blueprint $table) {
             $table->id();
             $table->foreignId('contract_id')->constrained('contracts')->cascadeOnDelete();
+            $table->smallInteger('day_of_week');
             $table->foreignId('shift_id')->constrained('shifts')->restrictOnDelete();
 
-            $table->unique(['contract_id', 'shift_id']);
+            $table->unique(['contract_id', 'day_of_week', 'shift_id']);
+            $table->index(['contract_id', 'day_of_week']);
         });
+
+        DB::statement('ALTER TABLE contract_availability ADD CONSTRAINT contract_availability_day_of_week_range CHECK (day_of_week BETWEEN 0 AND 6)');
     }
 
     /**
@@ -25,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('contract_available_shifts');
+        Schema::dropIfExists('contract_availability');
     }
 };

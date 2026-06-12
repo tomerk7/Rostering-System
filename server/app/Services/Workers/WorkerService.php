@@ -20,8 +20,7 @@ final readonly class WorkerService
 {
     private const array RELATIONS = [
         'role',
-        'contract.availableDays',
-        'contract.availableShifts',
+        'contract.availability.shift',
     ];
 
     /**
@@ -214,25 +213,30 @@ final readonly class WorkerService
      */
     private function replaceAvailability(Contract $contract, array $data): void
     {
-        /** @var array{days: list<int>, shifts: list<int>} $availability */
+        /** @var list<array{day_of_week: int, shift_id: int}> $availability */
         $availability = $data['availability'];
 
-        $contract->availableDays()->delete();
-        $contract->availableShiftRows()->delete();
+        $contract->availability()->delete();
 
-        $days = [];
+        $rows = [];
+        $seen = [];
 
-        foreach ($availability['days'] as $dayOfWeek) {
-            $days[] = ['day_of_week' => $dayOfWeek];
+        foreach ($availability as $slot) {
+            $dayOfWeek = (int) $slot['day_of_week'];
+            $shiftId = (int) $slot['shift_id'];
+            $key = "{$dayOfWeek}:{$shiftId}";
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $rows[] = [
+                'day_of_week' => $dayOfWeek,
+                'shift_id' => $shiftId,
+            ];
         }
 
-        $shifts = [];
-
-        foreach ($availability['shifts'] as $shiftId) {
-            $shifts[] = ['shift_id' => $shiftId];
-        }
-
-        $contract->availableDays()->createMany($days);
-        $contract->availableShiftRows()->createMany($shifts);
+        $contract->availability()->createMany($rows);
     }
 }

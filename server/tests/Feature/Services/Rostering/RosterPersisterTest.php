@@ -6,9 +6,7 @@ namespace Tests\Feature\Services\Rostering;
 
 use App\Enums\AssignmentSource;
 use App\Enums\RosterStatus;
-use App\Exceptions\Rostering\RosterStatusException;
 use App\Models\Role;
-use App\Models\Roster;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\Worker;
@@ -45,7 +43,7 @@ final class RosterPersisterTest extends TestCase
         $this->shift = Shift::query()->where('code', 'A')->firstOrFail();
     }
 
-    public function test_save_persists_a_draft_roster_with_its_assignments(): void
+    public function test_save_persists_a_published_roster_with_its_assignments(): void
     {
         $workers = $this->createGuards(2);
         $result = $this->generationResult([
@@ -55,15 +53,15 @@ final class RosterPersisterTest extends TestCase
 
         $roster = $this->persister->save($result, $this->admin->id);
 
-        self::assertSame(RosterStatus::Draft, $roster->status);
-        self::assertNull($roster->published_at);
+        self::assertSame(RosterStatus::Published, $roster->status);
+        self::assertNotNull($roster->published_at);
         self::assertNotNull($roster->generated_at);
 
         $this->assertDatabaseHas('rosters', [
             'id' => $roster->id,
             'year' => self::YEAR,
             'month' => self::MONTH,
-            'status' => RosterStatus::Draft->value,
+            'status' => RosterStatus::Published->value,
             'created_by' => $this->admin->id,
         ]);
         $this->assertDatabaseCount('roster_assignments', 2);
@@ -76,42 +74,23 @@ final class RosterPersisterTest extends TestCase
         ]);
     }
 
-    public function test_save_with_no_assignments_still_creates_the_draft(): void
+    public function test_save_with_no_assignments_still_creates_the_roster(): void
     {
         $roster = $this->persister->save($this->generationResult([]), $this->admin->id);
 
-        $this->assertDatabaseHas('rosters', ['id' => $roster->id, 'status' => RosterStatus::Draft->value]);
+        $this->assertDatabaseHas('rosters', ['id' => $roster->id, 'status' => RosterStatus::Published->value]);
         $this->assertDatabaseCount('roster_assignments', 0);
     }
 
-    public function test_save_allows_multiple_drafts_for_the_same_month_with_overlapping_assignments(): void
+    public function test_save_enforces_one_roster_per_month(): void
     {
-        $workers = $this->createGuards(2);
-        $assignment = [
-            'worker_id' => $workers[0]->id,
-            'shift_id' => $this->shift->id,
-            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1),
-        ];
-        $result = $this->generationResult([$assignment]);
+        $result = $this->generationResult([]);
 
-        $first = $this->persister->save($result, $this->admin->id);
-        $second = $this->persister->save($result, $this->admin->id);
+        $this->persister->save($result, $this->admin->id);
 
-        self::assertNotSame($first->id, $second->id);
-        $this->assertDatabaseCount('rosters', 2);
-        $this->assertDatabaseCount('roster_assignments', 2);
-        $this->assertDatabaseHas('roster_assignments', [
-            'roster_id' => $first->id,
-            'worker_id' => $workers[0]->id,
-            'shift_id' => $this->shift->id,
-            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1)->toDateString(),
-        ]);
-        $this->assertDatabaseHas('roster_assignments', [
-            'roster_id' => $second->id,
-            'worker_id' => $workers[0]->id,
-            'shift_id' => $this->shift->id,
-            'work_date' => CarbonImmutable::create(self::YEAR, self::MONTH, 1)->toDateString(),
-        ]);
+        $this->expectException(QueryException::class);
+
+        $this->persister->save($result, $this->admin->id);
     }
 
     public function test_save_rolls_back_the_roster_when_assignment_insertion_fails(): void
@@ -129,50 +108,6 @@ final class RosterPersisterTest extends TestCase
 
         $this->assertDatabaseCount('rosters', 0);
         $this->assertDatabaseCount('roster_assignments', 0);
-    }
-
-    public function test_publish_supersedes_any_previously_published_roster_for_the_month(): void
-    {
-        $previouslyPublished = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->admin->id]);
-
-        $draft = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->create(['created_by' => $this->admin->id]);
-
-        $published = $this->persister->publish($draft);
-
-        self::assertSame(RosterStatus::Published, $published->status);
-        self::assertNotNull($published->published_at);
-
-        $this->assertDatabaseHas('rosters', [
-            'id' => $previouslyPublished->id,
-            'status' => RosterStatus::Superseded->value,
-        ]);
-        $this->assertDatabaseHas('rosters', [
-            'id' => $draft->id,
-            'status' => RosterStatus::Published->value,
-        ]);
-
-        // The published-uniqueness rule still holds for the month.
-        self::assertSame(
-            1,
-            Roster::query()->forPeriod(self::YEAR, self::MONTH)->published()->count(),
-        );
-    }
-
-    public function test_publish_rejects_a_roster_that_is_not_a_draft(): void
-    {
-        $published = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->admin->id]);
-
-        $this->expectException(RosterStatusException::class);
-
-        $this->persister->publish($published);
     }
 
     /**

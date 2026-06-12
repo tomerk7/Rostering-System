@@ -89,8 +89,7 @@ final class WorkerCsvExporterTest extends TestCase
             '72.00',
             '100',
             '180',
-            'Fri|Sat',
-            'B',
+            'Fri:B;Sat:B',
         ], $rows[1]);
         self::assertSame([
             'Second Worker',
@@ -100,8 +99,7 @@ final class WorkerCsvExporterTest extends TestCase
             '50.25',
             '80',
             '160',
-            'Sun|Tue|Thu',
-            'A|B',
+            'Sun:A|B;Tue:A|B;Thu:A|B',
         ], $rows[2]);
     }
 

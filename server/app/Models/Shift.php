@@ -14,19 +14,14 @@ final class Shift extends Model
 {
     public $timestamps = false;
 
-    public function availableContracts(): HasMany
+    public function contractAvailability(): HasMany
     {
-        return $this->hasMany(ContractAvailableShift::class);
+        return $this->hasMany(ContractAvailability::class);
     }
 
     public function shiftRoleRequirements(): HasMany
     {
         return $this->hasMany(ShiftRoleRequirement::class);
-    }
-
-    public function contracts(): BelongsToMany
-    {
-        return $this->belongsToMany(Contract::class, 'contract_available_shifts');
     }
 
     public function roles(): BelongsToMany

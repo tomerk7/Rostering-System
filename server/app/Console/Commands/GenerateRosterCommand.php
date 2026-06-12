@@ -21,8 +21,7 @@ final class GenerateRosterCommand extends Command
     protected $signature = 'roster:generate
                             {year : Target year, e.g. 2026}
                             {month : Target month (1-12)}
-                            {--save : Persist the preview as a draft roster}
-                            {--publish : Publish the draft after saving (implies --save)}
+                            {--save : Persist the generated roster}
                             {--user= : User id for created_by when saving (defaults to first user)}';
 
     /**
@@ -81,9 +80,9 @@ final class GenerateRosterCommand extends Command
             );
         }
 
-        if (! $this->option('save') && ! $this->option('publish')) {
+        if (! $this->option('save')) {
             $this->newLine();
-            $this->comment('Preview only — pass --save to persist as a draft, or --publish to save and publish.');
+            $this->comment('Preview only — pass --save to persist the roster.');
 
             return self::SUCCESS;
         }
@@ -98,17 +97,12 @@ final class GenerateRosterCommand extends Command
 
         $this->newLine();
         $this->info(sprintf(
-            'Saved draft roster #%d (%d assignments) as user #%d (%s).',
+            'Saved roster #%d (%d assignments) as user #%d (%s).',
             $roster->id,
             count($result->assignments),
             $user->id,
             $user->email,
         ));
-
-        if ($this->option('publish')) {
-            $roster = $persister->publish($roster);
-            $this->info(sprintf('Published roster #%d.', $roster->id));
-        }
 
         return self::SUCCESS;
     }

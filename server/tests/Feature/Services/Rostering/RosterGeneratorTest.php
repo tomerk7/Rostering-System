@@ -131,35 +131,35 @@ final class RosterGeneratorTest extends TestCase
     public function test_generate_reports_feasibility_issues_for_an_understaffed_role(): void
     {
         $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 8, [$date->dayOfWeek]);
+        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
         $this->createWorkers('screener', 3, [$date->dayOfWeek]);
         $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
 
         $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
 
-        self::assertCount(1, $guardIssues);
-        self::assertSame(9, $guardIssues[0]['required_workers']);
-        self::assertSame(8, $guardIssues[0]['available_workers']);
+        self::assertCount(3, $guardIssues);
+        self::assertSame(6, $guardIssues[0]['required_workers']);
+        self::assertSame(5, $guardIssues[0]['available_workers']);
     }
 
     public function test_generate_feasibility_ignores_workers_unavailable_on_the_demand_weekday(): void
     {
         $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 8, [$date->dayOfWeek]);
+        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
         $this->createWorkers('general_guard', 1, [($date->dayOfWeek + 3) % 7]);
         $this->createWorkers('screener', 3, [$date->dayOfWeek]);
         $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
 
         $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
 
-        self::assertCount(1, $guardIssues);
-        self::assertSame(8, $guardIssues[0]['available_workers']);
+        self::assertCount(3, $guardIssues);
+        self::assertSame(5, $guardIssues[0]['available_workers']);
     }
 
     public function test_generate_feasibility_excludes_inactive_and_contractless_workers(): void
     {
         $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 8, [$date->dayOfWeek]);
+        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
         $this->createWorkers('screener', 3, [$date->dayOfWeek]);
         $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
 
@@ -177,8 +177,8 @@ final class RosterGeneratorTest extends TestCase
 
         $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
 
-        self::assertCount(1, $guardIssues);
-        self::assertSame(8, $guardIssues[0]['available_workers']);
+        self::assertCount(3, $guardIssues);
+        self::assertSame(5, $guardIssues[0]['available_workers']);
     }
 
     /**
@@ -238,7 +238,7 @@ final class RosterGeneratorTest extends TestCase
     }
 
     /**
-     * @return list<array{role_id: int, work_date: CarbonImmutable, required_workers: int, available_workers: int}>
+     * @return list<array{role_id: int, work_date: CarbonImmutable, shift_id: int, required_workers: int, available_workers: int}>
      */
     private function feasibilityIssuesFor(string $roleCode, CarbonImmutable $date): array
     {

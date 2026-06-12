@@ -33,9 +33,9 @@ const form = reactive({
   hourly_cost: '',
   min_monthly_hours: '',
   max_monthly_hours: '',
-  availability_days: [],
-  availability_shifts: [],
 })
+
+const availabilitySelections = reactive({})
 
 const dayOptions = [
   { value: 0, label: 'Sunday' },
@@ -60,6 +60,39 @@ onMounted(async () => {
   await loadForm()
 })
 
+function slotKey(dayOfWeek, shiftId) {
+  return `${dayOfWeek}:${shiftId}`
+}
+
+function isSlotSelected(dayOfWeek, shiftId) {
+  return availabilitySelections[slotKey(dayOfWeek, shiftId)] === true
+}
+
+function setSlotSelected(dayOfWeek, shiftId, checked) {
+  const key = slotKey(dayOfWeek, shiftId)
+
+  if (checked) {
+    availabilitySelections[key] = true
+    return
+  }
+
+  delete availabilitySelections[key]
+}
+
+function clearAvailabilitySelections() {
+  Object.keys(availabilitySelections).forEach((key) => {
+    delete availabilitySelections[key]
+  })
+}
+
+function loadAvailabilitySelections(slots = []) {
+  clearAvailabilitySelections()
+
+  slots.forEach((slot) => {
+    availabilitySelections[slotKey(slot.day_of_week, slot.shift.id)] = true
+  })
+}
+
 async function loadForm() {
   loading.value = true
   formError.value = ''
@@ -79,8 +112,7 @@ async function loadForm() {
       form.hourly_cost = worker.contract?.hourly_cost?.toString() ?? ''
       form.min_monthly_hours = worker.contract?.min_monthly_hours.toString() ?? ''
       form.max_monthly_hours = worker.contract?.max_monthly_hours.toString() ?? ''
-      form.availability_days = worker.contract?.availability.days ?? []
-      form.availability_shifts = worker.contract?.availability.shifts.map((shift) => shift.id) ?? []
+      loadAvailabilitySelections(worker.contract?.availability ?? [])
     }
   } catch {
     formError.value = 'Could not load the worker form. Please try again.'
@@ -117,6 +149,17 @@ async function submitForm() {
   }
 }
 
+function buildAvailabilityPayload() {
+  return Object.keys(availabilitySelections).map((key) => {
+    const [dayOfWeek, shiftId] = key.split(':')
+
+    return {
+      day_of_week: Number(dayOfWeek),
+      shift_id: Number(shiftId),
+    }
+  })
+}
+
 function buildPayload() {
   return {
     full_name: form.full_name.trim(),
@@ -128,10 +171,7 @@ function buildPayload() {
       min_monthly_hours: form.min_monthly_hours === '' ? null : Number(form.min_monthly_hours),
       max_monthly_hours: form.max_monthly_hours === '' ? null : Number(form.max_monthly_hours),
     },
-    availability: {
-      days: form.availability_days,
-      shifts: form.availability_shifts,
-    },
+    availability: buildAvailabilityPayload(),
   }
 }
 
@@ -337,54 +377,54 @@ function fieldError(field) {
               Availability
             </h2>
             <p class="form-section__description">
-              Select available days and shifts.
+              Select which shifts the worker can take on each weekday.
             </p>
           </div>
 
-          <div class="choice-grid">
-            <fieldset class="choice-group">
-              <legend>Days</legend>
-              <label
-                v-for="day in dayOptions"
-                :key="day.value"
-                class="check-field"
-              >
-                <input
-                  v-model="form.availability_days"
-                  type="checkbox"
-                  :value="day.value"
+          <div class="availability-matrix">
+            <table class="availability-matrix__table">
+              <thead>
+                <tr>
+                  <th scope="col">Day</th>
+                  <th
+                    v-for="shift in referenceData.shifts"
+                    :key="shift.id"
+                    scope="col"
+                  >
+                    {{ shift.code }} - {{ shift.label }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="day in dayOptions"
+                  :key="day.value"
                 >
-                <span>{{ day.label }}</span>
-              </label>
-              <span
-                v-if="fieldError('availability.days')"
-                class="field__error"
-              >
-                {{ fieldError('availability.days') }}
-              </span>
-            </fieldset>
-
-            <fieldset class="choice-group">
-              <legend>Shifts</legend>
-              <label
-                v-for="shift in referenceData.shifts"
-                :key="shift.id"
-                class="check-field"
-              >
-                <input
-                  v-model="form.availability_shifts"
-                  type="checkbox"
-                  :value="shift.id"
-                >
-                <span>{{ shift.code }} - {{ shift.label }} ({{ shift.start_time }}-{{ shift.end_time }})</span>
-              </label>
-              <span
-                v-if="fieldError('availability.shifts')"
-                class="field__error"
-              >
-                {{ fieldError('availability.shifts') }}
-              </span>
-            </fieldset>
+                  <th scope="row">
+                    {{ day.label }}
+                  </th>
+                  <td
+                    v-for="shift in referenceData.shifts"
+                    :key="`${day.value}-${shift.id}`"
+                  >
+                    <label class="check-field availability-matrix__cell">
+                      <input
+                        type="checkbox"
+                        :checked="isSlotSelected(day.value, shift.id)"
+                        @change="setSlotSelected(day.value, shift.id, $event.target.checked)"
+                      >
+                      <span>{{ shift.code }}</span>
+                    </label>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <span
+              v-if="fieldError('availability')"
+              class="field__error"
+            >
+              {{ fieldError('availability') }}
+            </span>
           </div>
         </section>
 

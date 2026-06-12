@@ -168,9 +168,11 @@ function availabilitySummary(worker) {
     return '-'
   }
 
-  const shiftCodes = contract.availability.shifts.map((shift) => shift.code).join(', ')
+  const slots = contract.availability ?? []
+  const dayCount = new Set(slots.map((slot) => slot.day_of_week)).size
+  const shiftCount = new Set(slots.map((slot) => slot.shift.code)).size
 
-  return `${contract.availability.days.length} days / ${shiftCodes || 'no shifts'}`
+  return `${dayCount} days / ${shiftCount} shifts (${slots.length} slots)`
 }
 </script>
 
@@ -425,7 +427,7 @@ function availabilitySummary(worker) {
 
         <p class="modal__hint">
           One row per worker. Columns are read by position: full_name, israeli_id, role, status,
-          hourly_cost, min_monthly_hours, max_monthly_hours, available_days, available_shifts.
+          hourly_cost, min_monthly_hours, max_monthly_hours, availability (e.g. Sun:C;Mon:A|B).
         </p>
 
         <label class="field">

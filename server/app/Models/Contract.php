@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 #[Fillable(['worker_id', 'hourly_cost', 'min_monthly_hours', 'max_monthly_hours'])]
@@ -21,19 +20,9 @@ final class Contract extends Model
         return $this->belongsTo(Worker::class);
     }
 
-    public function availableDays(): HasMany
+    public function availability(): HasMany
     {
-        return $this->hasMany(ContractAvailableDay::class);
-    }
-
-    public function availableShiftRows(): HasMany
-    {
-        return $this->hasMany(ContractAvailableShift::class);
-    }
-
-    public function availableShifts(): BelongsToMany
-    {
-        return $this->belongsToMany(Shift::class, 'contract_available_shifts');
+        return $this->hasMany(ContractAvailability::class);
     }
 
     /**

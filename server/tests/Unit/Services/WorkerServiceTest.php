@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Services;
 
 use App\Models\Contract;
-use App\Models\ContractAvailableShift;
+use App\Models\ContractAvailability;
 use App\Models\Role;
 use App\Models\Shift;
 use App\Models\Worker;
@@ -67,8 +67,8 @@ final class WorkerServiceTest extends TestCase
         self::assertSame(15, $paginator->perPage());
         self::assertSame('Alpha Worker', $paginator->items()[0]->full_name);
         self::assertTrue($paginator->items()[0]->relationLoaded('role'));
-        self::assertTrue($paginator->items()[0]->contract->relationLoaded('availableDays'));
-        self::assertTrue($paginator->items()[0]->contract->relationLoaded('availableShifts'));
+        self::assertTrue($paginator->items()[0]->contract->relationLoaded('availability'));
+        self::assertTrue($paginator->items()[0]->contract->availability->first()->relationLoaded('shift'));
     }
 
     public function test_list_applies_search_role_id_role_code_active_and_per_page_filters(): void
@@ -121,8 +121,8 @@ final class WorkerServiceTest extends TestCase
 
         self::assertTrue($loadedWorker->relationLoaded('role'));
         self::assertTrue($loadedWorker->relationLoaded('contract'));
-        self::assertTrue($loadedWorker->contract->relationLoaded('availableDays'));
-        self::assertTrue($loadedWorker->contract->relationLoaded('availableShifts'));
+        self::assertTrue($loadedWorker->contract->relationLoaded('availability'));
+        self::assertCount(4, $loadedWorker->contract->availability);
     }
 
     public function test_create_persists_worker_contract_and_validated_availability(): void
@@ -130,20 +130,40 @@ final class WorkerServiceTest extends TestCase
         $worker = $this->service->create($this->workerData([
             'full_name' => 'Created By Service',
             'israeli_id' => $this->validIsraeliId(71111111),
-            'availability' => [
-                'days' => [1, 3],
-                'shifts' => [$this->morningShift->id, $this->dayShift->id],
-            ],
+            'availability' => $this->availabilityPairs([1, 3], [$this->morningShift->id, $this->dayShift->id]),
         ]));
 
         self::assertSame('Created By Service', $worker->full_name);
         self::assertTrue($worker->relationLoaded('role'));
-        self::assertTrue($worker->contract->relationLoaded('availableDays'));
-        self::assertSame([1, 3], $worker->contract->availableDays->pluck('day_of_week')->all());
+        self::assertTrue($worker->contract->relationLoaded('availability'));
         self::assertSame(
-            [$this->morningShift->id, $this->dayShift->id],
-            $worker->contract->availableShiftRows()->orderBy('shift_id')->pluck('shift_id')->all(),
+            [
+                ['day_of_week' => 1, 'shift_id' => $this->morningShift->id],
+                ['day_of_week' => 1, 'shift_id' => $this->dayShift->id],
+                ['day_of_week' => 3, 'shift_id' => $this->morningShift->id],
+                ['day_of_week' => 3, 'shift_id' => $this->dayShift->id],
+            ],
+            $worker->contract->availability
+                ->sortBy(static fn ($slot): string => "{$slot->day_of_week}:{$slot->shift_id}")
+                ->map(static fn ($slot): array => [
+                    'day_of_week' => (int) $slot->day_of_week,
+                    'shift_id' => (int) $slot->shift_id,
+                ])
+                ->values()
+                ->all(),
         );
+    }
+
+    public function test_create_deduplicates_identical_availability_pairs(): void
+    {
+        $worker = $this->service->create($this->workerData([
+            'availability' => [
+                ['day_of_week' => 1, 'shift_id' => $this->morningShift->id],
+                ['day_of_week' => 1, 'shift_id' => $this->morningShift->id],
+            ],
+        ]));
+
+        self::assertCount(1, $worker->contract->availability);
     }
 
     public function test_update_replaces_worker_contract_and_existing_availability(): void
@@ -172,10 +192,7 @@ final class WorkerServiceTest extends TestCase
                 'min_monthly_hours' => 140,
                 'max_monthly_hours' => 190,
             ],
-            'availability' => [
-                'days' => [2, 4],
-                'shifts' => [$this->dayShift->id],
-            ],
+            'availability' => $this->availabilityPairs([2, 4], [$this->dayShift->id]),
         ]));
 
         self::assertSame($contract->id, $updatedWorker->contract->id);
@@ -188,12 +205,22 @@ final class WorkerServiceTest extends TestCase
             'min_monthly_hours' => 140,
             'max_monthly_hours' => 190,
         ]);
-        $this->assertDatabaseMissing('contract_available_days', [
+        $this->assertDatabaseMissing('contract_availability', [
             'contract_id' => $contract->id,
             'day_of_week' => 0,
+            'shift_id' => $this->morningShift->id,
         ]);
-        self::assertSame([2, 4], $updatedWorker->contract->availableDays->pluck('day_of_week')->all());
-        self::assertSame([$this->dayShift->id], $updatedWorker->contract->availableShiftRows()->pluck('shift_id')->all());
+        self::assertSame(
+            $this->availabilityPairs([2, 4], [$this->dayShift->id]),
+            $updatedWorker->contract->availability
+                ->sortBy(static fn ($slot): string => "{$slot->day_of_week}:{$slot->shift_id}")
+                ->map(static fn ($slot): array => [
+                    'day_of_week' => (int) $slot->day_of_week,
+                    'shift_id' => (int) $slot->shift_id,
+                ])
+                ->values()
+                ->all(),
+        );
     }
 
     public function test_update_creates_contract_when_worker_does_not_have_one(): void
@@ -217,7 +244,7 @@ final class WorkerServiceTest extends TestCase
 
     public function test_create_rolls_back_when_availability_creation_fails(): void
     {
-        ContractAvailableShift::creating(static function (): void {
+        ContractAvailability::creating(static function (): void {
             throw new RuntimeException('Forced service failure.');
         });
 
@@ -230,15 +257,14 @@ final class WorkerServiceTest extends TestCase
         } catch (RuntimeException $exception) {
             self::assertSame('Forced service failure.', $exception->getMessage());
         } finally {
-            ContractAvailableShift::flushEventListeners();
+            ContractAvailability::flushEventListeners();
         }
 
         $this->assertDatabaseMissing('workers', [
             'full_name' => 'Rolled Back Service Worker',
         ]);
         $this->assertDatabaseCount('contracts', 0);
-        $this->assertDatabaseCount('contract_available_days', 0);
-        $this->assertDatabaseCount('contract_available_shifts', 0);
+        $this->assertDatabaseCount('contract_availability', 0);
     }
 
     public function test_reference_data_returns_roles_ordered_by_name(): void
@@ -336,10 +362,7 @@ final class WorkerServiceTest extends TestCase
             'min_monthly_hours' => 120,
             'max_monthly_hours' => 180,
         ];
-        $availability = [
-            'days' => [0, 1, 2],
-            'shifts' => [$this->morningShift->id, $this->dayShift->id],
-        ];
+        $availability = $this->availabilityPairs([0, 1, 2], [$this->morningShift->id, $this->dayShift->id]);
         $data = [
             'full_name' => 'Service Worker',
             'israeli_id' => $this->validIsraeliId(10111111),
@@ -355,11 +378,28 @@ final class WorkerServiceTest extends TestCase
             $data['contract'] = array_replace($contract, $overrides['contract']);
         }
 
-        if (isset($overrides['availability']) && is_array($overrides['availability'])) {
-            $data['availability'] = array_replace($availability, $overrides['availability']);
+        return $data;
+    }
+
+    /**
+     * @param list<int> $days
+     * @param list<int> $shiftIds
+     * @return list<array{day_of_week: int, shift_id: int}>
+     */
+    private function availabilityPairs(array $days, array $shiftIds): array
+    {
+        $pairs = [];
+
+        foreach ($days as $day) {
+            foreach ($shiftIds as $shiftId) {
+                $pairs[] = [
+                    'day_of_week' => $day,
+                    'shift_id' => $shiftId,
+                ];
+            }
         }
 
-        return $data;
+        return $pairs;
     }
 
     private function validIsraeliId(int $base): string

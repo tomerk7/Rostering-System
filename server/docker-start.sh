@@ -16,9 +16,6 @@ fi
 
 php artisan migrate --force;
 
-# Start cron so the Laravel scheduler (configured in /etc/cron.d/laravel-scheduler)
-service cron start
-
 # Process queued jobs using the database queue connection.
 #
 # Wrapped in a restart loop so a worker that exits (timeout, OOM, fatal error,

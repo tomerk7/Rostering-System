@@ -25,7 +25,7 @@ final readonly class RosteringEngine
      * (date, shift), under the per-day shift ceiling, and within max hours.
      *
      * @param  array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}  $slot
-     * @param  array<int, array{role_id: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>, ...}>  $workers
+     * @param  array<int, array{role_id: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>, ...}>  $workers
      * @param  array<int, true>  $assignedWorkerIds  workers already placed in this slot's (date, shift)
      * @return list<int>
      */
@@ -45,11 +45,7 @@ final readonly class RosteringEngine
                 continue;
             }
 
-            if (! isset($worker['days'][$dayOfWeek])) {
-                continue;
-            }
-
-            if (! isset($worker['shifts'][$slot['shift_id']])) {
+            if (! isset($worker['availability'][$dayOfWeek][$slot['shift_id']])) {
                 continue;
             }
 
@@ -80,7 +76,7 @@ final readonly class RosteringEngine
      * scheduled hours for shortfall reporting after construction.
      *
      * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>  $slots
-     * @param  array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, days: array<int, true>, shifts: array<int, true>, assigned_hours: int, shifts_per_date: array<string, int>}>  $workers
+     * @param  array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}>  $workers
      * @return list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>
      */
     public function generate(array $slots, array &$workers): array

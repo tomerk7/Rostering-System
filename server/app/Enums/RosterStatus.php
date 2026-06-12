@@ -6,9 +6,7 @@ namespace App\Enums;
 
 enum RosterStatus: string
 {
-    case Draft = 'draft';
     case Published = 'published';
-    case Superseded = 'superseded';
 
     /**
      * Get the backing values for every status.

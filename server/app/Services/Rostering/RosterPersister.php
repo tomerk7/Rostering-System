@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use App\Enums\RosterStatus;
-use App\Exceptions\Rostering\RosterStatusException;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
 use App\Services\Rostering\Data\GenerationResult;
@@ -14,57 +13,29 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Persists generated rosters and their assignments.
- *
- * Handles draft creation and roster publication while enforcing
- * roster status rules and ensuring all changes are committed
- * atomically within a database transaction.
+ * Persists generated rosters and their assignments atomically within a
+ * database transaction.
  */
 final readonly class RosterPersister
 {
     /**
-     * Save a generated preview as a new draft roster with its assignments.
+     * Save a generated roster with its assignments.
      */
     public function save(GenerationResult $result, int $createdBy): Roster
     {
         return DB::transaction(function () use ($result, $createdBy): Roster {
+            $now = Carbon::now();
+
             $roster = Roster::query()->create([
                 'year' => $result->year,
                 'month' => $result->month,
-                'status' => RosterStatus::Draft,
-                'generated_at' => Carbon::now(),
+                'status' => RosterStatus::Published,
+                'generated_at' => $now,
+                'published_at' => $now,
                 'created_by' => $createdBy,
             ]);
 
             $this->insertAssignments($roster, $result->assignments);
-
-            return $roster;
-        });
-    }
-
-    /**
-     * Publish a draft roster, superseding any roster already published for the
-     * same month.
-     *
-     * @throws RosterStatusException when the roster is not a draft
-     */
-    public function publish(Roster $roster): Roster
-    {
-        if ($roster->status !== RosterStatus::Draft) {
-            throw RosterStatusException::cannotPublishNonDraft($roster->status);
-        }
-
-        return DB::transaction(function () use ($roster): Roster {
-            Roster::query()
-                ->forPeriod($roster->year, $roster->month)
-                ->published()
-                ->whereKeyNot($roster->getKey())
-                ->update(['status' => RosterStatus::Superseded]);
-
-            $roster->update([
-                'status' => RosterStatus::Published,
-                'published_at' => Carbon::now(),
-            ]);
 
             return $roster;
         });
@@ -110,5 +81,4 @@ final readonly class RosterPersister
 
         RosterAssignment::query()->insert($rows);
     }
-
 }

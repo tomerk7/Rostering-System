@@ -2,15 +2,14 @@ import { isAxiosError } from 'axios'
 import { defineStore } from 'pinia'
 import {
   addAssignment,
-  changeAssignment,
   removeAssignment,
 } from '@/api/rosterAssignments'
 import {
   deleteRoster,
-  generateRosterDraft,
+  generateRoster,
   getRoster,
   listRosters,
-  publishRoster,
+  saveRoster,
 } from '@/api/rosters'
 
 const emptyReports = {
@@ -27,24 +26,19 @@ function extractValidationErrors(error) {
   return {}
 }
 
-function currentMonthYear() {
-  const now = new Date()
-  return { year: now.getFullYear(), month: now.getMonth() + 1 }
-}
-
 export const useRostersStore = defineStore('rosters', {
   state: () => {
-    const { year, month } = currentMonthYear()
+    const now = new Date()
 
     return {
       rosters: [],
       roster: null,
-      generatedDraft: null,
-      selectedYear: year,
-      selectedMonth: month,
+      generatedRoster: null,
+      selectedYear: now.getFullYear(),
+      selectedMonth: now.getMonth() + 1,
       loading: false,
       generating: false,
-      publishing: false,
+      saving: false,
       deletingId: null,
       assignmentLoading: false,
       error: '',
@@ -54,19 +48,15 @@ export const useRostersStore = defineStore('rosters', {
 
   getters: {
     assignments(state) {
-      return state.roster?.assignments ?? state.generatedDraft?.assignments ?? []
+      return state.roster?.assignments ?? state.generatedRoster?.assignments ?? []
     },
 
     reports(state) {
-      return state.roster?.reports ?? state.generatedDraft?.reports ?? emptyReports
-    },
-
-    alerts() {
-      return this.reports
+      return state.roster?.reports ?? state.generatedRoster?.reports ?? emptyReports
     },
 
     summary(state) {
-      return state.roster?.summary ?? state.generatedDraft?.summary ?? null
+      return state.roster?.summary ?? state.generatedRoster?.summary ?? null
     },
   },
 
@@ -74,11 +64,6 @@ export const useRostersStore = defineStore('rosters', {
     clearErrors() {
       this.error = ''
       this.validationErrors = {}
-    },
-
-    setSelectedMonth(year, month) {
-      this.selectedYear = year
-      this.selectedMonth = month
     },
 
     async fetchRosters() {
@@ -102,7 +87,7 @@ export const useRostersStore = defineStore('rosters', {
       try {
         const response = await getRoster(rosterId)
         this.roster = response.data
-        this.generatedDraft = null
+        this.generatedRoster = null
         this.selectedYear = response.data.year
         this.selectedMonth = response.data.month
       } catch {
@@ -112,67 +97,49 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    async generateDraft(year, month) {
-      const targetYear = year ?? this.selectedYear
-      const targetMonth = month ?? this.selectedMonth
-      const previousDraftId = this.generatedDraft?.status === 'draft'
-        ? this.generatedDraft.id
-        : null
-
+    async generate(year, month) {
       this.generating = true
       this.clearErrors()
 
       try {
-        const draft = await generateRosterDraft({ year: targetYear, month: targetMonth })
-        this.generatedDraft = draft
+        const roster = await generateRoster({ year, month })
+        this.generatedRoster = roster
         this.roster = null
-        this.selectedYear = draft.year
-        this.selectedMonth = draft.month
+        this.selectedYear = roster.year
+        this.selectedMonth = roster.month
 
-        if (previousDraftId && previousDraftId !== draft.id) {
-          try {
-            await deleteRoster(previousDraftId)
-          } catch {
-            this.error = 'The new draft was generated, but the previous draft could not be removed.'
-          }
-        }
-
-        return draft
+        return roster
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
-        const fallback = !isAxiosError(error) && error?.message
-          ? error.message
-          : 'Could not generate roster draft. Please try again.'
         this.error = this.validationErrors.year?.[0]
           ?? this.validationErrors.month?.[0]
-          ?? fallback
+          ?? 'Could not generate roster. Please try again.'
         return null
       } finally {
         this.generating = false
       }
     },
 
-    async publish(rosterId) {
-      const id = rosterId ?? this.roster?.id ?? this.generatedDraft?.id
-
-      if (!id) {
-        this.error = 'No roster selected to publish.'
-        return null
-      }
-
-      this.publishing = true
+    async save(year, month) {
+      this.saving = true
       this.clearErrors()
 
       try {
-        const response = await publishRoster(id)
-        this.applyRosterUpdate(response.data)
-        return response.data
+        const roster = await saveRoster({ year, month })
+        this.roster = roster
+        this.generatedRoster = null
+        this.selectedYear = roster.year
+        this.selectedMonth = roster.month
+
+        return roster
       } catch (error) {
         this.validationErrors = extractValidationErrors(error)
-        this.error = this.validationErrors.roster?.[0] ?? 'Could not publish roster. Please try again.'
+        this.error = this.validationErrors.year?.[0]
+          ?? this.validationErrors.month?.[0]
+          ?? 'Could not save roster. Please try again.'
         return null
       } finally {
-        this.publishing = false
+        this.saving = false
       }
     },
 
@@ -191,23 +158,6 @@ export const useRostersStore = defineStore('rosters', {
         } else {
           this.error = 'Could not add assignment. Please check the form and try again.'
         }
-        return null
-      } finally {
-        this.assignmentLoading = false
-      }
-    },
-
-    async changeManualAssignment(rosterId, assignmentId, workerId) {
-      this.assignmentLoading = true
-      this.clearErrors()
-
-      try {
-        const response = await changeAssignment(rosterId, assignmentId, { worker_id: workerId })
-        this.applyRosterUpdate(response.data)
-        return response.data
-      } catch (error) {
-        this.validationErrors = extractValidationErrors(error)
-        this.error = 'Could not change assignment. Please check the form and try again.'
         return null
       } finally {
         this.assignmentLoading = false
@@ -253,22 +203,14 @@ export const useRostersStore = defineStore('rosters', {
       }
     },
 
-    clearGeneratedDraft() {
-      this.generatedDraft = null
-    },
-
     applyRosterUpdate(roster) {
-      if (this.generatedDraft?.id === roster.id) {
-        this.generatedDraft = roster
+      if (this.generatedRoster?.id === roster.id) {
+        this.generatedRoster = roster
       }
 
       if (this.roster?.id === roster.id) {
         this.roster = roster
       }
-    },
-
-    clearRoster() {
-      this.roster = null
     },
   },
 })

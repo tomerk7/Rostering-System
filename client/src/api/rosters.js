@@ -12,36 +12,16 @@ export async function getRoster(rosterId) {
   return data
 }
 
-async function pollGenerationStatus(generationId, maxAttempts = 120) {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const { data } = await api.get(`/api/rosters/generations/${generationId}`)
-
-    if (data.data?.status === 'completed') {
-      return data.data.roster
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-  }
-
-  throw new Error('Roster generation timed out. Please try again.')
-}
-
-export async function generateRosterDraft(payload) {
+export async function generateRoster(payload) {
   const { data } = await api.post('/api/rosters/generate', payload)
 
-  const generationId = data.data?.generation_id
-
-  if (!generationId) {
-    throw new Error('Roster generation failed.')
-  }
-
-  return pollGenerationStatus(generationId)
+  return data.data
 }
 
-export async function publishRoster(rosterId) {
-  const { data } = await api.post(`/api/rosters/${rosterId}/publish`)
+export async function saveRoster(payload) {
+  const { data } = await api.post('/api/rosters', payload)
 
-  return data
+  return data.data
 }
 
 export async function deleteRoster(rosterId) {

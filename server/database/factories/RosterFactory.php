@@ -25,16 +25,16 @@ final class RosterFactory extends Factory
         return [
             'year' => fake()->numberBetween(2024, 2027),
             'month' => fake()->numberBetween(1, 12),
-            'status' => RosterStatus::Draft,
+            'status' => RosterStatus::Published,
             'generated_at' => Carbon::now(),
-            'published_at' => null,
+            'published_at' => Carbon::now(),
             'created_by' => User::factory(),
         ];
     }
 
     /**
      * Pin the roster to a specific target period.
-     * 
+     *
      * @param int $year
      * @param int $month
      * @return static
@@ -44,31 +44,6 @@ final class RosterFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'year' => $year,
             'month' => $month,
-        ]);
-    }
-
-    /**
-     * Mark the roster as published.
-     * 
-     * @return static
-     */
-    public function published(): static
-    {
-        return $this->state(fn (array $attributes): array => [
-            'status' => RosterStatus::Published,
-            'published_at' => Carbon::now(),
-        ]);
-    }
-
-    /**
-     * Mark the roster as superseded.
-     * 
-     * @return static
-     */
-    public function superseded(): static
-    {
-        return $this->state(fn (array $attributes): array => [
-            'status' => RosterStatus::Superseded,
         ]);
     }
 }

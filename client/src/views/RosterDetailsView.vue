@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
 import { useRosterReference } from '@/composables/useRosterReference'
@@ -26,8 +26,6 @@ const periodLabel = computed(() => {
   return formatMonthYear(rostersStore.roster.year, rostersStore.roster.month)
 })
 
-const isDraft = computed(() => rostersStore.roster?.status === 'draft')
-
 const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
 
 const modalWorkers = computed(() => {
@@ -42,14 +40,6 @@ const modalWorkers = computed(() => {
 
 onMounted(async () => {
   await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
-})
-
-watch(rosterId, async (id) => {
-  if (!Number.isFinite(id)) {
-    return
-  }
-
-  await rostersStore.fetchRoster(id)
 })
 
 function openAssignmentModal(context = null) {
@@ -86,42 +76,21 @@ async function removeAssignment(assignmentId) {
     return
   }
 
-  if (!window.confirm('Remove this assignment from the draft roster?')) {
+  if (!window.confirm('Remove this assignment from the roster?')) {
     return
   }
 
   await rostersStore.removeManualAssignment(rostersStore.roster.id, assignmentId)
 }
 
-async function publishRoster() {
-  if (!rostersStore.roster) {
-    return
-  }
-
-  if (!window.confirm(`Publish the ${periodLabel.value} roster? This cannot be undone.`)) {
-    return
-  }
-
-  await rostersStore.publish(rostersStore.roster.id)
-}
-
 function deleteConfirmMessage() {
   const roster = rostersStore.roster
-  const period = periodLabel.value
 
   if (!roster) {
     return ''
   }
 
-  if (roster.status === 'published') {
-    return `Delete the published ${period} roster? This will remove the active schedule for this month.`
-  }
-
-  if (roster.status === 'superseded') {
-    return `Delete the superseded ${period} roster? This cannot be undone.`
-  }
-
-  return `Delete the ${period} draft roster? This cannot be undone.`
+  return `Delete the ${periodLabel.value} roster? This will remove the schedule for this month.`
 }
 
 async function deleteRoster() {
@@ -156,18 +125,6 @@ async function deleteRoster() {
             Roster detail
           </template>
         </h1>
-        <p
-          v-if="rostersStore.roster"
-          class="page__description"
-        >
-          Status:
-          <span
-            class="badge"
-            :class="rostersStore.roster.status === 'published' ? 'badge--success' : 'badge--muted'"
-          >
-            {{ rostersStore.roster.status }}
-          </span>
-        </p>
       </div>
       <div class="page__actions">
         <RouterLink
@@ -176,24 +133,6 @@ async function deleteRoster() {
         >
           Back to list
         </RouterLink>
-        <button
-          v-if="isDraft"
-          type="button"
-          class="button"
-          :disabled="rostersStore.assignmentLoading"
-          @click="openAssignmentModal()"
-        >
-          Add assignment
-        </button>
-        <button
-          v-if="isDraft"
-          type="button"
-          class="button button--primary"
-          :disabled="rostersStore.publishing"
-          @click="publishRoster"
-        >
-          {{ rostersStore.publishing ? 'Publishing...' : 'Publish' }}
-        </button>
         <button
           type="button"
           class="button button--danger"
@@ -261,7 +200,7 @@ async function deleteRoster() {
           :assignments="rostersStore.assignments"
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
-          :editable="isDraft"
+          :editable="true"
           @cell-click="openAssignmentModal"
           @remove-assignment="removeAssignment"
         />

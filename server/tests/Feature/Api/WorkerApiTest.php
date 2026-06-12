@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Models\Contract;
-use App\Models\ContractAvailableDay;
-use App\Models\ContractAvailableShift;
+use App\Models\ContractAvailability;
 use App\Models\Role;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
@@ -76,7 +75,8 @@ final class WorkerApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.0.full_name', 'Dana Cohen')
-            ->assertJsonPath('data.0.contract.availability.days', [0, 1])
+            ->assertJsonCount(2, 'data.0.contract.availability')
+            ->assertJsonPath('data.0.contract.availability.0.day_of_week', 0)
             ->assertJsonPath('meta.total', 1);
     }
 
@@ -95,7 +95,7 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('data.full_name', 'Created Worker')
             ->assertJsonPath('data.role.id', $this->role->id)
             ->assertJsonPath('data.contract.min_monthly_hours', 120)
-            ->assertJsonPath('data.contract.availability.days', [0, 1, 2]);
+            ->assertJsonCount(6, 'data.contract.availability');
 
         $worker = Worker::query()->where('israeli_id', $payload['israeli_id'])->firstOrFail();
 
@@ -104,8 +104,7 @@ final class WorkerApiTest extends TestCase
             'min_monthly_hours' => 120,
             'max_monthly_hours' => 180,
         ]);
-        $this->assertDatabaseCount('contract_available_days', 3);
-        $this->assertDatabaseCount('contract_available_shifts', 2);
+        $this->assertDatabaseCount('contract_availability', 6);
     }
 
     public function test_worker_can_be_shown_and_updated_with_replaced_availability(): void
@@ -126,36 +125,31 @@ final class WorkerApiTest extends TestCase
         $this->getJson("/api/workers/{$worker->id}")
             ->assertOk()
             ->assertJsonPath('data.id', $worker->id)
-            ->assertJsonPath('data.contract.availability.shifts.0.id', $this->morningShift->id);
+            ->assertJsonPath('data.contract.availability.0.shift.id', $this->morningShift->id);
 
         $payload = $this->workerPayload([
             'full_name' => 'Updated Worker',
             'israeli_id' => $worker->israeli_id,
-            'availability' => [
-                'days' => [4, 5],
-                'shifts' => [$this->dayShift->id],
-            ],
+            'availability' => $this->availabilityPairs([4, 5], [$this->dayShift->id]),
         ]);
 
         $this->putJson("/api/workers/{$worker->id}", $payload)
             ->assertOk()
             ->assertJsonPath('data.full_name', 'Updated Worker')
-            ->assertJsonPath('data.contract.availability.days', [4, 5])
-            ->assertJsonPath('data.contract.availability.shifts.0.id', $this->dayShift->id);
+            ->assertJsonCount(2, 'data.contract.availability')
+            ->assertJsonPath('data.contract.availability.0.shift.id', $this->dayShift->id);
 
         $contract = $worker->contract()->firstOrFail();
 
-        $this->assertDatabaseMissing('contract_available_days', [
+        $this->assertDatabaseMissing('contract_availability', [
             'contract_id' => $contract->id,
             'day_of_week' => 0,
-        ]);
-        $this->assertDatabaseMissing('contract_available_shifts', [
-            'contract_id' => $contract->id,
             'shift_id' => $this->morningShift->id,
         ]);
-        $this->assertDatabaseHas('contract_available_days', [
+        $this->assertDatabaseHas('contract_availability', [
             'contract_id' => $contract->id,
             'day_of_week' => 4,
+            'shift_id' => $this->dayShift->id,
         ]);
     }
 
@@ -171,10 +165,7 @@ final class WorkerApiTest extends TestCase
                 'min_monthly_hours' => 200,
                 'max_monthly_hours' => 100,
             ],
-            'availability' => [
-                'days' => [],
-                'shifts' => [999],
-            ],
+            'availability' => [],
         ]);
 
         $response
@@ -185,20 +176,18 @@ final class WorkerApiTest extends TestCase
                 'role_id',
                 'contract.hourly_cost',
                 'contract.max_monthly_hours',
-                'availability.days',
-                'availability.shifts.0',
+                'availability',
             ]);
 
         $this->assertDatabaseCount('workers', 0);
         $this->assertDatabaseCount('contracts', 0);
     }
 
-    public function test_worker_availability_validation_rejects_duplicate_values(): void
+    public function test_worker_availability_validation_rejects_unknown_shift_ids(): void
     {
         $payload = $this->workerPayload([
             'availability' => [
-                'days' => [1, 1],
-                'shifts' => [$this->morningShift->id, $this->morningShift->id],
+                ['day_of_week' => 1, 'shift_id' => 999],
             ],
         ]);
 
@@ -207,8 +196,7 @@ final class WorkerApiTest extends TestCase
         $response
             ->assertUnprocessable()
             ->assertJsonValidationErrors([
-                'availability.days.1',
-                'availability.shifts.1',
+                'availability.0.shift_id',
             ]);
 
         $this->assertDatabaseCount('workers', 0);
@@ -217,7 +205,7 @@ final class WorkerApiTest extends TestCase
 
     public function test_worker_save_rolls_back_when_nested_availability_write_fails(): void
     {
-        ContractAvailableShift::creating(static function (): void {
+        ContractAvailability::creating(static function (): void {
             throw new RuntimeException('Forced availability failure.');
         });
 
@@ -229,15 +217,14 @@ final class WorkerApiTest extends TestCase
 
             $response->assertStatus(500);
         } finally {
-            ContractAvailableShift::flushEventListeners();
+            ContractAvailability::flushEventListeners();
         }
 
         $this->assertDatabaseMissing('workers', [
             'full_name' => 'Rollback Worker',
         ]);
         $this->assertDatabaseCount('contracts', 0);
-        $this->assertDatabaseCount('contract_available_days', 0);
-        $this->assertDatabaseCount('contract_available_shifts', 0);
+        $this->assertDatabaseCount('contract_availability', 0);
     }
 
     public function test_worker_reference_data_requires_authentication(): void
@@ -319,8 +306,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '50.25',
                 minMonthlyHours: '80',
                 maxMonthlyHours: '160',
-                availableDays: 'Sun|Tue|Thu',
-                availableShifts: 'A|B',
+                availability: 'Sun:A|B;Tue:A|B;Thu:A|B',
             ),
         ]);
 
@@ -378,8 +364,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '75.50',
                 minMonthlyHours: '100',
                 maxMonthlyHours: '180',
-                availableDays: 'Fri|Sat',
-                availableShifts: 'C',
+                availability: 'Fri:C;Sat:C',
             ),
         ]);
 
@@ -412,8 +397,8 @@ final class WorkerApiTest extends TestCase
     public function test_worker_reimporting_same_csv_is_idempotent(): void
     {
         $rows = [
-            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', 'Sun|Mon', 'A|B'),
-            $this->csvRow('Second Worker', $this->validIsraeliId(10234567), 'Supervisor', 'Inactive', '72.00', '100', '180', 'Tue|Wed', 'B|C'),
+            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', 'Sun:A|B;Mon:A|B'),
+            $this->csvRow('Second Worker', $this->validIsraeliId(10234567), 'Supervisor', 'Inactive', '72.00', '100', '180', 'Tue:B|C;Wed:B|C'),
         ];
 
         $first = $this->importCsv($rows);
@@ -436,8 +421,7 @@ final class WorkerApiTest extends TestCase
 
         $this->assertDatabaseCount('workers', 2);
         $this->assertDatabaseCount('contracts', 2);
-        $this->assertDatabaseCount('contract_available_days', 4);
-        $this->assertDatabaseCount('contract_available_shifts', 4);
+        $this->assertDatabaseCount('contract_availability', 8);
         self::assertSame($exportAfterFirstImport, $exportAfterSecondImport);
     }
 
@@ -452,8 +436,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '-1',
                 minMonthlyHours: '160',
                 maxMonthlyHours: '80',
-                availableDays: 'Mon|Mon',
-                availableShifts: 'D',
+                availability: 'Mon:A;Mon:A;Mon:D',
             ),
         ]);
 
@@ -472,8 +455,7 @@ final class WorkerApiTest extends TestCase
         self::assertContains('status', $fields);
         self::assertContains('hourly_cost', $fields);
         self::assertContains('max_monthly_hours', $fields);
-        self::assertContains('available_days.1', $fields);
-        self::assertContains('available_shifts.0', $fields);
+        self::assertContains('availability', $fields);
         self::assertSame([2], array_values(array_unique(array_column($errors, 'line'))));
 
         $this->assertDatabaseCount('workers', 0);
@@ -485,9 +467,9 @@ final class WorkerApiTest extends TestCase
         $validIsraeliId = $this->validIsraeliId(11234567);
 
         $response = $this->importCsv([
-            $this->csvRow('Valid Worker', $validIsraeliId, 'General Guard', 'Active', '50.00', '80', '160', 'Mon|Tue', 'A|B'),
-            $this->csvRow('Bad Checksum', '123456789', 'General Guard', 'Active', '50.00', '80', '160', 'Mon', 'A'),
-            $this->csvRow('Bad Range', $this->validIsraeliId(12234567), 'Supervisor', 'Active', '50.00', '160', '80', 'Mon', 'A'),
+            $this->csvRow('Valid Worker', $validIsraeliId, 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A|B;Tue:A|B'),
+            $this->csvRow('Bad Checksum', '123456789', 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A'),
+            $this->csvRow('Bad Range', $this->validIsraeliId(12234567), 'Supervisor', 'Active', '50.00', '160', '80', 'Mon:A'),
         ]);
 
         $response
@@ -647,8 +629,7 @@ final class WorkerApiTest extends TestCase
         string $hourlyCost,
         string $minMonthlyHours,
         string $maxMonthlyHours,
-        string $availableDays,
-        string $availableShifts,
+        string $availability,
     ): array {
         return [
             WorkerCsvService::FULL_NAME => $fullName,
@@ -658,8 +639,7 @@ final class WorkerApiTest extends TestCase
             WorkerCsvService::HOURLY_COST => $hourlyCost,
             WorkerCsvService::MIN_MONTHLY_HOURS => $minMonthlyHours,
             WorkerCsvService::MAX_MONTHLY_HOURS => $maxMonthlyHours,
-            WorkerCsvService::AVAILABLE_DAYS => $availableDays,
-            WorkerCsvService::AVAILABLE_SHIFTS => $availableShifts,
+            WorkerCsvService::AVAILABILITY => $availability,
         ];
     }
 
@@ -704,13 +684,19 @@ final class WorkerApiTest extends TestCase
     {
         $contract = $worker->contract()->firstOrFail();
 
+        foreach ($expectedDays as $day) {
+            foreach ($expectedShiftIds as $shiftId) {
+                $this->assertDatabaseHas('contract_availability', [
+                    'contract_id' => $contract->id,
+                    'day_of_week' => $day,
+                    'shift_id' => $shiftId,
+                ]);
+            }
+        }
+
         self::assertSame(
-            $expectedDays,
-            $contract->availableDays()->orderBy('day_of_week')->pluck('day_of_week')->all(),
-        );
-        self::assertSame(
-            $expectedShiftIds,
-            $contract->availableShifts()->orderBy('shifts.id')->pluck('shifts.id')->all(),
+            count($expectedDays) * count($expectedShiftIds),
+            $contract->availability()->count(),
         );
     }
 
@@ -727,18 +713,13 @@ final class WorkerApiTest extends TestCase
             'min_monthly_hours' => 120,
             'max_monthly_hours' => 180,
         ];
-        $availability = [
-            'days' => [0, 1, 2],
-            'shifts' => [$this->morningShift->id, $this->dayShift->id],
-        ];
-
         $payload = [
             'full_name' => 'Test Worker',
             'israeli_id' => $this->validIsraeliId(10000000),
             'role_id' => $this->role->id,
             'is_active' => true,
             'contract' => $contract,
-            'availability' => $availability,
+            'availability' => $this->availabilityPairs([0, 1, 2], [$this->morningShift->id, $this->dayShift->id]),
         ];
 
         $payload = array_replace($payload, $overrides);
@@ -747,11 +728,28 @@ final class WorkerApiTest extends TestCase
             $payload['contract'] = array_replace($contract, $overrides['contract']);
         }
 
-        if (isset($overrides['availability']) && is_array($overrides['availability'])) {
-            $payload['availability'] = array_replace($availability, $overrides['availability']);
+        return $payload;
+    }
+
+    /**
+     * @param list<int> $days
+     * @param list<int> $shiftIds
+     * @return list<array{day_of_week: int, shift_id: int}>
+     */
+    private function availabilityPairs(array $days, array $shiftIds): array
+    {
+        $pairs = [];
+
+        foreach ($days as $day) {
+            foreach ($shiftIds as $shiftId) {
+                $pairs[] = [
+                    'day_of_week' => $day,
+                    'shift_id' => $shiftId,
+                ];
+            }
         }
 
-        return $payload;
+        return $pairs;
     }
 
     private function validIsraeliId(int $base): string

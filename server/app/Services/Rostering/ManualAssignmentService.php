@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use App\Enums\AssignmentSource;
-use App\Enums\RosterStatus;
 use App\Exceptions\Rostering\ManualAssignmentException;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
@@ -15,8 +14,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Creates and removes manual assignments on draft rosters, enforcing the same
- * hard constraints as the automatic engine.
+ * Creates and removes manual assignments on rosters, enforcing the same hard
+ * constraints as the automatic engine.
  */
 final readonly class ManualAssignmentService
 {
@@ -27,15 +26,13 @@ final readonly class ManualAssignmentService
      */
     public function create(Roster $roster, int $workerId, int $shiftId, string $workDate): RosterAssignment
     {
-        $this->assertDraft($roster);
-
         $date = CarbonImmutable::parse($workDate)->startOfDay();
         $this->assertDateInRosterMonth($roster, $date);
 
         $worker = Worker::query()
             ->active()
             ->whereHas('contract')
-            ->with(['contract.availableDays', 'contract.availableShiftRows'])
+            ->with(['contract.availability'])
             ->whereKey($workerId)
             ->first();
 
@@ -71,8 +68,6 @@ final readonly class ManualAssignmentService
      */
     public function change(Roster $roster, RosterAssignment $assignment, int $workerId): RosterAssignment
     {
-        $this->assertDraft($roster);
-
         if ((int) $assignment->roster_id !== (int) $roster->id) {
             throw ManualAssignmentException::assignmentNotInRoster();
         }
@@ -87,7 +82,7 @@ final readonly class ManualAssignmentService
         $worker = Worker::query()
             ->active()
             ->whereHas('contract')
-            ->with(['contract.availableDays', 'contract.availableShiftRows'])
+            ->with(['contract.availability'])
             ->whereKey($workerId)
             ->first();
 
@@ -122,8 +117,6 @@ final readonly class ManualAssignmentService
      */
     public function delete(Roster $roster, RosterAssignment $assignment): void
     {
-        $this->assertDraft($roster);
-
         if ((int) $assignment->roster_id !== (int) $roster->id) {
             throw ManualAssignmentException::assignmentNotInRoster();
         }
@@ -131,16 +124,6 @@ final readonly class ManualAssignmentService
         DB::transaction(static function () use ($assignment): void {
             $assignment->delete();
         });
-    }
-
-    /**
-     * @throws ManualAssignmentException
-     */
-    private function assertDraft(Roster $roster): void
-    {
-        if ($roster->status !== RosterStatus::Draft) {
-            throw ManualAssignmentException::notDraft();
-        }
     }
 
     /**
@@ -171,18 +154,12 @@ final readonly class ManualAssignmentService
     {
         $contract = $worker->contract;
 
-        $availableDay = $contract->availableDays
-            ->contains(static fn ($day): bool => (int) $day->day_of_week === $date->dayOfWeek);
+        $available = $contract->availability
+            ->contains(static fn ($slot): bool => (int) $slot->day_of_week === $date->dayOfWeek
+                && (int) $slot->shift_id === $shiftId);
 
-        if (! $availableDay) {
+        if (! $available) {
             throw ManualAssignmentException::unavailableDay();
-        }
-
-        $availableShift = $contract->availableShiftRows
-            ->contains(static fn ($shift): bool => (int) $shift->shift_id === $shiftId);
-
-        if (! $availableShift) {
-            throw ManualAssignmentException::unavailableShift();
         }
     }
 

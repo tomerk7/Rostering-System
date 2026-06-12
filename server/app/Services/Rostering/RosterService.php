@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering;
 
-use App\Exceptions\Rostering\RosterStatusException;
-use App\Jobs\GenerateRosterJob;
 use App\Models\Role;
 use App\Models\Roster;
-use App\Models\RosterGeneration;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
 use Carbon\CarbonImmutable;
 use Exception;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /**
  * Loads, persists, generates, and reports on saved rosters for the HTTP API.
@@ -90,81 +85,98 @@ final readonly class RosterService
     }
 
     /**
-     * Create a generation record and dispatch the queued run.
+     * Generate a roster preview without persisting anything, so the alerts can
+     * be reviewed before the user commits to saving the schedule.
+     *
+     * @param int $year
+     * @param int $month
+     * @return array{year: int, month: int, assignments: list<array<string, mixed>>, reports: array{coverage_shortages: list<array<string, mixed>>, hours_shortfalls: list<array<string, mixed>>}, summary: array<string, mixed>}
+     *
+     * @throws Exception
+     */
+    public function preview(int $year, int $month): array
+    {
+        $result = $this->generator->generate($year, $month);
+
+        return [
+            'year' => $result->year,
+            'month' => $result->month,
+            'assignments' => $this->previewAssignments($result->assignments),
+            'reports' => $this->reports($result->coverageShortages, $result->hoursShortfalls),
+            'summary' => $this->summary(
+                count($result->assignments),
+                $result->coverageShortages,
+                $result->hoursShortfalls,
+            ),
+        ];
+    }
+
+    /**
+     * Enrich the previewed assignments with worker, shift, and role names so the
+     * grid renders them without depending on the client's worker cache.
+     *
+     * @param  list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
+     * @return list<array<string, mixed>>
+     */
+    private function previewAssignments(array $assignments): array
+    {
+        if ($assignments === []) {
+            return [];
+        }
+
+        $workers = Worker::query()
+            ->with('role')
+            ->whereIn('id', array_values(array_unique(array_column($assignments, 'worker_id'))))
+            ->get()
+            ->keyBy('id');
+
+        $shifts = Shift::query()
+            ->whereIn('id', array_values(array_unique(array_column($assignments, 'shift_id'))))
+            ->get()
+            ->keyBy('id');
+
+        return array_map(
+            static function (array $assignment) use ($workers, $shifts): array {
+                $worker = $workers->get($assignment['worker_id']);
+                $shift = $shifts->get($assignment['shift_id']);
+
+                return [
+                    'worker_id' => $assignment['worker_id'],
+                    'worker_name' => $worker?->full_name,
+                    'shift_id' => $assignment['shift_id'],
+                    'shift_code' => $shift?->code,
+                    'role_id' => $worker?->role?->id,
+                    'role_name' => $worker?->role?->name,
+                    'work_date' => $assignment['work_date']->toDateString(),
+                    'source' => $assignment['source'],
+                ];
+            },
+            $assignments,
+        );
+    }
+
+    /**
+     * Generate a roster synchronously and persist it, replacing any existing
+     * roster for the same month.
      *
      * @param int $year
      * @param int $month
      * @param int $userId
-     * @return RosterGeneration
-     */
-    public function queueGeneration(int $year, int $month, int $userId): RosterGeneration
-    {
-        $generation = RosterGeneration::query()->create([
-            'uuid' => (string) Str::uuid(),
-            'year' => $year,
-            'month' => $month,
-            'status' => 'queued',
-            'requested_by' => $userId,
-        ]);
-
-        GenerateRosterJob::dispatch($generation->uuid);
-
-        return $generation;
-    }
-
-    /**
-     * Run a queued generation and persist the result as a draft roster.
-     *
-     * @param string $uuid
-     * @return void
+     * @return Roster
      *
      * @throws Exception
      */
-    public function processGeneration(string $uuid): void
+    public function store(int $year, int $month, int $userId): Roster
     {
-        $generation = RosterGeneration::query()->where('uuid', $uuid)->firstOrFail();
+        $result = $this->generator->generate($year, $month);
 
-        $generation->update([
-            'status' => 'processing',
-            'started_at' => Carbon::now(),
-        ]);
+        return DB::transaction(function () use ($result, $userId): Roster {
+            Roster::query()
+                ->forPeriod($result->year, $result->month)
+                ->delete();
 
-        $result = $this->generator->generate($generation->year, $generation->month);
-
-        DB::transaction(function () use ($generation, $result): void {
-            $roster = $this->persister->save($result, (int) $generation->requested_by);
-
-            $generation->update([
-                'status' => 'completed',
-                'roster_id' => $roster->getKey(),
-                'completed_at' => Carbon::now(),
-            ]);
+            return $this->persister->save($result, $userId);
         });
-    }
-
-    /**
-     * Remove a failed generation tracker.
-     *
-     * @param string $uuid
-     * @return void
-     */
-    public function deleteGeneration(string $uuid): void
-    {
-        RosterGeneration::query()
-            ->where('uuid', $uuid)
-            ->delete();
-    }
-
-    /**
-     * Publish a draft roster, superseding any previously published roster for the month.
-     *
-     * @param Roster $roster
-     * @return Roster
-     * @throws RosterStatusException
-     */
-    public function publish(Roster $roster): Roster
-    {
-        return $this->persister->publish($roster);
     }
 
     /**

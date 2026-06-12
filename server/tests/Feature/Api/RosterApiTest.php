@@ -6,20 +6,16 @@ namespace Tests\Feature\Api;
 
 use App\Enums\AssignmentSource;
 use App\Enums\RosterStatus;
-use App\Jobs\GenerateRosterJob;
 use App\Models\Contract;
 use App\Models\Role;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
-use App\Models\RosterGeneration;
 use App\Models\Shift;
 use App\Models\User;
 use App\Models\Worker;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
-use RuntimeException;
 use Tests\TestCase;
 
 final class RosterApiTest extends TestCase
@@ -60,84 +56,112 @@ final class RosterApiTest extends TestCase
         $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
     }
 
-    public function test_roster_generation_creates_a_draft_and_returns_it_when_polled(): void
+    public function test_roster_preview_returns_alerts_without_persisting(): void
     {
-        $generationId = $this->postJson('/api/rosters/generate', [
+        $response = $this->postJson('/api/rosters/generate', [
             'year' => self::YEAR,
             'month' => self::MONTH,
         ])
-            ->assertStatus(202)
-            ->assertJsonPath('success', true)
-            ->json('data.generation_id');
-
-        $response = $this->getJson("/api/rosters/generations/{$generationId}")
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.status', 'completed')
             ->assertJsonStructure([
                 'data' => [
-                    'roster' => [
-                        'id',
-                        'year',
-                        'month',
-                        'status',
-                        'assignments',
-                        'reports' => [
-                            'coverage_shortages',
-                            'hours_shortfalls',
-                        ],
-                        'summary' => [
-                            'assignment_count',
-                            'coverage_shortage_count',
-                            'hours_shortfall_count',
-                        ],
+                    'year',
+                    'month',
+                    'assignments',
+                    'reports' => [
+                        'coverage_shortages',
+                        'hours_shortfalls',
+                    ],
+                    'summary' => [
+                        'assignment_count',
+                        'coverage_shortage_count',
+                        'hours_shortfall_count',
                     ],
                 ],
             ])
-            ->assertJsonPath('data.roster.year', self::YEAR)
-            ->assertJsonPath('data.roster.month', self::MONTH)
-            ->assertJsonPath('data.roster.status', RosterStatus::Draft->value);
+            ->assertJsonPath('data.year', self::YEAR)
+            ->assertJsonPath('data.month', self::MONTH);
 
-        $rosterId = $response->json('data.roster.id');
+        self::assertNull($response->json('data.id'));
+        self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
+        $this->assertDatabaseCount('rosters', 0);
+        $this->assertDatabaseCount('roster_assignments', 0);
+    }
 
-        self::assertGreaterThan(0, $response->json('data.roster.summary.assignment_count'));
+    public function test_roster_can_be_saved_after_preview(): void
+    {
+        $response = $this->postJson('/api/rosters', [
+            'year' => self::YEAR,
+            'month' => self::MONTH,
+        ])
+            ->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'id',
+                    'year',
+                    'month',
+                    'status',
+                    'assignments',
+                    'reports' => [
+                        'coverage_shortages',
+                        'hours_shortfalls',
+                    ],
+                    'summary' => [
+                        'assignment_count',
+                        'coverage_shortage_count',
+                        'hours_shortfall_count',
+                    ],
+                ],
+            ])
+            ->assertJsonPath('data.year', self::YEAR)
+            ->assertJsonPath('data.month', self::MONTH)
+            ->assertJsonPath('data.status', RosterStatus::Published->value);
+
+        $rosterId = $response->json('data.id');
+
+        self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
         $this->assertDatabaseHas('rosters', [
             'id' => $rosterId,
-            'status' => RosterStatus::Draft->value,
+            'status' => RosterStatus::Published->value,
             'created_by' => $this->user->id,
         ]);
         $this->assertDatabaseHas('roster_assignments', ['roster_id' => $rosterId]);
-        $this->assertDatabaseMissing('roster_generations', ['uuid' => $generationId]);
     }
 
-    public function test_roster_generation_validates_month(): void
+    public function test_saving_replaces_the_existing_roster_for_the_month(): void
+    {
+        $first = $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => self::MONTH])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        $second = $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => self::MONTH])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        self::assertNotSame($first, $second);
+        $this->assertDatabaseMissing('rosters', ['id' => $first]);
+        self::assertSame(1, Roster::query()->forPeriod(self::YEAR, self::MONTH)->count());
+    }
+
+    public function test_roster_preview_validates_month(): void
     {
         $this->postJson('/api/rosters/generate', ['year' => self::YEAR, 'month' => 13])
             ->assertStatus(422)
             ->assertJsonValidationErrors('month');
     }
 
-    public function test_failed_generation_removes_its_tracking_record(): void
+    public function test_roster_save_validates_month(): void
     {
-        $generation = RosterGeneration::query()->create([
-            'uuid' => (string) Str::uuid(),
-            'year' => self::YEAR,
-            'month' => self::MONTH,
-            'status' => 'processing',
-            'requested_by' => $this->user->id,
-        ]);
-
-        (new GenerateRosterJob($generation->uuid))
-            ->failed(new RuntimeException('Generation failed.'));
-
-        $this->assertDatabaseMissing('roster_generations', [
-            'uuid' => $generation->uuid,
-        ]);
+        $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => 13])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('month');
     }
 
     public function test_rosters_can_be_listed_with_assignment_counts(): void
     {
-        $roster = $this->createDraftRosterWithAssignment();
+        $roster = $this->createRosterWithAssignment();
 
         $this->getJson('/api/rosters')
             ->assertOk()
@@ -148,7 +172,7 @@ final class RosterApiTest extends TestCase
 
     public function test_roster_can_be_shown_with_enriched_assignments_and_filters(): void
     {
-        $roster = $this->createDraftRosterWithAssignment();
+        $roster = $this->createRosterWithAssignment();
 
         $response = $this->getJson("/api/rosters/{$roster->id}")
             ->assertOk()
@@ -290,86 +314,9 @@ final class RosterApiTest extends TestCase
         $this->assertDatabaseCount('roster_assignments', 2);
     }
 
-    public function test_draft_roster_can_be_published(): void
+    public function test_roster_can_be_deleted_with_its_assignments(): void
     {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->create(['created_by' => $this->user->id]);
-
-        $response = $this->postJson("/api/rosters/{$roster->id}/publish");
-
-        $response
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.status', RosterStatus::Published->value);
-
-        $this->assertDatabaseHas('rosters', [
-            'id' => $roster->id,
-            'status' => RosterStatus::Published->value,
-        ]);
-
-        self::assertNotNull($response->json('data.published_at'));
-    }
-
-    public function test_publish_supersedes_a_previously_published_roster_for_the_month(): void
-    {
-        $previous = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->user->id]);
-
-        $draft = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->create(['created_by' => $this->user->id]);
-
-        $this->postJson("/api/rosters/{$draft->id}/publish")
-            ->assertOk()
-            ->assertJsonPath('data.status', RosterStatus::Published->value);
-
-        $this->assertDatabaseHas('rosters', [
-            'id' => $previous->id,
-            'status' => RosterStatus::Superseded->value,
-        ]);
-        $this->assertDatabaseHas('rosters', [
-            'id' => $draft->id,
-            'status' => RosterStatus::Published->value,
-        ]);
-    }
-
-    public function test_publish_rejects_a_roster_that_is_not_a_draft(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->user->id]);
-
-        $this->postJson("/api/rosters/{$roster->id}/publish")
-            ->assertStatus(422)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('message', "Only a draft roster can be published; current status is 'published'.");
-    }
-
-    public function test_manual_assignment_is_rejected_on_a_published_roster(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->user->id]);
-
-        $worker = $this->assignableWorker();
-
-        $this->postJson("/api/rosters/{$roster->id}/assignments", [
-            'worker_id' => $worker->id,
-            'shift_id' => $this->shiftA->id,
-            'work_date' => '2026-06-01',
-        ])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'Manual assignments are only allowed on draft rosters.');
-    }
-
-    public function test_draft_roster_can_be_deleted(): void
-    {
-        $roster = $this->createDraftRosterWithAssignment();
+        $roster = $this->createRosterWithAssignment();
 
         $this->deleteJson("/api/rosters/{$roster->id}")
             ->assertOk()
@@ -379,35 +326,7 @@ final class RosterApiTest extends TestCase
         $this->assertDatabaseMissing('roster_assignments', ['roster_id' => $roster->id]);
     }
 
-    public function test_published_roster_can_be_deleted(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->published()
-            ->create(['created_by' => $this->user->id]);
-
-        $this->deleteJson("/api/rosters/{$roster->id}")
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $this->assertDatabaseMissing('rosters', ['id' => $roster->id]);
-    }
-
-    public function test_superseded_roster_can_be_deleted(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->superseded()
-            ->create(['created_by' => $this->user->id]);
-
-        $this->deleteJson("/api/rosters/{$roster->id}")
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $this->assertDatabaseMissing('rosters', ['id' => $roster->id]);
-    }
-
-    private function createDraftRosterWithAssignment(): Roster
+    private function createRosterWithAssignment(): Roster
     {
         $roster = Roster::factory()
             ->forPeriod(self::YEAR, self::MONTH)
@@ -430,7 +349,7 @@ final class RosterApiTest extends TestCase
 
         $worker->contract()->update(['max_monthly_hours' => 240]);
 
-        return $worker->fresh(['contract.availableDays', 'contract.availableShiftRows']);
+        return $worker->fresh(['contract.availability']);
     }
 
     /**

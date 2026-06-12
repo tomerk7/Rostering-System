@@ -1,13 +1,13 @@
-full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,available_days,available_shifts
-Dana Cohen,234567816,Supervisor,Active,75.00,120,180,Sun|Mon|Tue|Wed|Thu,A|B
-Yossi Levi,314159260,General Guard,Active,52.50,80,160,Sun|Mon|Tue|Wed|Thu|Fri|Sat,A|B|C
-Maya Bar,271828188,Screener,Inactive,60.00,0,120,Mon|Wed|Fri,B
-Avi Mizrahi,161803390,General Guard,Active,50.00,100,170,Mon|Tue|Wed|Thu|Fri,B|C
-Noa Friedman,141421354,Screener,Active,58.25,60,140,Sun|Tue|Thu,A|C
-Eitan Shapiro,577215668,Supervisor,Active,82.50,130,190,Mon|Tue|Wed|Thu|Fri,B
-Tamar Azoulay,999999998,General Guard,Active,49.90,90,165,Sun|Mon|Wed|Fri,A|B
-Omer Katz,123456782,General Guard,Inactive,51.00,0,150,Tue|Wed|Thu,C
-Shira Test,864208640,Screener,Active,61.75,70,150,Sun|Mon|Tue|Wed|Thu,A|B|C
-Itai Golan,135724680,General Guard,Active,53.00,110,175,Wed|Thu|Fri|Sat,B|C
-Lior Avraham,246813570,Supervisor,Active,79.00,125,185,Sun|Mon|Tue|Wed|Thu|Fri,A|B
-Gal Ben-David,753198647,General Guard,Active,52.00,95,168,Sun|Thu|Fri|Sat,A|C
+full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,availability
+Dana Cohen,234567816,Supervisor,Active,75.00,120,180,Sun:A|B;Mon:A|B;Tue:A|B;Wed:A|B;Thu:A|B
+Yossi Levi,314159260,General Guard,Active,52.50,80,160,Sun:A|B|C;Mon:A|B|C;Tue:A|B|C;Wed:A|B|C;Thu:A|B|C;Fri:A|B|C;Sat:A|B|C
+Maya Bar,271828188,Screener,Inactive,60.00,0,120,Mon:B;Wed:B;Fri:B
+Avi Mizrahi,161803390,General Guard,Active,50.00,100,170,Mon:B|C;Tue:B|C;Wed:B|C;Thu:B|C;Fri:B|C
+Noa Friedman,141421354,Screener,Active,58.25,60,140,Sun:A|C;Tue:A|C;Thu:A|C
+Eitan Shapiro,577215668,Supervisor,Active,82.50,130,190,Mon:B;Tue:B;Wed:B;Thu:B;Fri:B
+Tamar Azoulay,999999998,General Guard,Active,49.90,90,165,Sun:A|B;Mon:A|B;Wed:A|B;Fri:A|B
+Omer Katz,123456782,General Guard,Inactive,51.00,0,150,Tue:C;Wed:C;Thu:C
+Shira Test,864208640,Screener,Active,61.75,70,150,Sun:A|B|C;Mon:A|B|C;Tue:A|B|C;Wed:A|B|C;Thu:A|B|C
+Itai Golan,135724680,General Guard,Active,53.00,110,175,Wed:B|C;Thu:B|C;Fri:B|C;Sat:B|C
+Lior Avraham,246813570,Supervisor,Active,79.00,125,185,Sun:A|B;Mon:A|B;Tue:A|B;Wed:A|B;Thu:A|B;Fri:A|B
+Gal Ben-David,753198647,General Guard,Active,52.00,95,168,Sun:A|C;Thu:A|C;Fri:A|C;Sat:A|C

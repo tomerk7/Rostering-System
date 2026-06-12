@@ -37,11 +37,9 @@ final class StoreWorkerRequest extends FormRequest
             'contract.min_monthly_hours' => ['required', 'integer', 'min:0', 'max:744'],
             'contract.max_monthly_hours' => ['required', 'integer', 'min:0', 'max:744', 'gte:contract.min_monthly_hours'],
 
-            'availability' => ['required', 'array'],
-            'availability.days' => ['required', 'array', 'min:1', 'max:7'],
-            'availability.days.*' => ['required', 'integer', 'between:0,6', 'distinct'],
-            'availability.shifts' => ['required', 'array', 'min:1'],
-            'availability.shifts.*' => ['required', 'integer', Rule::exists('shifts', 'id'), 'distinct'],
+            'availability' => ['required', 'array', 'min:1'],
+            'availability.*.day_of_week' => ['required', 'integer', 'between:0,6'],
+            'availability.*.shift_id' => ['required', 'integer', Rule::exists('shifts', 'id')],
         ];
     }
 }
