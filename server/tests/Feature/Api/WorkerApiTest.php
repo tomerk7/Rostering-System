@@ -542,6 +542,35 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('meta.total', 0);
     }
 
+    public function test_worker_with_roster_assignments_can_be_deleted(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345679),
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create();
+
+        $roster = Roster::factory()->create();
+        RosterAssignment::factory()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-10',
+        ]);
+
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('workers', [
+            'israeli_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseCount('roster_assignments', 0);
+    }
+
     public function test_all_workers_can_be_deleted(): void
     {
         $workers = Worker::factory()

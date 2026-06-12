@@ -1,47 +1,95 @@
 import api from '@/lib/axios'
 
+/**
+ * Fetch a paginated, filterable list of workers.
+ *
+ * @param {object} [params={}]
+ * @returns {Promise<object>}
+ */
 export async function listWorkers(params = {}) {
   const { data } = await api.get('/api/workers', { params })
 
   return data
 }
 
+/**
+ * Fetch a single worker by id.
+ *
+ * @param {number|string} workerId
+ * @returns {Promise<object>}
+ */
 export async function getWorker(workerId) {
   const { data } = await api.get(`/api/workers/${workerId}`)
 
   return data
 }
 
+/**
+ * Create a new worker.
+ *
+ * @param {object} payload
+ * @returns {Promise<object>}
+ */
 export async function createWorker(payload) {
   const { data } = await api.post('/api/workers', payload)
 
   return data
 }
 
+/**
+ * Update an existing worker.
+ *
+ * @param {number|string} workerId
+ * @param {object} payload
+ * @returns {Promise<object>}
+ */
 export async function updateWorker(workerId, payload) {
   const { data } = await api.put(`/api/workers/${workerId}`, payload)
 
   return data
 }
 
+/**
+ * Delete a worker by id.
+ *
+ * @param {number|string} workerId
+ * @returns {Promise<object>}
+ */
 export async function deleteWorker(workerId) {
   const { data } = await api.delete(`/api/workers/${workerId}`)
 
   return data
 }
 
+/**
+ * Delete all workers.
+ *
+ * @returns {Promise<object>}
+ */
 export async function deleteAllWorkers() {
   const { data } = await api.delete('/api/workers')
 
   return data
 }
 
+/**
+ * Fetch roles, shifts, and other reference data for worker forms.
+ *
+ * @returns {Promise<object>}
+ */
 export async function getReferenceData() {
   const { data } = await api.get('/api/workers/reference-data')
 
   return data
 }
 
+/**
+ * Poll import status until completion or failure.
+ *
+ * @param {string} importId
+ * @param {number} [maxAttempts=120]
+ * @returns {Promise<object>}
+ */
 async function pollImportStatus(importId, maxAttempts = 120) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { data } = await api.get(`/api/workers/import/${importId}`)
@@ -60,6 +108,12 @@ async function pollImportStatus(importId, maxAttempts = 120) {
   throw new Error('Import timed out. Please try again.')
 }
 
+/**
+ * Upload a workers CSV file and wait for import completion.
+ *
+ * @param {File} file
+ * @returns {Promise<object>}
+ */
 export async function importWorkers(file) {
   const form = new FormData()
   form.append('file', file)
@@ -73,6 +127,11 @@ export async function importWorkers(file) {
   return data
 }
 
+/**
+ * Download the sample CSV template for worker imports.
+ *
+ * @returns {Promise<Blob>}
+ */
 export async function downloadWorkersSample() {
   const { data } = await api.get('/api/workers/import/sample', {
     responseType: 'blob',
@@ -81,6 +140,13 @@ export async function downloadWorkersSample() {
   return data
 }
 
+/**
+ * Poll export status until completion or failure.
+ *
+ * @param {string} exportId
+ * @param {number} [maxAttempts=120]
+ * @returns {Promise<object>}
+ */
 async function pollExportStatus(exportId, maxAttempts = 120) {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const { data } = await api.get(`/api/workers/export/${exportId}`)
@@ -99,6 +165,13 @@ async function pollExportStatus(exportId, maxAttempts = 120) {
   throw new Error('Export timed out. Please try again.')
 }
 
+/**
+ * Resolve an export id from an immediate or async export response.
+ *
+ * @param {object} responseData
+ * @param {number} status
+ * @returns {string|null}
+ */
 function resolveExportId(responseData, status) {
   if (status === 202 && responseData.data?.export_id) {
     return responseData.data.export_id
@@ -111,6 +184,11 @@ function resolveExportId(responseData, status) {
   return null
 }
 
+/**
+ * Export all workers and return the resulting file blob.
+ *
+ * @returns {Promise<Blob>}
+ */
 export async function exportWorkers() {
   const { data, status } = await api.post('/api/workers/export')
 

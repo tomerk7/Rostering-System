@@ -146,3 +146,190 @@ function firstShortRoleId(cell) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.roster-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.roster-grid__title {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.roster-grid__hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.roster-grid__table-wrap {
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+}
+
+.roster-grid__table {
+  width: 100%;
+  min-width: 1080px;
+  border-collapse: collapse;
+}
+
+.roster-grid__table th,
+.roster-grid__table td {
+  padding: 0.75rem;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.roster-grid__table thead th {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #f8fafc;
+}
+
+.roster-grid__date-col {
+  width: 9rem;
+}
+
+.roster-grid__shift-col {
+  min-width: 16rem;
+}
+
+.roster-grid__shift-label {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.roster-grid__date-cell {
+  background: #f8fafc;
+}
+
+.roster-grid__date-primary {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.roster-grid__date-secondary {
+  display: block;
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.roster-grid__cell {
+  background: #fff;
+}
+
+.roster-grid__cell--understaffed {
+  background: #fff7ed;
+  box-shadow: inset 0 0 0 1px #fdba74;
+}
+
+.roster-grid__cell--editable {
+  cursor: pointer;
+}
+
+.roster-grid__cell--editable:hover {
+  background: #ffedd5;
+}
+
+.roster-grid__demand {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.roster-grid__demand-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.roster-grid__demand-value {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.roster-grid__roles,
+.roster-grid__assignments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-grid__roles {
+  margin-bottom: 0.5rem;
+}
+
+.roster-grid__role {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.roster-grid__role--short {
+  font-weight: 700;
+  color: #c2410c;
+}
+
+.roster-grid__assignment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  font-size: 0.8125rem;
+}
+
+.roster-grid__worker {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.roster-grid__role-badge,
+.roster-grid__source-badge {
+  font-size: 0.6875rem;
+}
+
+.roster-grid__remove {
+  margin-left: auto;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.6875rem;
+  color: #b91c1c;
+  background: transparent;
+  border: 1px solid #fecaca;
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+
+.roster-grid__remove:hover {
+  background: #fef2f2;
+}
+
+.roster-grid__empty-slot {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+</style>

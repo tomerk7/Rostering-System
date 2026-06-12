@@ -134,3 +134,111 @@ async function onSubmit() {
     </section>
   </main>
 </template>
+
+<style scoped>
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.login__card {
+  width: 100%;
+  max-width: 24rem;
+  padding: 2rem;
+  background: #fff;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 24px rgb(15 23 42 / 8%);
+}
+
+.login__title {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.login__subtitle {
+  margin: 0 0 1.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.login__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.login__input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-size: 1rem;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.login__input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 20%);
+}
+
+.login__input--error {
+  border-color: #f87171;
+}
+
+.login__error {
+  font-size: 0.8125rem;
+  color: #dc2626;
+}
+
+.login__alert {
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #991b1b;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+}
+
+.login__submit {
+  margin-top: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+  background: #2563eb;
+  border: none;
+  border-radius: 0.5rem;
+  transition: background 0.15s ease;
+}
+
+.login__submit:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.login__submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+</style>

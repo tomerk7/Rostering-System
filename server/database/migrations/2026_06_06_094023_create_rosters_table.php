@@ -2,7 +2,6 @@
 
 declare(strict_types=1);
 
-use App\Enums\RosterStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +18,6 @@ return new class extends Migration
             $table->id();
             $table->smallInteger('year');
             $table->smallInteger('month');
-            $table->string('status')->default(RosterStatus::Published->value);
             $table->timestamp('generated_at')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
@@ -30,13 +28,6 @@ return new class extends Migration
         });
 
         DB::statement('ALTER TABLE rosters ADD CONSTRAINT rosters_month_range CHECK (month BETWEEN 1 AND 12)');
-
-        $allowedStatuses = implode(', ', array_map(
-            static fn (string $status): string => "'".$status."'",
-            RosterStatus::values(),
-        ));
-
-        DB::statement("ALTER TABLE rosters ADD CONSTRAINT rosters_status_allowed CHECK (status IN ({$allowedStatuses}))");
     }
 
     /**

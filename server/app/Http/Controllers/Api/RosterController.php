@@ -26,31 +26,8 @@ final class RosterController extends Controller
     ) {}
 
     /**
-     * Generate a roster preview with its alerts, without persisting it.
-     *
-     * @param GenerateRosterRequest $request
-     * @return JsonResponse
-     *
-     * @throws Exception
-     */
-    public function generate(GenerateRosterRequest $request): JsonResponse
-    {
-        $preview = $this->rosterService->preview(
-            (int) $request->validated('year'),
-            (int) $request->validated('month'),
-        );
-
-        return $this->response(
-            success: true,
-            message: 'Roster preview generated successfully.',
-            status: 200,
-            data: $preview,
-        );
-    }
-
-    /**
-     * Persist a previously previewed roster for the given month, replacing any
-     * existing roster for the same period.
+     * Generate and persist a roster for the given month in the current year,
+     * replacing any existing roster for the same period.
      *
      * @param GenerateRosterRequest $request
      * @return JsonResponse
@@ -60,14 +37,14 @@ final class RosterController extends Controller
     public function store(GenerateRosterRequest $request): JsonResponse
     {
         $roster = $this->rosterService->store(
-            (int) $request->validated('year'),
+            (int) now()->year,
             (int) $request->validated('month'),
             (int) $request->user()->id,
         );
 
         return $this->response(
             success: true,
-            message: 'Roster saved successfully.',
+            message: 'Roster generated successfully.',
             status: 201,
             data: RosterResource::make($this->rosterService->loadDetails($roster)),
         );
@@ -85,6 +62,9 @@ final class RosterController extends Controller
             message: 'Rosters retrieved successfully.',
             status: 200,
             data: RosterResource::collection($this->rosterService->list()),
+            meta: [
+                'current_year' => (int) now()->year,
+            ],
         );
     }
 
@@ -109,6 +89,26 @@ final class RosterController extends Controller
                 $date !== null ? (string) $date : null,
                 $shiftId !== null ? (int) $shiftId : null,
             )),
+        );
+    }
+
+    /**
+     * Regenerate assignments for an existing roster.
+     *
+     * @param Roster $roster
+     * @return JsonResponse
+     *
+     * @throws Exception
+     */
+    public function regenerate(Roster $roster): JsonResponse
+    {
+        $roster = $this->rosterService->regenerate($roster);
+
+        return $this->response(
+            success: true,
+            message: 'Roster regenerated successfully.',
+            status: 200,
+            data: RosterResource::make($this->rosterService->loadDetails($roster)),
         );
     }
 

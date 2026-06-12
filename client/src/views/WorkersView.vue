@@ -521,3 +521,68 @@ function availabilitySummary(worker) {
     </div>
   </main>
 </template>
+
+<style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/page.css';
+@import '@/assets/ui/table.css';
+@import '@/assets/ui/modal.css';
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) repeat(2, minmax(10rem, 12rem)) auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.toolbar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: #64748b;
+}
+
+.pagination p {
+  margin: 0;
+}
+
+.pagination__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.import-errors__title {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  color: #334155;
+}
+
+.import-errors__table {
+  min-width: 0;
+}
+
+@media (max-width: 820px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar__actions,
+  .pagination,
+  .pagination__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pagination {
+    align-items: flex-start;
+  }
+}
+</style>

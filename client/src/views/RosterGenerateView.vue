@@ -2,15 +2,9 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
-import { useRosterReference } from '@/composables/useRosterReference'
-import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
-import RosterGrid from '@/components/rosters/RosterGrid.vue'
 
 const router = useRouter()
 const rostersStore = useRostersStore()
-const referenceData = useRosterReference()
-
-const currentYear = new Date().getFullYear()
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
@@ -18,28 +12,28 @@ const monthOptions = Array.from({ length: 12 }, (_, index) => ({
 }))
 
 const canGenerate = computed(
-  () => rostersStore.selectedYear != null && rostersStore.selectedMonth != null,
+  () => rostersStore.currentYear != null && rostersStore.selectedMonth != null,
 )
 
-const hasGeneratedRoster = computed(
-  () => rostersStore.generatedRoster != null && referenceData.reference != null,
-)
+const existingRosterForPeriod = computed(() => {
+  if (rostersStore.currentYear == null || rostersStore.selectedMonth == null) {
+    return null
+  }
 
-const hasCoverageShortages = computed(
-  () => (rostersStore.summary?.coverage_shortage_count ?? 0) > 0,
-)
+  return rostersStore.rosters.find(
+    (roster) => roster.year === rostersStore.currentYear
+      && roster.month === rostersStore.selectedMonth,
+  ) ?? null
+})
 
-onMounted(() => {
-  rostersStore.generatedRoster = null
-  rostersStore.roster = null
+onMounted(async () => {
   rostersStore.clearErrors()
-  rostersStore.selectedYear = currentYear
   rostersStore.selectedMonth = null
+  await rostersStore.fetchRosters()
 })
 
 function onPeriodChange() {
   rostersStore.clearErrors()
-  rostersStore.generatedRoster = null
 }
 
 async function generateRoster() {
@@ -47,39 +41,19 @@ async function generateRoster() {
     return
   }
 
-  await Promise.all([
-    referenceData.load(),
-    rostersStore.generate(
-      rostersStore.selectedYear,
-      rostersStore.selectedMonth,
-    ),
-  ])
-}
-
-async function saveRoster() {
-  const preview = rostersStore.generatedRoster
-
-  if (!preview) {
-    return
-  }
-
-  if (hasCoverageShortages.value && !window.confirm(
-    'This roster has coverage shortages. Save it anyway?',
-  )) {
-    return
-  }
-
-  const roster = await rostersStore.save(preview.year, preview.month)
+  const existing = existingRosterForPeriod.value
+  const roster = existing
+    ? await rostersStore.regenerate(existing.id)
+    : await rostersStore.create(rostersStore.selectedMonth)
 
   if (roster) {
     await router.push({ name: 'rosters.show', params: { id: roster.id } })
   }
 }
-
 </script>
 
 <template>
-  <main class="page page--wide">
+  <main class="page">
     <header class="page__header">
       <div>
         <p class="page__eyebrow">
@@ -89,8 +63,8 @@ async function saveRoster() {
           Generate Roster
         </h1>
         <p class="page__description">
-          Select a month and generate a preview. Review the alerts, then save to
-          persist the roster.
+          Select a month and generate a roster. You will be taken to the schedule
+          preview where you can review alerts and make manual edits.
         </p>
       </div>
       <div class="page__actions">
@@ -108,16 +82,6 @@ async function saveRoster() {
         class="toolbar roster-toolbar"
         @submit.prevent="generateRoster"
       >
-        <label class="field">
-          <span class="field__label">Year</span>
-          <input
-            :value="currentYear"
-            class="input"
-            type="text"
-            readonly
-          >
-        </label>
-
         <label class="field">
           <span class="field__label">Month</span>
           <select
@@ -148,19 +112,17 @@ async function saveRoster() {
             class="button button--primary"
             :disabled="rostersStore.generating || !canGenerate"
           >
-            {{ rostersStore.generating ? 'Generating...' : 'Generate' }}
-          </button>
-          <button
-            v-if="hasGeneratedRoster"
-            type="button"
-            class="button button--primary"
-            :disabled="rostersStore.saving"
-            @click="saveRoster"
-          >
-            {{ rostersStore.saving ? 'Saving...' : 'Save roster' }}
+            {{ rostersStore.generating ? 'Generating...' : 'Generate roster' }}
           </button>
         </div>
       </form>
+
+      <p
+        v-if="existingRosterForPeriod"
+        class="page__description"
+      >
+        A roster already exists for this month. Generating will replace it.
+      </p>
 
       <div
         v-if="rostersStore.error"
@@ -169,51 +131,39 @@ async function saveRoster() {
       >
         {{ rostersStore.error }}
       </div>
-
-      <div
-        v-if="referenceData.error"
-        class="alert"
-        role="alert"
-      >
-        {{ referenceData.error }}
-      </div>
-
-      <div
-        v-if="rostersStore.generating"
-        class="empty-state"
-      >
-        Generating roster...
-      </div>
-
-      <template v-else-if="hasGeneratedRoster">
-        <p class="roster-preview-hint">
-          This is a preview. Nothing is saved until you click Save roster.
-        </p>
-
-        <RosterAlertSummary
-          :reports="rostersStore.reports"
-          :workers-by-id="referenceData.workersById"
-        />
-
-        <RosterGrid
-          :year="rostersStore.generatedRoster.year"
-          :month="rostersStore.generatedRoster.month"
-          :shifts="referenceData.reference.shifts"
-          :requirements="referenceData.reference.shift_role_requirements"
-          :roles="referenceData.reference.roles"
-          :assignments="rostersStore.assignments"
-          :reports="rostersStore.reports"
-          :workers-by-id="referenceData.workersById"
-          :editable="false"
-        />
-      </template>
-
-      <div
-        v-else
-        class="empty-state"
-      >
-        Choose a month and click Generate to create a roster.
-      </div>
     </section>
   </main>
 </template>
+
+<style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/page.css';
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) repeat(2, minmax(10rem, 12rem)) auto;
+  gap: 1rem;
+  align-items: end;
+}
+
+.roster-toolbar {
+  grid-template-columns: repeat(2, minmax(10rem, 12rem)) auto;
+}
+
+.toolbar__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 820px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>

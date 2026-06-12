@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Models;
 
-use App\Enums\RosterStatus;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['year', 'month', 'status', 'generated_at', 'published_at', 'created_by'])]
+#[Fillable(['year', 'month', 'generated_at', 'published_at', 'created_by'])]
 final class Roster extends Model
 {
     use HasFactory;
@@ -60,7 +59,6 @@ final class Roster extends Model
         return [
             'year' => 'integer',
             'month' => 'integer',
-            'status' => RosterStatus::class,
             'generated_at' => 'datetime',
             'published_at' => 'datetime',
         ];

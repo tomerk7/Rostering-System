@@ -64,7 +64,6 @@ async function deleteRoster(roster) {
           <thead>
             <tr>
               <th>Period</th>
-              <th>Status</th>
               <th>Assignments</th>
               <th>Generated</th>
               <th>Published</th>
@@ -76,7 +75,7 @@ async function deleteRoster(roster) {
           <tbody>
             <tr v-if="rostersStore.loading">
               <td
-                colspan="6"
+                colspan="5"
                 class="table__empty"
               >
                 Loading rosters...
@@ -84,7 +83,7 @@ async function deleteRoster(roster) {
             </tr>
             <tr v-else-if="rostersStore.rosters.length === 0">
               <td
-                colspan="6"
+                colspan="5"
                 class="table__empty"
               >
                 No rosters found.
@@ -97,11 +96,6 @@ async function deleteRoster(roster) {
               >
                 <td>
                   <strong>{{ periodLabel(roster) }}</strong>
-                </td>
-                <td>
-                  <span class="badge badge--success">
-                    {{ roster.status }}
-                  </span>
                 </td>
                 <td>{{ roster.assignments_count ?? '-' }}</td>
                 <td>{{ roster.generated_at ? new Date(roster.generated_at).toLocaleString() : '-' }}</td>
@@ -130,3 +124,10 @@ async function deleteRoster(roster) {
     </section>
   </main>
 </template>
+
+<style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/page.css';
+@import '@/assets/ui/table.css';
+</style>

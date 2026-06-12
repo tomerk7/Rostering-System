@@ -436,3 +436,100 @@ function fieldError(field) {
     </section>
   </main>
 </template>
+
+<style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/page.css';
+
+.worker-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.form-section {
+  display: grid;
+  grid-template-columns: minmax(12rem, 18rem) 1fr;
+  gap: 1.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.form-section__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.form-section__description {
+  margin: 0.375rem 0 0;
+  color: #64748b;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.form-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+  color: #334155;
+}
+
+.check-field input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.choice-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+}
+
+.choice-group legend {
+  padding: 0 0.25rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 820px) {
+  .form-section,
+  .form-grid,
+  .form-grid--three,
+  .choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>

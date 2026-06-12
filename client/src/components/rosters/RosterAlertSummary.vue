@@ -83,3 +83,103 @@ function shortfallGap(shortfall) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.roster-alerts {
+  padding: 0.625rem 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.roster-alerts--warning {
+  border-color: #fdba74;
+  background: #fffaf5;
+}
+
+.roster-alerts__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  background: none;
+  border: none;
+}
+
+.roster-alerts--warning .roster-alerts__header {
+  cursor: pointer;
+}
+
+.roster-alerts__title {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.roster-alerts__meta {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.roster-alerts__chevron {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.625rem;
+  transition: transform 0.15s ease;
+}
+
+.roster-alerts__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.roster-alerts__scroll {
+  max-height: 10rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  overflow-y: auto;
+  border-top: 1px solid #e2e8f0;
+}
+
+.roster-alerts__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roster-alerts__item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.375rem;
+}
+
+.roster-alerts__item-main {
+  color: #334155;
+}
+
+.roster-alerts__item-meta {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.roster-alerts__item--info {
+  background: #dbeafe;
+}
+
+.roster-alerts__item--info .roster-alerts__item-meta {
+  color: #1e40af;
+}
+</style>

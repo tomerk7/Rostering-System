@@ -1,7 +1,20 @@
+/**
+ * Pad a month or day number to two digits.
+ *
+ * @param {number|string} value
+ * @returns {string}
+ */
 function padMonthDay(value) {
   return String(value).padStart(2, '0')
 }
 
+/**
+ * Build ISO date strings for every day in a calendar month.
+ *
+ * @param {number} year
+ * @param {number} month
+ * @returns {string[]}
+ */
 export function getDatesInMonth(year, month) {
   const daysInMonth = new Date(year, month, 0).getDate()
   const dates = []
@@ -13,12 +26,25 @@ export function getDatesInMonth(year, month) {
   return dates
 }
 
+/**
+ * Format a year and month as a human-readable label.
+ *
+ * @param {number} year
+ * @param {number} month
+ * @returns {string}
+ */
 export function formatMonthYear(year, month) {
   return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
     new Date(year, month - 1, 1),
   )
 }
 
+/**
+ * Format a work date as a short weekday and calendar label.
+ *
+ * @param {string} workDate
+ * @returns {string}
+ */
 export function formatWorkDateLabel(workDate) {
   const date = new Date(`${workDate}T00:00:00`)
 
@@ -29,10 +55,24 @@ export function formatWorkDateLabel(workDate) {
   }).format(date)
 }
 
+/**
+ * Build a unique key for a date/shift/role coverage slot.
+ *
+ * @param {string} workDate
+ * @param {number} shiftId
+ * @param {number} roleId
+ * @returns {string}
+ */
 function shortageKey(workDate, shiftId, roleId) {
   return `${workDate}|${shiftId}|${roleId}`
 }
 
+/**
+ * Index coverage shortages by date, shift, and role.
+ *
+ * @param {object[]} shortages
+ * @returns {Map<string, object>}
+ */
 function buildShortageMap(shortages) {
   const map = new Map()
 
@@ -43,6 +83,13 @@ function buildShortageMap(shortages) {
   return map
 }
 
+/**
+ * Group staffing requirements by shift with resolved role metadata.
+ *
+ * @param {object[]} requirements
+ * @param {Map<number, object>} rolesById
+ * @returns {Map<number, object[]>}
+ */
 function buildRequirementsByShift(requirements, rolesById) {
   const map = new Map()
 
@@ -66,10 +113,24 @@ function buildRequirementsByShift(requirements, rolesById) {
   return map
 }
 
+/**
+ * Resolve the role id for an assignment from its data or worker lookup.
+ *
+ * @param {object} assignment
+ * @param {Map<number|string, object>} workersById
+ * @returns {number|null}
+ */
 function resolveRoleId(assignment, workersById) {
   return assignment.role_id ?? workersById.get(assignment.worker_id)?.role.id ?? null
 }
 
+/**
+ * Count assignments grouped by date, shift, and role.
+ *
+ * @param {object[]} assignments
+ * @param {Map<number|string, object>} workersById
+ * @returns {Map<string, number>}
+ */
 function countAssignmentsBySlotRole(assignments, workersById) {
   const counts = new Map()
 
@@ -86,6 +147,12 @@ function countAssignmentsBySlotRole(assignments, workersById) {
   return counts
 }
 
+/**
+ * Derive a role code from a display name when worker metadata is missing.
+ *
+ * @param {string} roleName
+ * @returns {string}
+ */
 function roleCodeFromName(roleName) {
   if (!roleName) {
     return 'unknown'
@@ -108,6 +175,15 @@ function roleCodeFromName(roleName) {
   return normalized.replace(/\s+/g, '_')
 }
 
+/**
+ * Build display-ready assignment rows for a date and shift cell.
+ *
+ * @param {object[]} assignments
+ * @param {string} workDate
+ * @param {number} shiftId
+ * @param {Map<number|string, object>} workersById
+ * @returns {object[]}
+ */
 function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
   return assignments
     .filter((assignment) => assignment.work_date === workDate && assignment.shift_id === shiftId)
@@ -129,6 +205,12 @@ function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
     .sort((left, right) => left.roleName.localeCompare(right.roleName) || left.workerName.localeCompare(right.workerName))
 }
 
+/**
+ * Build the full month grid model for roster display and editing.
+ *
+ * @param {{ year: number, month: number, shifts: object[], requirements: object[], roles: object[], assignments: object[], reports: object, workersById: Map<number|string, object> }} params
+ * @returns {object}
+ */
 export function buildRosterGrid(params) {
   const {
     year,
@@ -194,6 +276,12 @@ export function buildRosterGrid(params) {
   }
 }
 
+/**
+ * Format role demand counts as a compact summary string.
+ *
+ * @param {object[]} roles
+ * @returns {string}
+ */
 export function formatDemandSummary(roles) {
   return roles
     .map((role) => {

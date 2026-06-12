@@ -24,9 +24,10 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
 
     Route::apiResource('workers', WorkerController::class);
 
-    Route::post('rosters/generate', [RosterController::class, 'generate']);
     Route::apiResource('rosters', RosterController::class)
         ->only(['index', 'show', 'store', 'destroy'])
+        ->whereNumber('roster');
+    Route::post('rosters/{roster}/regenerate', [RosterController::class, 'regenerate'])
         ->whereNumber('roster');
     Route::scopeBindings()->group(function (): void {
         Route::post('rosters/{roster}/assignments', [RosterAssignmentController::class, 'store']);

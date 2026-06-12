@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Feature\Api;
 
 use App\Enums\AssignmentSource;
-use App\Enums\RosterStatus;
 use App\Models\Contract;
 use App\Models\Role;
 use App\Models\Roster;
@@ -56,43 +55,18 @@ final class RosterApiTest extends TestCase
         $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
     }
 
-    public function test_roster_preview_returns_alerts_without_persisting(): void
+    public function test_roster_generation_validates_month(): void
     {
-        $response = $this->postJson('/api/rosters/generate', [
-            'year' => self::YEAR,
-            'month' => self::MONTH,
-        ])
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonStructure([
-                'data' => [
-                    'year',
-                    'month',
-                    'assignments',
-                    'reports' => [
-                        'coverage_shortages',
-                        'hours_shortfalls',
-                    ],
-                    'summary' => [
-                        'assignment_count',
-                        'coverage_shortage_count',
-                        'hours_shortfall_count',
-                    ],
-                ],
-            ])
-            ->assertJsonPath('data.year', self::YEAR)
-            ->assertJsonPath('data.month', self::MONTH);
-
-        self::assertNull($response->json('data.id'));
-        self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
-        $this->assertDatabaseCount('rosters', 0);
-        $this->assertDatabaseCount('roster_assignments', 0);
+        $this->postJson('/api/rosters', ['month' => 13])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('month');
     }
 
-    public function test_roster_can_be_saved_after_preview(): void
+    public function test_roster_can_be_generated_and_persisted(): void
     {
+        $currentYear = (int) now()->year;
+
         $response = $this->postJson('/api/rosters', [
-            'year' => self::YEAR,
             'month' => self::MONTH,
         ])
             ->assertStatus(201)
@@ -102,7 +76,6 @@ final class RosterApiTest extends TestCase
                     'id',
                     'year',
                     'month',
-                    'status',
                     'assignments',
                     'reports' => [
                         'coverage_shortages',
@@ -115,48 +88,53 @@ final class RosterApiTest extends TestCase
                     ],
                 ],
             ])
-            ->assertJsonPath('data.year', self::YEAR)
-            ->assertJsonPath('data.month', self::MONTH)
-            ->assertJsonPath('data.status', RosterStatus::Published->value);
+            ->assertJsonPath('data.year', $currentYear)
+            ->assertJsonPath('data.month', self::MONTH);
 
         $rosterId = $response->json('data.id');
 
         self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
         $this->assertDatabaseHas('rosters', [
             'id' => $rosterId,
-            'status' => RosterStatus::Published->value,
             'created_by' => $this->user->id,
         ]);
         $this->assertDatabaseHas('roster_assignments', ['roster_id' => $rosterId]);
     }
 
-    public function test_saving_replaces_the_existing_roster_for_the_month(): void
+    public function test_generating_replaces_the_existing_roster_for_the_month(): void
     {
-        $first = $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => self::MONTH])
+        $first = $this->postJson('/api/rosters', ['month' => self::MONTH])
             ->assertStatus(201)
             ->json('data.id');
 
-        $second = $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => self::MONTH])
+        $second = $this->postJson('/api/rosters', ['month' => self::MONTH])
             ->assertStatus(201)
             ->json('data.id');
 
         self::assertNotSame($first, $second);
         $this->assertDatabaseMissing('rosters', ['id' => $first]);
+        self::assertSame(1, Roster::query()->forPeriod((int) now()->year, self::MONTH)->count());
+    }
+
+    public function test_regenerating_keeps_the_same_roster_id_and_replaces_assignments(): void
+    {
+        $roster = $this->createRosterWithAssignment();
+        $manualAssignmentId = RosterAssignment::query()
+            ->where('roster_id', $roster->id)
+            ->value('id');
+
+        $response = $this->postJson("/api/rosters/{$roster->id}/regenerate")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.id', $roster->id)
+            ->assertJsonPath('data.year', self::YEAR)
+            ->assertJsonPath('data.month', self::MONTH);
+
+        self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
+        $this->assertDatabaseHas('rosters', ['id' => $roster->id]);
+        $this->assertDatabaseMissing('roster_assignments', ['id' => $manualAssignmentId]);
+        $this->assertDatabaseHas('roster_assignments', ['roster_id' => $roster->id]);
         self::assertSame(1, Roster::query()->forPeriod(self::YEAR, self::MONTH)->count());
-    }
-
-    public function test_roster_preview_validates_month(): void
-    {
-        $this->postJson('/api/rosters/generate', ['year' => self::YEAR, 'month' => 13])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('month');
-    }
-
-    public function test_roster_save_validates_month(): void
-    {
-        $this->postJson('/api/rosters', ['year' => self::YEAR, 'month' => 13])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('month');
     }
 
     public function test_rosters_can_be_listed_with_assignment_counts(): void
@@ -166,6 +144,7 @@ final class RosterApiTest extends TestCase
         $this->getJson('/api/rosters')
             ->assertOk()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('meta.current_year', (int) now()->year)
             ->assertJsonPath('data.0.id', $roster->id)
             ->assertJsonPath('data.0.assignments_count', 1);
     }

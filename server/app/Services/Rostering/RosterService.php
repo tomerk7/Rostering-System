@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering;
 
-use App\Enums\RosterStatus;
 use App\Models\Role;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
@@ -89,77 +88,6 @@ final readonly class RosterService
     }
 
     /**
-     * Generate a roster preview without persisting anything, so the alerts can
-     * be reviewed before the user commits to saving the schedule.
-     *
-     * @param int $year
-     * @param int $month
-     * @return array{year: int, month: int, assignments: list<array<string, mixed>>, reports: array{coverage_shortages: list<array<string, mixed>>, hours_shortfalls: list<array<string, mixed>>}, summary: array<string, mixed>}
-     *
-     * @throws Exception
-     */
-    public function preview(int $year, int $month): array
-    {
-        $result = $this->generator->generate($year, $month);
-
-        return [
-            'year' => $result->year,
-            'month' => $result->month,
-            'assignments' => $this->previewAssignments($result->assignments),
-            'reports' => $this->reports($result->coverageShortages, $result->hoursShortfalls),
-            'summary' => $this->summary(
-                count($result->assignments),
-                $result->coverageShortages,
-                $result->hoursShortfalls,
-            ),
-        ];
-    }
-
-    /**
-     * Enrich the previewed assignments with worker, shift, and role names so the
-     * grid renders them without depending on the client's worker cache.
-     *
-     * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
-     * @return list<array<string, mixed>>
-     */
-    private function previewAssignments(array $assignments): array
-    {
-        if ($assignments === []) {
-            return [];
-        }
-
-        $workers = Worker::query()
-            ->with('role')
-            ->whereIn('israeli_id', array_values(array_unique(array_column($assignments, 'worker_id'))))
-            ->get()
-            ->keyBy('israeli_id');
-
-        $shifts = Shift::query()
-            ->whereIn('id', array_values(array_unique(array_column($assignments, 'shift_id'))))
-            ->get()
-            ->keyBy('id');
-
-        return array_map(
-            static function (array $assignment) use ($workers, $shifts): array {
-                $worker = $workers->get($assignment['worker_id']);
-                $shift = $shifts->get($assignment['shift_id']);
-
-                return [
-                    'worker_id' => $assignment['worker_id'],
-                    'worker_name' => $worker?->full_name,
-                    'shift_id' => $assignment['shift_id'],
-                    'shift_code' => $shift?->code,
-                    'role_id' => $worker?->role?->id,
-                    'role_name' => $worker?->role?->name,
-                    'work_date' => $assignment['work_date']->toDateString(),
-                    'source' => $assignment['source'],
-                ];
-            },
-            $assignments,
-        );
-    }
-
-    /**
      * Generate a roster synchronously and persist it, replacing any existing
      * roster for the same month.
      *
@@ -192,6 +120,32 @@ final readonly class RosterService
     }
 
     /**
+     * Regenerate assignments for an existing roster, keeping the same roster id.
+     *
+     * @param Roster $roster
+     * @return Roster
+     * @throws Exception
+     */
+    public function regenerate(Roster $roster): Roster
+    {
+        $result = $this->generator->generate($roster->year, $roster->month);
+
+        return DB::transaction(function () use ($roster, $result): Roster {
+            $roster->assignments()->delete();
+
+            $now = Carbon::now();
+            $roster->update([
+                'generated_at' => $now,
+                'published_at' => $now,
+            ]);
+
+            $this->insertAssignments($roster, $result->assignments);
+
+            return $roster->fresh();
+        });
+    }
+
+    /**
      * Delete a roster.
      *
      * @param Roster $roster
@@ -212,7 +166,6 @@ final readonly class RosterService
         $roster = Roster::query()->create([
             'year' => $result->year,
             'month' => $result->month,
-            'status' => RosterStatus::Published,
             'generated_at' => $now,
             'published_at' => $now,
             'created_by' => $createdBy,

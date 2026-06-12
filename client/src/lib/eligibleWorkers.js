@@ -1,9 +1,24 @@
+/** Maximum shifts a worker may be assigned on a single day. */
 export const MAX_SHIFTS_PER_DAY = 2
 
+/**
+ * Get the day-of-week index (0–6) for an ISO date string.
+ *
+ * @param {string} workDate
+ * @returns {number}
+ */
 function dayOfWeekForDate(workDate) {
   return new Date(`${workDate}T00:00:00`).getDay()
 }
 
+/**
+ * Check whether a worker is available for a date and shift.
+ *
+ * @param {object} worker
+ * @param {string} workDate
+ * @param {number} shiftId
+ * @returns {boolean}
+ */
 function isAvailableForSlot(worker, workDate, shiftId) {
   const dayOfWeek = dayOfWeekForDate(workDate)
 
@@ -12,6 +27,14 @@ function isAvailableForSlot(worker, workDate, shiftId) {
   )
 }
 
+/**
+ * Sum assigned hours for a worker across all roster assignments.
+ *
+ * @param {object[]} assignments
+ * @param {number|string} workerId
+ * @param {Map<number, object>} shiftsById
+ * @returns {number}
+ */
 function assignedHoursForWorker(assignments, workerId, shiftsById) {
   return assignments
     .filter((assignment) => assignment.worker_id === workerId)
@@ -22,12 +45,27 @@ function assignedHoursForWorker(assignments, workerId, shiftsById) {
     }, 0)
 }
 
+/**
+ * Count how many shifts a worker is assigned on a given date.
+ *
+ * @param {object[]} assignments
+ * @param {number|string} workerId
+ * @param {string} workDate
+ * @returns {number}
+ */
 function shiftsOnDateForWorker(assignments, workerId, workDate) {
   return assignments.filter(
     (assignment) => assignment.worker_id === workerId && assignment.work_date === workDate,
   ).length
 }
 
+/**
+ * Check whether a worker may be manually assigned to a slot.
+ *
+ * @param {object} worker
+ * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object> }} options
+ * @returns {boolean}
+ */
 export function isWorkerEligibleForAssignment(worker, { workDate, shiftId, roleId, assignments, shiftsById }) {
   if (!workDate || !shiftId || !worker.contract) {
     return false
@@ -60,6 +98,13 @@ export function isWorkerEligibleForAssignment(worker, { workDate, shiftId, roleI
   return nextHours <= maxHours
 }
 
+/**
+ * Filter workers to those eligible for a manual assignment slot.
+ *
+ * @param {object[]} workers
+ * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object> }} options
+ * @returns {object[]}
+ */
 export function filterEligibleWorkers(workers, options) {
   return workers.filter((worker) => isWorkerEligibleForAssignment(worker, options))
 }

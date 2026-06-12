@@ -207,6 +207,10 @@ function onSubmit() {
 </template>
 
 <style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/modal.css';
+
 .assignment-form {
   display: flex;
   flex-direction: column;

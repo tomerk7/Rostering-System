@@ -21,7 +21,6 @@ final class RosterResource extends JsonResource
             'id' => $this->resource->id,
             'year' => $this->resource->year,
             'month' => $this->resource->month,
-            'status' => $this->resource->status?->value,
             'generated_at' => $this->resource->generated_at?->toISOString(),
             'published_at' => $this->resource->published_at?->toISOString(),
             'created_by' => $this->resource->created_by,

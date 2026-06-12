@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { deleteAllWorkers, deleteWorker, listWorkers } from '@/api/workers'
+import { runStoreRequest } from '@/stores/storeRequest'
 
 const emptyMeta = {
   current_page: 1,
@@ -10,6 +11,12 @@ const emptyMeta = {
   total: 0,
 }
 
+/**
+ * Map UI status filter value to API boolean.
+ *
+ * @param {string} status
+ * @returns {boolean|undefined}
+ */
 function statusToBoolean(status) {
   if (status === 'active') {
     return true
@@ -33,11 +40,18 @@ export const useWorkersStore = defineStore('workers', {
     perPage: 10,
     loading: false,
     error: '',
+    validationErrors: {},
     deletingId: null,
     deletingAll: false,
   }),
 
   getters: {
+    /**
+     * Query params for the workers list API.
+     *
+     * @param {object} state
+     * @returns {object}
+     */
     params(state) {
       return {
         search: state.search || undefined,
@@ -50,58 +64,88 @@ export const useWorkersStore = defineStore('workers', {
   },
 
   actions: {
-    async fetchWorkers() {
-      this.loading = true
+    /**
+     * Reset the stored error and validation messages.
+     *
+     * @returns {void}
+     */
+    clearErrors() {
       this.error = ''
-
-      try {
-        const response = await listWorkers(this.params)
-        this.workers = response.data
-        this.meta = response.meta
-      } catch {
-        this.error = 'Could not load workers. Please try again.'
-      } finally {
-        this.loading = false
-      }
+      this.validationErrors = {}
     },
 
-    async applyFilters() {
+    /**
+     * Load workers using current filters and pagination.
+     *
+     * @returns {Promise<void>}
+     */
+    fetchWorkers() {
+      return runStoreRequest(this, {
+        loadingKey: 'loading',
+        fallback: 'Could not load workers. Please try again.',
+        request: async () => {
+          const response = await listWorkers(this.params)
+          this.workers = response.data
+          this.meta = response.meta
+        },
+      })
+    },
+
+    /**
+     * Reset to page 1 and reload workers.
+     *
+     * @returns {Promise<void>}
+     */
+    applyFilters() {
       this.page = 1
-      await this.fetchWorkers()
+      return this.fetchWorkers()
     },
 
-    async setPage(page) {
+    /**
+     * Change page and reload workers.
+     *
+     * @param {number} page
+     * @returns {Promise<void>}
+     */
+    setPage(page) {
       this.page = page
-      await this.fetchWorkers()
+      return this.fetchWorkers()
     },
 
-    async removeWorker(workerId) {
-      this.deletingId = workerId
-      this.error = ''
-
-      try {
-        await deleteWorker(workerId)
-        await this.fetchWorkers()
-      } catch {
-        this.error = 'Could not delete worker. Please try again.'
-      } finally {
-        this.deletingId = null
-      }
+    /**
+     * Delete a worker and refresh the list.
+     *
+     * @param {number} workerId
+     * @returns {Promise<void>}
+     */
+    removeWorker(workerId) {
+      return runStoreRequest(this, {
+        loadingKey: 'deletingId',
+        loadingValue: workerId,
+        idleValue: null,
+        fallback: 'Could not delete worker. Please try again.',
+        request: async () => {
+          await deleteWorker(workerId)
+          await this.fetchWorkers()
+        },
+      })
     },
 
-    async removeAllWorkers() {
-      this.deletingAll = true
-      this.error = ''
-
-      try {
-        await deleteAllWorkers()
-        this.page = 1
-        await this.fetchWorkers()
-      } catch {
-        this.error = 'Could not delete all workers. Please try again.'
-      } finally {
-        this.deletingAll = false
-      }
+    /**
+     * Delete all workers and refresh the list.
+     *
+     * @returns {Promise<void>}
+     */
+    removeAllWorkers() {
+      return runStoreRequest(this, {
+        loadingKey: 'deletingAll',
+        fallback: 'Could not delete all workers. Please try again.',
+        request: async () => {
+          await deleteAllWorkers()
+          this.page = 1
+          await this.fetchWorkers()
+        },
+      })
     },
   },
 })

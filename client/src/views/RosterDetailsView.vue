@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
 import { useRosterReference } from '@/composables/useRosterReference'
@@ -29,8 +29,16 @@ const periodLabel = computed(() => {
 const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
 
 onMounted(async () => {
-  await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
+  await loadRoster()
 })
+
+watch(rosterId, async () => {
+  await loadRoster()
+})
+
+async function loadRoster() {
+  await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
+}
 
 function openAssignmentModal(context = null) {
   assignmentError.value = ''
@@ -98,6 +106,30 @@ async function deleteRoster() {
     await router.push({ name: 'rosters' })
   }
 }
+
+function regenerateConfirmMessage() {
+  return `Regenerate the ${periodLabel.value} roster? This will replace all assignments and remove any manual edits.`
+}
+
+async function regenerateRoster() {
+  const roster = rostersStore.roster
+
+  if (!roster) {
+    return
+  }
+
+  if (!window.confirm(regenerateConfirmMessage())) {
+    return
+  }
+
+  const regenerated = await rostersStore.regenerate(roster.id)
+
+  if (!regenerated) {
+    return
+  }
+
+  await loadRoster()
+}
 </script>
 
 <template>
@@ -123,6 +155,15 @@ async function deleteRoster() {
         >
           Back to list
         </RouterLink>
+        <button
+          v-if="rostersStore.roster"
+          type="button"
+          class="button button--primary"
+          :disabled="rostersStore.generating"
+          @click="regenerateRoster"
+        >
+          {{ rostersStore.generating ? 'Regenerating...' : 'Regenerate' }}
+        </button>
         <button
           type="button"
           class="button button--danger"
@@ -210,3 +251,9 @@ async function deleteRoster() {
     />
   </main>
 </template>
+
+<style scoped>
+@import '@/assets/ui/button.css';
+@import '@/assets/ui/forms.css';
+@import '@/assets/ui/page.css';
+</style>

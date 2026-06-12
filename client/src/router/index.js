@@ -8,6 +8,7 @@ import WorkerFormView from '@/views/WorkerFormView.vue'
 import WorkersView from '@/views/WorkersView.vue'
 import { useAuthStore } from '@/stores/auth'
 
+/** Vue Router instance with auth-aware navigation guards. */
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -67,6 +68,12 @@ const router = createRouter({
   ],
 })
 
+/**
+ * Redirect unauthenticated users to login and authenticated guests away from login.
+ *
+ * @param {import('vue-router').RouteLocationNormalized} to
+ * @returns {Promise<object|void>}
+ */
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
 

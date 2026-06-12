@@ -121,14 +121,20 @@ final readonly class WorkerService
     }
 
     /**
-     * Delete a worker.
+     * Delete a worker and their roster assignments.
      *
      * @param Worker $worker
      * @return void
      */
     public function delete(Worker $worker): void
     {
-        $worker->delete();
+        DB::transaction(function () use ($worker): void {
+            RosterAssignment::query()
+                ->where('worker_id', $worker->israeli_id)
+                ->delete();
+
+            $worker->delete();
+        });
     }
 
     /**

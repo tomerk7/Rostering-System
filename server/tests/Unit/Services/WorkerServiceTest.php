@@ -7,6 +7,8 @@ namespace Tests\Unit\Services;
 use App\Models\Contract;
 use App\Models\ContractAvailability;
 use App\Models\Role;
+use App\Models\Roster;
+use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\Worker;
 use App\Services\Workers\WorkerService;
@@ -347,6 +349,28 @@ final class WorkerServiceTest extends TestCase
         $this->assertDatabaseMissing('workers', [
             'israeli_id' => $worker->israeli_id,
         ]);
+    }
+
+    public function test_delete_removes_worker_roster_assignments(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111112),
+        ]);
+        $roster = Roster::factory()->create();
+        RosterAssignment::factory()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-10',
+        ]);
+
+        $this->service->delete($worker);
+
+        $this->assertDatabaseMissing('workers', [
+            'israeli_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseCount('roster_assignments', 0);
     }
 
     /**
