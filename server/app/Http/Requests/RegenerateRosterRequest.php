@@ -7,7 +7,7 @@ namespace App\Http\Requests;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-final class GenerateRosterRequest extends FormRequest
+final class RegenerateRosterRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -27,7 +27,6 @@ final class GenerateRosterRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'month' => ['required', 'integer', 'between:1,12'],
             'optimize_cost' => ['sometimes', 'boolean'],
         ];
     }

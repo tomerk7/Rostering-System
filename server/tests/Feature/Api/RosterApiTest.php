@@ -148,6 +148,62 @@ final class RosterApiTest extends TestCase
             ->assertJsonPath('data.status', 'processing');
     }
 
+    public function test_roster_generation_validates_optimize_cost(): void
+    {
+        $this->postJson('/api/rosters', ['month' => self::MONTH, 'optimize_cost' => 'not-a-bool'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('optimize_cost');
+    }
+
+    public function test_roster_generation_queues_the_optimize_cost_flag(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/rosters', ['month' => self::MONTH, 'optimize_cost' => true])
+            ->assertStatus(202);
+
+        Queue::assertPushed(GenerateRosterJob::class, fn (GenerateRosterJob $job): bool => $job->optimizeCost === true);
+    }
+
+    public function test_roster_generation_defaults_optimize_cost_to_false(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/rosters', ['month' => self::MONTH])
+            ->assertStatus(202);
+
+        Queue::assertPushed(GenerateRosterJob::class, fn (GenerateRosterJob $job): bool => $job->optimizeCost === false);
+    }
+
+    public function test_roster_regeneration_queues_the_optimize_cost_flag(): void
+    {
+        Queue::fake();
+
+        $roster = $this->createRosterWithAssignment();
+
+        $this->postJson("/api/rosters/{$roster->id}/regenerate", ['optimize_cost' => true])
+            ->assertStatus(202);
+
+        Queue::assertPushed(GenerateRosterJob::class, fn (GenerateRosterJob $job): bool => $job->optimizeCost === true);
+    }
+
+    public function test_roster_can_be_generated_with_cost_optimization(): void
+    {
+        $response = $this->postJson('/api/rosters', [
+            'month' => self::MONTH,
+            'optimize_cost' => true,
+        ])
+            ->assertStatus(201)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'ready');
+
+        $rosterId = $response->json('data.id');
+
+        self::assertGreaterThan(0, $response->json('data.summary.assignment_count'));
+        $this->assertDatabaseHas('rosters', ['id' => $rosterId]);
+        $this->assertDatabaseHas('roster_assignments', ['roster_id' => $rosterId]);
+    }
+
     public function test_show_returns_friendly_not_found_for_missing_roster(): void
     {
         $this->getJson('/api/rosters/999999')

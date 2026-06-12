@@ -8,6 +8,7 @@ use App\Enums\RosterStatus;
 use App\Exceptions\Rostering\RosterExportException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GenerateRosterRequest;
+use App\Http\Requests\RegenerateRosterRequest;
 use App\Http\Resources\RosterResource;
 use App\Models\Roster;
 use App\Services\Rostering\Csv\RosterCsvService;
@@ -41,6 +42,7 @@ final class RosterController extends Controller
             (int) now()->year,
             (int) $request->validated('month'),
             (int) $request->user()->id,
+            $request->boolean('optimize_cost'),
         );
 
         return $this->rosterGenerationResponse(
@@ -97,13 +99,14 @@ final class RosterController extends Controller
     /**
      * Queue regeneration of assignments for an existing roster.
      *
+     * @param RegenerateRosterRequest $request
      * @param Roster $roster
      * @return JsonResponse
      * @throws Exception
      */
-    public function regenerate(Roster $roster): JsonResponse
+    public function regenerate(RegenerateRosterRequest $request, Roster $roster): JsonResponse
     {
-        $roster = $this->rosterService->queueRegeneration($roster);
+        $roster = $this->rosterService->queueRegeneration($roster, $request->boolean('optimize_cost'));
 
         return $this->rosterGenerationResponse(
             $roster,

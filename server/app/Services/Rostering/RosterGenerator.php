@@ -20,6 +20,7 @@ final readonly class RosterGenerator
 {
     public function __construct(
         private RosteringEngine $engine,
+        private SimulatedAnnealingOptimizer $optimizer,
     ) {}
 
     /**
@@ -28,7 +29,7 @@ final readonly class RosterGenerator
      *
      * @throws Exception
      */
-    public function generate(int $year, int $month): GenerationResult
+    public function generate(int $year, int $month, bool $optimizeCost = false): GenerationResult
     {
         $slots = $this->buildSlots($year, $month);
         $workers = $this->resolveWorkers();
@@ -37,6 +38,13 @@ final readonly class RosterGenerator
         // assignments, so $workers afterwards holds the final scheduled hours the
         // coverage and shortfall reports read from.
         $assignments = $this->engine->generate($slots, $workers);
+
+        // Optional cost-optimization pass: swaps cheaper eligible workers into
+        // already-filled positions. Coverage is invariant and the counters stay
+        // consistent, so the reports below read the post-optimization state.
+        if ($optimizeCost) {
+            $assignments = $this->optimizer->optimize($slots, $workers, $assignments);
+        }
 
         return new GenerationResult(
             year: $year,

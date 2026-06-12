@@ -14,11 +14,21 @@ vacations, and sick leave. With the default factor this yields 30 guards,
 (round-robin) and only available ~5-6 days/week, so the engine has to make
 real scheduling choices instead of placing everyone everywhere.
 
+The "optimization" profile is designed for testing the simulated annealing
+cost-optimization pass: each role's pool is split into a cheap half and an
+expensive half (bimodal hourly costs with a wide gap), headcount carries a
+surplus so cheap workers sit on the bench after greedy construction, minimum
+hours are kept low so the fairness penalty rarely blocks swaps, and
+availability is broad so almost every replacement is legal. Greedy picks by
+shortfall/id (not cost), so the expensive half gets scheduled first — leaving
+the optimizer obvious, measurable savings to find with `roster:benchmark`.
+
 Usage:
     python3 server/scripts/generate_workers_csv.py
     python3 server/scripts/generate_workers_csv.py --profile adequate --output server/database/data/workers-large.csv
     python3 server/scripts/generate_workers_csv.py --profile realistic --output server/database/data/workers-realistic.csv
     python3 server/scripts/generate_workers_csv.py --profile realistic --coverage-factor 4.8
+    python3 server/scripts/generate_workers_csv.py --profile optimization --output server/database/data/workers-optimization.csv
     python3 server/scripts/generate_workers_csv.py --count 80 --seed 42
 """
 
@@ -69,6 +79,15 @@ ROLE_COST_RANGES: dict[str, tuple[float, float]] = {
     "General Guard": (48.0, 56.0),
     "Screener": (56.0, 65.0),
     "Supervisor": (72.0, 88.0),
+}
+
+# Bimodal cost ranges for the optimization profile: each role has a clearly
+# cheap pool and a clearly expensive pool, giving the simulated annealing pass
+# large per-swap savings to find (instead of the narrow spreads above).
+OPTIMIZATION_COST_RANGES: dict[str, tuple[tuple[float, float], tuple[float, float]]] = {
+    "General Guard": ((35.0, 45.0), (65.0, 85.0)),
+    "Screener": ((45.0, 55.0), (75.0, 95.0)),
+    "Supervisor": ((60.0, 75.0), (100.0, 130.0)),
 }
 
 PROFILE_COUNTS: dict[str, dict[str, int]] = {
@@ -178,6 +197,12 @@ def pick_days(rng: random.Random, profile: str) -> list[str]:
     if profile in ("adequate", "shortage"):
         return list(DAY_TOKENS)
 
+    if profile == "optimization":
+        # Broad availability so nearly every replacement the optimizer proposes
+        # is legal; a few workers still take one day off for mild realism.
+        keep = rng.randint(6, 7)
+        return sorted(rng.sample(list(DAY_TOKENS), k=keep), key=DAY_TOKENS.index)
+
     if profile == "realistic":
         # Everyone takes 1-2 days off each week (the headroom the coverage
         # factor is sized for), so no one is available all 7 days.
@@ -204,6 +229,15 @@ def pick_shifts(role: str, rng: random.Random, profile: str, position: int = 0) 
             shifts.add(SHIFT_CODES[(position + 1) % len(SHIFT_CODES)])
         return sorted(shifts, key=SHIFT_CODES.index)
 
+    if profile == "optimization":
+        # Round-robin primary for balance, but always cover a second shift so
+        # the optimizer's swap neighbourhood is rich with eligible candidates.
+        primary = SHIFT_CODES[position % len(SHIFT_CODES)]
+        shifts = {primary, SHIFT_CODES[(position + 1) % len(SHIFT_CODES)]}
+        if rng.random() < 0.3:
+            shifts.add(SHIFT_CODES[(position + 2) % len(SHIFT_CODES)])
+        return sorted(shifts, key=SHIFT_CODES.index)
+
     if role == "Supervisor":
         count = rng.randint(2, 3)
     elif role == "Screener":
@@ -214,12 +248,32 @@ def pick_shifts(role: str, rng: random.Random, profile: str, position: int = 0) 
     return sorted(rng.sample(list(SHIFT_CODES), k=count), key=SHIFT_CODES.index)
 
 
-def pick_contract(role: str, rng: random.Random, profile: str, is_active: bool) -> tuple[str, str, str]:
-    low, high = ROLE_COST_RANGES[role]
+def pick_contract(
+    role: str,
+    rng: random.Random,
+    profile: str,
+    is_active: bool,
+    position: int = 0,
+) -> tuple[str, str, str]:
+    if profile == "optimization":
+        # Alternate cheap/expensive by position so each role's pool is split
+        # exactly in half — greedy (which ignores cost) will schedule plenty of
+        # expensive workers while equally-eligible cheap ones sit benched.
+        cheap_range, expensive_range = OPTIMIZATION_COST_RANGES[role]
+        low, high = cheap_range if position % 2 == 0 else expensive_range
+    else:
+        low, high = ROLE_COST_RANGES[role]
+
     hourly_cost = f"{rng.uniform(low, high):.2f}"
 
     if not is_active:
         return hourly_cost, "0", str(rng.randint(80, 180))
+
+    if profile == "optimization":
+        # Low minimums keep the fairness penalty from blocking cost swaps;
+        # generous maximums keep cheap workers eligible for extra shifts.
+        min_hours = rng.choice((40, 60, 80))
+        return hourly_cost, str(min_hours), str(min(744, min_hours + rng.choice((120, 140, 160))))
 
     if profile == "shortage":
         min_hours = rng.choice((120, 140, 160, 180))
@@ -250,6 +304,12 @@ def build_workers(
         role_counts = realistic_role_counts(coverage_factor)
         total = sum(role_counts.values())
         names = build_name_pool(total, rng)
+    elif profile == "optimization":
+        # Extra surplus (factor + 1) guarantees a bench of cheap idle workers
+        # for the optimizer to swap in.
+        role_counts = realistic_role_counts(coverage_factor + 1.0)
+        total = sum(role_counts.values())
+        names = build_name_pool(total, rng)
     elif profile in PROFILE_COUNTS:
         role_counts = PROFILE_COUNTS[profile].copy()
         total = sum(role_counts.values())
@@ -268,10 +328,10 @@ def build_workers(
             is_active = True
             if profile == "balanced" and rng.random() < 0.08:
                 is_active = False
-            elif profile not in ("adequate", "shortage", "realistic") and rng.random() < 0.05:
+            elif profile not in ("adequate", "shortage", "realistic", "optimization") and rng.random() < 0.05:
                 is_active = False
 
-            hourly_cost, min_hours, max_hours = pick_contract(role, rng, profile, is_active)
+            hourly_cost, min_hours, max_hours = pick_contract(role, rng, profile, is_active, position)
             days = pick_days(rng, profile)
             shifts = pick_shifts(role, rng, profile, position)
             shift_availability = format_shift_availability(days, shifts)
@@ -315,12 +375,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile",
-        choices=("balanced", "adequate", "shortage", "realistic"),
+        choices=("balanced", "adequate", "shortage", "realistic", "optimization"),
         default="balanced",
         help=(
             "balanced=random mix; adequate=full-month coverage; shortage=stress test; "
             "realistic=coverage-factor sized workforce (default 30/10/5) with "
-            "days-off and shift spread for genuine engine testing."
+            "days-off and shift spread for genuine engine testing; "
+            "optimization=bimodal cheap/expensive costs with a surplus bench, "
+            "built to demonstrate the SA cost-optimization pass."
         ),
     )
     parser.add_argument(
@@ -366,7 +428,7 @@ def main() -> None:
             active_count += 1
 
     print(f"Wrote {len(workers)} workers to {args.output}")
-    if args.profile == "realistic":
+    if args.profile in ("realistic", "optimization"):
         print(f"Profile: {args.profile} (seed={args.seed}, coverage_factor={args.coverage_factor})")
     else:
         print(f"Profile: {args.profile} (seed={args.seed})")

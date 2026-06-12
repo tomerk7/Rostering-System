@@ -135,6 +135,46 @@ final class RosterGeneratorTest extends TestCase
         self::assertNotContains($trashed->israeli_id, $assignedWorkerIds);
     }
 
+    public function test_generate_with_cost_optimization_is_deterministic_and_reports_match_assignments(): void
+    {
+        $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
+
+        $first = $this->generator->generate(self::YEAR, self::MONTH, optimizeCost: true);
+        $second = $this->generator->generate(self::YEAR, self::MONTH, optimizeCost: true);
+
+        self::assertNotEmpty($first->assignments);
+        self::assertEquals($first->assignments, $second->assignments);
+        self::assertEquals($first->coverageShortages, $second->coverageShortages);
+        self::assertEquals($first->hoursShortfalls, $second->hoursShortfalls);
+
+        // The shortfall report must reflect the post-optimization assignments.
+        $scheduledHours = [];
+
+        foreach ($first->assignments as $assignment) {
+            $scheduledHours[$assignment['worker_id']] = ($scheduledHours[$assignment['worker_id']] ?? 0) + 8;
+        }
+
+        foreach ($first->hoursShortfalls as $shortfall) {
+            self::assertSame($scheduledHours[$shortfall['worker_id']] ?? 0, $shortfall['scheduled_hours']);
+        }
+    }
+
+    public function test_cost_optimization_is_skipped_when_the_roster_is_understaffed(): void
+    {
+        // Far fewer workers than demand: coverage falls below the optimizer's
+        // gate, so the optimized run must equal the plain greedy run while
+        // still reporting the shortages.
+        $this->buildWorkforce(guards: 3, screeners: 1, supervisors: 1);
+
+        $plain = $this->generator->generate(self::YEAR, self::MONTH);
+        $optimized = $this->generator->generate(self::YEAR, self::MONTH, optimizeCost: true);
+
+        self::assertEquals($plain->assignments, $optimized->assignments);
+        self::assertEquals($plain->coverageShortages, $optimized->coverageShortages);
+        self::assertEquals($plain->hoursShortfalls, $optimized->hoursShortfalls);
+        self::assertTrue($optimized->hasCoverageShortages());
+    }
+
     /**
      * Create workers per role, each fully available (all weekdays, all shifts).
      *

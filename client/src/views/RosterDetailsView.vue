@@ -33,6 +33,7 @@ const weekAnchor = ref('')
 const viewMode = ref('week')
 const exporting = ref(false)
 const exportError = ref('')
+const optimizeCost = ref(false)
 
 /**
  * Formatted month and year label for the loaded roster.
@@ -356,7 +357,7 @@ async function regenerateRoster() {
     return
   }
 
-  const regenerated = await rostersStore.regenerate(roster.id)
+  const regenerated = await rostersStore.regenerate(roster.id, optimizeCost.value)
 
   if (!regenerated) {
     return
@@ -431,6 +432,16 @@ async function downloadExport() {
         >
           {{ exporting ? 'Exporting...' : 'Export CSV' }}
         </button>
+        <label
+          v-if="rostersStore.roster"
+          class="check-field"
+        >
+          <input
+            v-model="optimizeCost"
+            type="checkbox"
+          >
+          <span>Schedule by cost efficiency</span>
+        </label>
         <button
           v-if="rostersStore.roster"
           type="button"
@@ -580,5 +591,20 @@ async function downloadExport() {
 .roster-view-toggle {
   display: inline-flex;
   gap: 0.375rem;
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+.check-field input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
 }
 </style>

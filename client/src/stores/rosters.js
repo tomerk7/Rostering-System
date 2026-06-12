@@ -129,14 +129,18 @@ export const useRostersStore = defineStore('rosters', {
      * Generate a roster for the given month.
      *
      * @param {number} month
+     * @param {boolean} [optimizeCost=false]
      * @returns {Promise<object|null>}
      */
-    create(month) {
+    create(month, optimizeCost = false) {
       return runStoreRequest(this, {
         loadingKey: 'generating',
         fallback: 'Could not generate roster. Please try again.',
         request: async () => {
-          const roster = await createRoster({ month: Number(month) })
+          const roster = await createRoster({
+            month: Number(month),
+            optimize_cost: Boolean(optimizeCost),
+          })
           this.roster = roster
           this.currentYear = roster.year
           this.selectedMonth = roster.month
@@ -151,14 +155,17 @@ export const useRostersStore = defineStore('rosters', {
      * Regenerate an existing roster by id.
      *
      * @param {number} rosterId
+     * @param {boolean} [optimizeCost=false]
      * @returns {Promise<object|null>}
      */
-    regenerate(rosterId) {
+    regenerate(rosterId, optimizeCost = false) {
       return runStoreRequest(this, {
         loadingKey: 'generating',
         fallback: 'Could not regenerate roster. Please try again.',
         request: async () => {
-          const roster = await regenerateRoster(rosterId)
+          const roster = await regenerateRoster(rosterId, {
+            optimize_cost: Boolean(optimizeCost),
+          })
           this.applyRosterUpdate(roster)
 
           return roster

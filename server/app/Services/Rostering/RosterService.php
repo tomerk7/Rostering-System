@@ -89,9 +89,9 @@ final readonly class RosterService
     /**
      * Queue creation of a roster for a month.
      */
-    public function queueStore(int $year, int $month, int $userId): Roster
+    public function queueStore(int $year, int $month, int $userId, bool $optimizeCost = false): Roster
     {
-        return DB::transaction(function () use ($year, $month, $userId): Roster {
+        return DB::transaction(function () use ($year, $month, $userId, $optimizeCost): Roster {
             Roster::query()
                 ->forPeriod($year, $month)
                 ->delete();
@@ -104,7 +104,7 @@ final readonly class RosterService
                 'status' => RosterStatus::Processing,
             ]);
 
-            GenerateRosterJob::dispatch((int) $roster->getKey());
+            GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost);
 
             return $roster->fresh();
         });
@@ -112,15 +112,16 @@ final readonly class RosterService
 
     /**
      * Queue regeneration of an existing roster.
-     * 
+     *
      * @param Roster $roster
+     * @param bool $optimizeCost
      * @return Roster
      */
-    public function queueRegeneration(Roster $roster): Roster
+    public function queueRegeneration(Roster $roster, bool $optimizeCost = false): Roster
     {
         $roster->update(['status' => RosterStatus::Processing]);
 
-        GenerateRosterJob::dispatch((int) $roster->getKey());
+        GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost);
 
         return $roster->fresh();
     }
@@ -130,14 +131,14 @@ final readonly class RosterService
      *
      * @throws Exception
      */
-    public function processGeneration(int $rosterId): void
+    public function processGeneration(int $rosterId, bool $optimizeCost = false): void
     {
         $roster = Roster::query()->findOrFail($rosterId);
 
         if ($roster->assignments()->exists()) {
-            $this->regenerate($roster);
+            $this->regenerate($roster, $optimizeCost);
         } else {
-            $this->fillNewRoster($roster);
+            $this->fillNewRoster($roster, $optimizeCost);
         }
 
         $roster->update(['status' => RosterStatus::Ready]);
@@ -156,9 +157,9 @@ final readonly class RosterService
      *
      * @throws Exception
      */
-    private function regenerate(Roster $roster): Roster
+    private function regenerate(Roster $roster, bool $optimizeCost = false): Roster
     {
-        $result = $this->generator->generate($roster->year, $roster->month);
+        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost);
 
         return DB::transaction(function () use ($roster, $result): Roster {
             $roster->assignments()->delete();
@@ -191,9 +192,9 @@ final readonly class RosterService
      *
      * @throws Exception
      */
-    private function fillNewRoster(Roster $roster): void
+    private function fillNewRoster(Roster $roster, bool $optimizeCost = false): void
     {
-        $result = $this->generator->generate($roster->year, $roster->month);
+        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost);
         $now = Carbon::now();
 
         $roster->update([

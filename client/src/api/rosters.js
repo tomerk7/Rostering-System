@@ -79,10 +79,11 @@ export async function createRoster(payload) {
  * Regenerate an existing roster by id.
  *
  * @param {number|string} rosterId
+ * @param {object} [payload]
  * @returns {Promise<object>}
  */
-export async function regenerateRoster(rosterId) {
-  const response = await api.post(`/api/rosters/${Number(rosterId)}/regenerate`)
+export async function regenerateRoster(rosterId, payload = {}) {
+  const response = await api.post(`/api/rosters/${Number(rosterId)}/regenerate`, payload)
 
   return resolveGenerationResponse(response)
 }

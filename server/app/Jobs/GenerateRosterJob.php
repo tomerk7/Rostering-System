@@ -26,11 +26,12 @@ final class GenerateRosterJob implements ShouldQueue
      */
     public function __construct(
         private readonly int $rosterId,
+        public readonly bool $optimizeCost = false,
     ) {}
 
     /**
      * Execute the job.
-     * 
+     *
      * @param RosterService $rosterService
      * @return void
      */
@@ -42,9 +43,10 @@ final class GenerateRosterJob implements ShouldQueue
             'roster_id' => $this->rosterId,
             'year' => $roster->year,
             'month' => $roster->month,
+            'optimize_cost' => $this->optimizeCost,
         ]);
 
-        $rosterService->processGeneration($this->rosterId);
+        $rosterService->processGeneration($this->rosterId, $this->optimizeCost);
 
         Log::info('Roster generation job completed.', [
             'roster_id' => $this->rosterId,

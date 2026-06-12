@@ -1,10 +1,12 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRostersStore } from '@/stores/rosters'
 
 const router = useRouter()
 const rostersStore = useRostersStore()
+
+const optimizeCost = ref(false)
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
@@ -43,8 +45,8 @@ async function generateRoster() {
 
   const existing = existingRosterForPeriod.value
   const roster = existing
-    ? await rostersStore.regenerate(existing.id)
-    : await rostersStore.create(rostersStore.selectedMonth)
+    ? await rostersStore.regenerate(existing.id, optimizeCost.value)
+    : await rostersStore.create(rostersStore.selectedMonth, optimizeCost.value)
 
   if (roster) {
     await router.push({ name: 'rosters.show', params: { id: roster.id } })
@@ -106,6 +108,14 @@ async function generateRoster() {
           </select>
         </label>
 
+        <label class="check-field">
+          <input
+            v-model="optimizeCost"
+            type="checkbox"
+          >
+          <span>Schedule by cost efficiency</span>
+        </label>
+
         <div class="toolbar__actions">
           <button
             type="submit"
@@ -148,7 +158,21 @@ async function generateRoster() {
 }
 
 .roster-toolbar {
-  grid-template-columns: repeat(2, minmax(10rem, 12rem)) auto;
+  grid-template-columns: repeat(2, minmax(10rem, 14rem)) auto;
+}
+
+.check-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+  color: #334155;
+}
+
+.check-field input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
 }
 
 .toolbar__actions {
