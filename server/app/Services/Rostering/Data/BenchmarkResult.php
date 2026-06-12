@@ -20,6 +20,13 @@ final readonly class BenchmarkResult
     /**
      * @param  array<string, int|float>  $plain
      * @param  array<string, int|float>  $optimized
+     * @param  array{
+     *     plain: list<array<string, mixed>>,
+     *     optimized: list<array<string, mixed>>,
+     *     deltas: list<array<string, mixed>>,
+     *     leaderboards: array{plain: array<string, mixed>, optimized: array<string, mixed>},
+     *     truncated: bool
+     * }  $workerStats
      */
     public function __construct(
         public int $year,
@@ -29,6 +36,7 @@ final readonly class BenchmarkResult
         public float $savedAmount,
         public float $savedPercent,
         public bool $assignmentsMatch,
+        public array $workerStats,
     ) {}
 
     /**
@@ -44,6 +52,7 @@ final readonly class BenchmarkResult
             'saved_amount' => $this->savedAmount,
             'saved_percent' => $this->savedPercent,
             'assignments_match' => $this->assignmentsMatch,
+            'worker_stats' => $this->workerStats,
         ];
     }
 }

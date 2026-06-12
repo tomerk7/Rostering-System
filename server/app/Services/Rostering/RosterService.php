@@ -212,7 +212,10 @@ final readonly class RosterService
      * Uses a single insert for the high-volume fact table; timestamps and the
      * date string are set explicitly because insert() bypasses Eloquent casts.
      *
+     * @param Roster $roster
      * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
+     * @return void
+     * @throws Exception
      */
     private function insertAssignments(Roster $roster, array $assignments): void
     {
@@ -223,6 +226,8 @@ final readonly class RosterService
         $now = Carbon::now();
         $rosterId = $roster->getKey();
 
+        $costs = DB::table('contracts')->pluck('hourly_cost', 'worker_id');
+
         $rows = array_map(
             static fn (array $assignment): array => [
                 'roster_id' => $rosterId,
@@ -230,6 +235,8 @@ final readonly class RosterService
                 'shift_id' => $assignment['shift_id'],
                 'work_date' => $assignment['work_date']->toDateString(),
                 'source' => $assignment['source'],
+                'hourly_cost' => $costs[$assignment['worker_id']]
+                    ?? throw new Exception("Missing contract rate for worker {$assignment['worker_id']}."),
                 'created_at' => $now,
                 'updated_at' => $now,
             ],

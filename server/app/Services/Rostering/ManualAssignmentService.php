@@ -57,13 +57,14 @@ final readonly class ManualAssignmentService
         $this->assertDailyShiftLimit($roster, $workerId, $date);
         $this->assertWithinMaxHours($roster, $worker, $shift);
 
-        return DB::transaction(function () use ($roster, $workerId, $shiftId, $date): RosterAssignment {
+        return DB::transaction(function () use ($roster, $worker, $workerId, $shiftId, $date): RosterAssignment {
             $assignment = RosterAssignment::query()->create([
                 'roster_id' => $roster->id,
                 'worker_id' => $workerId,
                 'shift_id' => $shiftId,
                 'work_date' => $date->toDateString(),
                 'source' => AssignmentSource::Manual,
+                'hourly_cost' => $worker->contract->hourly_cost,
             ]);
 
             $this->reportService->refreshReports($roster);

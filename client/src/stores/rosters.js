@@ -3,6 +3,7 @@ import {
   createRoster,
   deleteRoster,
   getRoster,
+  getRosterStats,
   listRosters,
   regenerateRoster,
 } from '@/api/rosters'
@@ -17,9 +18,11 @@ export const useRostersStore = defineStore('rosters', {
   state: () => ({
     rosters: [],
     roster: null,
+    stats: null,
     currentYear: null,
     selectedMonth: null,
     loading: false,
+    statsLoading: false,
     generating: false,
     deletingId: null,
     error: '',
@@ -89,8 +92,28 @@ export const useRostersStore = defineStore('rosters', {
         request: async () => {
           const response = await getRoster(rosterId, { include_assignments: false })
           this.roster = response.data
+          this.stats = null
           const { useRosterAssignmentsStore } = await import('@/stores/rosterAssignments')
           useRosterAssignmentsStore().reset()
+        },
+      })
+    },
+
+    /**
+     * Load per-worker statistics for a roster.
+     *
+     * @param {number} rosterId
+     * @returns {Promise<object|null>}
+     */
+    fetchStats(rosterId) {
+      return runStoreRequest(this, {
+        loadingKey: 'statsLoading',
+        fallback: 'Could not load roster stats. Please try again.',
+        request: async () => {
+          const response = await getRosterStats(rosterId)
+          this.stats = response.data
+
+          return response.data
         },
       })
     },

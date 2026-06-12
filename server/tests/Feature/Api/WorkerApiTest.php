@@ -189,6 +189,7 @@ final class WorkerApiTest extends TestCase
                 'shift_id' => $this->morningShift->id,
                 'work_date' => sprintf('2026-06-%02d', $day),
                 'source' => AssignmentSource::Auto,
+                'hourly_cost' => 50,
             ]);
         }
 
@@ -247,6 +248,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-01',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $payload = $this->workerPayload([
@@ -317,6 +319,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-01',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([
@@ -377,6 +380,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $this->putJson("/api/workers/{$worker->israeli_id}", $this->workerPayload([
@@ -424,6 +428,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-01',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([
@@ -491,6 +496,7 @@ final class WorkerApiTest extends TestCase
                 'shift_id' => $this->morningShift->id,
                 'work_date' => sprintf('2026-06-%02d', $day),
                 'source' => AssignmentSource::Auto,
+                'hourly_cost' => 50,
             ]);
         }
 
@@ -551,6 +557,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-01-01',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $upcomingRoster = Roster::factory()
@@ -563,6 +570,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-07-02',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $this->importCsv([
@@ -1209,6 +1217,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([
@@ -1260,6 +1269,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => $past->copy()->day(10)->toDateString(),
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
         RosterAlert::query()->create([
             'roster_id' => $pastRoster->id,
@@ -1321,6 +1331,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")->assertOk();
@@ -1412,6 +1423,7 @@ final class WorkerApiTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([

@@ -30,6 +30,7 @@ final class RosterAssignmentFactory extends Factory
             'shift_id' => $this->shiftId(),
             'work_date' => fake()->dateTimeBetween('-1 month', '+1 month')->format('Y-m-d'),
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => fake()->randomFloat(2, 35, 120),
         ];
     }
 

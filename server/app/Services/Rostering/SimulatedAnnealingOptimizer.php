@@ -149,6 +149,9 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  list<array{slot: RosterSlot, workerId: string, index: int}>  $entries
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
+     * @param  Randomizer  $randomizer
+     * @param  float  $temperature
+     * @return ?float
      */
     private function tryReplace(array &$entries, array $workers, array &$slotWorkers, Randomizer $randomizer, float $temperature): ?float
     {
@@ -197,6 +200,9 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  list<array{slot: RosterSlot, workerId: string, index: int}>  $entries
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
+     * @param  Randomizer  $randomizer
+     * @param  float  $temperature
+     * @return ?float
      */
     private function trySwap(array &$entries, array $workers, array &$slotWorkers, Randomizer $randomizer, float $temperature): ?float
     {
@@ -261,6 +267,11 @@ final readonly class SimulatedAnnealingOptimizer
      * Standard annealing acceptance: always take improvements, take worsening
      * moves with probability exp(-delta / T) so early high temperatures can
      * escape the greedy solution's local optimum.
+     * 
+     * @param  float  $delta
+     * @param  float  $temperature
+     * @param  Randomizer  $randomizer
+     * @return bool
      */
     private function accepts(float $delta, float $temperature, Randomizer $randomizer): bool
     {
@@ -280,6 +291,9 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
      * @param  list<string>  $bestWorkerIds
+     * @param  float  $bestObjective
+     * @param  float  $currentObjective
+     * @return void
      */
     private function restoreBest(array &$entries, array $workers, array &$slotWorkers, array $bestWorkerIds, float $bestObjective, float $currentObjective): void {
         if ($bestObjective >= $currentObjective - self::EPSILON) {
@@ -311,6 +325,7 @@ final readonly class SimulatedAnnealingOptimizer
      * start; the annealing loop maintains it incrementally through deltas.
      *
      * @param  array<string, RosterWorker>  $workers
+     * @return float
      */
     private function objective(array $workers): float
     {
@@ -328,6 +343,10 @@ final readonly class SimulatedAnnealingOptimizer
     /**
      * Change in a worker's min-hours shortfall if their assigned hours moved
      * by the given amount. Positive means the shortfall got worse.
+     * 
+     * @param  RosterWorker  $worker
+     * @param  int  $hoursDelta
+     * @return int
      */
     private function shortfallDelta(RosterWorker $worker, int $hoursDelta): int
     {
@@ -345,6 +364,7 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  array<string, array<string, true>>  $slotWorkers
      * @param  string  $key
      * @param  array<string, array<string, true>>  $slotWorkers
+     * @return void
      */
     private function vacate(RosterWorker $worker, string $workerId, RosterSlot $slot, array &$slotWorkers, string $key): void
     {
@@ -365,6 +385,8 @@ final readonly class SimulatedAnnealingOptimizer
      * mirroring how the greedy engine claims them.
      *
      * @param  array<string, array<string, true>>  $slotWorkers
+     * @param  string  $key
+     * @return void
      */
     private function occupy(RosterWorker $worker, string $workerId, RosterSlot $slot, array &$slotWorkers, string $key): void
     {

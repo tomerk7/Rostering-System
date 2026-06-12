@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Http\Controllers\Api\RosterAssignmentController;
 use App\Http\Controllers\Api\RosterBenchmarkController;
 use App\Http\Controllers\Api\RosterController;
+use App\Http\Controllers\Api\RosterStatsController;
 use App\Http\Controllers\Api\WorkerController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -34,6 +35,8 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
         ->only(['index', 'show', 'store', 'destroy'])
         ->whereNumber('roster');
     Route::post('rosters/{roster}/regenerate', [RosterController::class, 'regenerate'])
+        ->whereNumber('roster');
+    Route::get('rosters/{roster}/stats', RosterStatsController::class)
         ->whereNumber('roster');
     Route::post('rosters/{roster}/export', [RosterController::class, 'export'])
         ->whereNumber('roster');

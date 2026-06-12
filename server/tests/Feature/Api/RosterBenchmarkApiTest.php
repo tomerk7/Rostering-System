@@ -83,6 +83,13 @@ final class RosterBenchmarkApiTest extends TestCase
                     'saved_amount',
                     'saved_percent',
                     'assignments_match',
+                    'worker_stats' => [
+                        'plain',
+                        'optimized',
+                        'deltas',
+                        'leaderboards' => ['plain', 'optimized'],
+                        'truncated',
+                    ],
                 ],
             ])
             ->assertJsonPath('data.year', (int) now()->year)
@@ -101,6 +108,73 @@ final class RosterBenchmarkApiTest extends TestCase
         );
         $this->assertDatabaseCount('rosters', 0);
         $this->assertDatabaseCount('roster_assignments', 0);
+    }
+
+    public function test_benchmark_returns_per_worker_stats_and_deltas(): void
+    {
+        $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
+
+        $response = $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+            ->assertStatus(200)
+            ->assertJsonPath('data.worker_stats.truncated', false);
+
+        $workerStats = $response->json('data.worker_stats');
+
+        // Row field names match the roster stats endpoint so the frontend
+        // grid component is reusable across both screens.
+        $expectedKeys = [
+            'worker_id',
+            'name',
+            'role',
+            'min_hours',
+            'max_hours',
+            'actual_hours',
+            'percent_of_min',
+            'percent_of_max',
+            'total_cost',
+            'shortfall_hours',
+        ];
+
+        self::assertNotEmpty($workerStats['plain']);
+        self::assertNotEmpty($workerStats['optimized']);
+
+        foreach (['plain', 'optimized'] as $variant) {
+            self::assertSame($expectedKeys, array_keys($workerStats[$variant][0]));
+
+            $row = $workerStats[$variant][0];
+            self::assertEqualsWithDelta($row['actual_hours'] * $this->contractRate($row['worker_id']), $row['total_cost'], 0.01);
+
+            $leaderboards = $workerStats['leaderboards'][$variant];
+            self::assertArrayHasKey('highest_paid', $leaderboards);
+            self::assertArrayHasKey('most_hours', $leaderboards);
+            self::assertLessThanOrEqual(5, count($leaderboards['highest_paid']));
+        }
+
+        // Per-variant aggregate cost must equal the sum of its worker rows.
+        self::assertEqualsWithDelta(
+            $response->json('data.plain.total_cost'),
+            array_sum(array_column($workerStats['plain'], 'total_cost')),
+            0.01,
+        );
+
+        foreach ($workerStats['deltas'] as $delta) {
+            self::assertSame($delta['optimized_hours'] - $delta['plain_hours'], $delta['hours_delta']);
+            self::assertEqualsWithDelta($delta['optimized_cost'] - $delta['plain_cost'], $delta['cost_delta'], 0.01);
+            self::assertTrue(
+                $delta['hours_delta'] !== 0
+                || abs($delta['cost_delta']) > 0
+                || $delta['shortfall_change'] !== null,
+                'Deltas must only contain workers whose stats changed.',
+            );
+        }
+    }
+
+    /**
+     * Current contract rate for a worker.
+     */
+    private function contractRate(string $workerId): float
+    {
+        return (float) Contract::query()->where('worker_id', $workerId)->value('hourly_cost');
     }
 
     /**

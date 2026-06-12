@@ -64,3 +64,8 @@
   color: #475569;
   background: #e2e8f0;
 }
+
+.badge--warn {
+  color: #92400e;
+  background: #fef3c7;
+}

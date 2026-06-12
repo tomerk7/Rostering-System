@@ -330,6 +330,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftB->id,
             'work_date' => '2026-06-10',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $this->getJson(
@@ -436,6 +437,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-02',
             'source' => AssignmentSource::Manual,
+            'hourly_cost' => 50,
         ]);
 
         $this->deleteJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}")
@@ -503,6 +505,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $response = $this->deleteJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}")
@@ -587,6 +590,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-07',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAssignment::query()->create([
@@ -595,6 +599,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftB->id,
             'work_date' => '2026-06-08',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([
@@ -636,6 +641,7 @@ final class RosterApiTest extends TestCase
                 'shift_id' => $shift->id,
                 'work_date' => '2026-06-03',
                 'source' => AssignmentSource::Auto,
+                'hourly_cost' => 50,
             ]);
         }
 
@@ -663,6 +669,70 @@ final class RosterApiTest extends TestCase
         $this->assertDatabaseMissing('roster_assignments', ['roster_id' => $roster->id]);
     }
 
+    public function test_generated_assignments_snapshot_the_contract_rate(): void
+    {
+        $response = $this->postJson('/api/rosters', ['month' => self::MONTH])
+            ->assertStatus(201);
+
+        $rosterId = $response->json('data.id');
+
+        self::assertGreaterThan(0, RosterAssignment::query()->where('roster_id', $rosterId)->count());
+        self::assertSame(0, $this->assignmentsDivergingFromContractRate($rosterId));
+    }
+
+    public function test_manual_assignment_snapshots_the_current_contract_rate(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->create(['created_by' => $this->user->id]);
+
+        $worker = $this->assignableWorker();
+
+        $this->postJson("/api/rosters/{$roster->id}/assignments", [
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->shiftA->id,
+            'work_date' => '2026-06-01',
+        ])->assertCreated();
+
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'hourly_cost' => $worker->contract->hourly_cost,
+        ]);
+    }
+
+    public function test_regeneration_resnapshots_rates_changed_after_generation(): void
+    {
+        $rosterId = $this->postJson('/api/rosters', ['month' => self::MONTH])
+            ->assertStatus(201)
+            ->json('data.id');
+
+        Contract::query()->update(['hourly_cost' => 77]);
+
+        $this->postJson("/api/rosters/{$rosterId}/regenerate")->assertOk();
+
+        $rates = RosterAssignment::query()
+            ->where('roster_id', $rosterId)
+            ->distinct()
+            ->pluck('hourly_cost');
+
+        self::assertCount(1, $rates);
+        self::assertSame(77.0, (float) $rates[0]);
+    }
+
+    /**
+     * Count assignment rows whose snapshot differs from the worker's current
+     * contract rate.
+     */
+    private function assignmentsDivergingFromContractRate(int $rosterId): int
+    {
+        return RosterAssignment::query()
+            ->where('roster_id', $rosterId)
+            ->join('contracts', 'contracts.worker_id', '=', 'roster_assignments.worker_id')
+            ->whereColumn('roster_assignments.hourly_cost', '<>', 'contracts.hourly_cost')
+            ->count();
+    }
+
     private function createRosterWithAssignment(): Roster
     {
         $roster = Roster::factory()
@@ -675,6 +745,7 @@ final class RosterApiTest extends TestCase
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-01',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         return $roster;

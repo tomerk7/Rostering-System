@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['roster_id', 'worker_id', 'shift_id', 'work_date', 'source'])]
+#[Fillable(['roster_id', 'worker_id', 'shift_id', 'work_date', 'source', 'hourly_cost'])]
 final class RosterAssignment extends Model
 {
     use HasFactory;
@@ -55,6 +55,7 @@ final class RosterAssignment extends Model
         return [
             'work_date' => 'date',
             'source' => AssignmentSource::class,
+            'hourly_cost' => 'decimal:2',
         ];
     }
 }

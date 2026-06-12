@@ -89,6 +89,18 @@ export async function regenerateRoster(rosterId, payload = {}) {
 }
 
 /**
+ * Fetch per-worker statistics for a roster.
+ *
+ * @param {number|string} rosterId
+ * @returns {Promise<object>}
+ */
+export async function getRosterStats(rosterId) {
+  const { data } = await api.get(`/api/rosters/${rosterId}/stats`)
+
+  return data
+}
+
+/**
  * Run a plain vs cost-optimized generation benchmark for the given month.
  *
  * @param {object} payload

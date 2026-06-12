@@ -6,6 +6,9 @@ namespace App\Services\Rostering;
 
 use App\Exceptions\Rostering\BenchmarkException;
 use App\Services\Rostering\Data\BenchmarkResult;
+use App\Services\Rostering\Data\GenerationResult;
+use App\Services\Rostering\Data\WorkerStatsRow;
+use App\Services\Rostering\Support\StatsMath;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -18,6 +21,12 @@ use Illuminate\Support\Facades\DB;
 final readonly class RosterBenchmark
 {
     private const int SHIFT_HOURS = 8;
+
+    /**
+     * Full per-worker tables are omitted from the payload above this many
+     * workers; deltas and leaderboards are always included.
+     */
+    private const int WORKER_DETAIL_LIMIT = 300;
 
     public function __construct(private RosterGenerator $generator) {}
 
@@ -52,6 +61,10 @@ final readonly class RosterBenchmark
         $costOptimized = $this->totalCost($optimized->assignments, $costs);
         $saved = $costPlain - $costOptimized;
 
+        $names = DB::table('workers')->whereNull('deleted_at')->pluck('full_name', 'israeli_id');
+        $plainRows = $this->workerRows($plain, $costs, $minHours, $maxHours, $names);
+        $optimizedRows = $this->workerRows($optimized, $costs, $minHours, $maxHours, $names);
+
         return new BenchmarkResult(
             year: $year,
             month: $month,
@@ -60,7 +73,170 @@ final readonly class RosterBenchmark
             savedAmount: $saved,
             savedPercent: $costPlain > 0 ? ($saved / $costPlain) * 100 : 0.0,
             assignmentsMatch: count($plain->assignments) === count($optimized->assignments),
+            workerStats: $this->workerStats($plainRows, $optimizedRows),
         );
+    }
+
+    /**
+     * Assemble the per-worker payload: full tables (size-limited), deltas of
+     * workers whose stats changed between runs, and per-variant leaderboards.
+     *
+     * @param  list<WorkerStatsRow>  $plainRows
+     * @param  list<WorkerStatsRow>  $optimizedRows
+     * @return array{
+     *     plain: list<array<string, mixed>>,
+     *     optimized: list<array<string, mixed>>,
+     *     deltas: list<array<string, mixed>>,
+     *     leaderboards: array{plain: array<string, mixed>, optimized: array<string, mixed>},
+     *     truncated: bool
+     * }
+     */
+    private function workerStats(array $plainRows, array $optimizedRows): array
+    {
+        $workerCount = count(array_unique([
+            ...array_map(static fn (WorkerStatsRow $row): string => $row->workerId, $plainRows),
+            ...array_map(static fn (WorkerStatsRow $row): string => $row->workerId, $optimizedRows),
+        ]));
+        $includeRows = $workerCount <= self::WORKER_DETAIL_LIMIT;
+
+        return [
+            'plain' => $includeRows
+                ? array_map(static fn (WorkerStatsRow $row): array => $row->toArray(), $plainRows)
+                : [],
+            'optimized' => $includeRows
+                ? array_map(static fn (WorkerStatsRow $row): array => $row->toArray(), $optimizedRows)
+                : [],
+            'deltas' => $this->workerDeltas($plainRows, $optimizedRows),
+            'leaderboards' => [
+                'plain' => StatsMath::leaderboards($plainRows),
+                'optimized' => StatsMath::leaderboards($optimizedRows),
+            ],
+            'truncated' => ! $includeRows,
+        ];
+    }
+
+    /**
+     * Build per-worker stat rows for one generated preview, using the same
+     * field names as RosterStatsService so the frontend grid is reusable.
+     *
+     * Includes workers with a min-hours shortfall even when they received no
+     * assignments at all.
+     *
+     * @param  GenerationResult  $result
+     * @param  Collection<array-key, mixed>  $costs
+     * @param  Collection<array-key, mixed>  $minHours
+     * @param  Collection<array-key, mixed>  $maxHours
+     * @param  Collection<array-key, mixed>  $names
+     * @return list<WorkerStatsRow>
+     */
+    private function workerRows(GenerationResult $result, Collection $costs, Collection $minHours, Collection $maxHours, Collection $names): array
+    {
+        $scheduled = $this->scheduledHours($result->assignments);
+
+        $shortfalls = [];
+
+        foreach ($result->hoursShortfalls as $shortfall) {
+            $shortfalls[$shortfall['worker_id']] = $shortfall['min_hours'] - $shortfall['scheduled_hours'];
+        }
+
+        $workerIds = array_unique([...array_keys($scheduled), ...array_keys($shortfalls)]);
+        $rows = [];
+
+        foreach ($workerIds as $workerId) {
+            $hours = $scheduled[$workerId] ?? 0;
+            $min = (int) ($minHours[$workerId] ?? 0);
+            $max = (int) ($maxHours[$workerId] ?? 0);
+
+            $rows[] = WorkerStatsRow::fromHoursAndCost(
+                workerId: (string) $workerId,
+                name: (string) ($names[$workerId] ?? $workerId),
+                minHours: $min,
+                maxHours: $max,
+                actualHours: $hours,
+                totalCost: $hours * (float) ($costs[$workerId] ?? 0),
+                shortfallHours: max(0, $shortfalls[$workerId] ?? 0),
+            );
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Per-worker plain-vs-optimized deltas, limited to workers whose hours,
+     * cost, or shortfall status changed between the two runs.
+     *
+     * @param  list<WorkerStatsRow>  $plainRows
+     * @param  list<WorkerStatsRow>  $optimizedRows
+     * @return list<array{
+     *     worker_id: string,
+     *     name: string,
+     *     plain_hours: int,
+     *     optimized_hours: int,
+     *     hours_delta: int,
+     *     plain_cost: float,
+     *     optimized_cost: float,
+     *     cost_delta: float,
+     *     shortfall_change: 'appeared'|'disappeared'|null
+     * }>
+     */
+    private function workerDeltas(array $plainRows, array $optimizedRows): array
+    {
+        $plainByWorker = [];
+
+        foreach ($plainRows as $row) {
+            $plainByWorker[$row->workerId] = $row;
+        }
+
+        $optimizedByWorker = [];
+
+        foreach ($optimizedRows as $row) {
+            $optimizedByWorker[$row->workerId] = $row;
+        }
+
+        $workerIds = array_unique([...array_keys($plainByWorker), ...array_keys($optimizedByWorker)]);
+
+        $deltas = [];
+
+        foreach ($workerIds as $workerId) {
+            $plainRow = $plainByWorker[$workerId] ?? null;
+            $optimizedRow = $optimizedByWorker[$workerId] ?? null;
+
+            $plainHours = $plainRow?->actualHours ?? 0;
+            $optimizedHours = $optimizedRow?->actualHours ?? 0;
+            $plainCost = $plainRow?->totalCost ?? 0.0;
+            $optimizedCost = $optimizedRow?->totalCost ?? 0.0;
+
+            $hadShortfall = ($plainRow?->shortfallHours ?? 0) > 0;
+            $hasShortfall = ($optimizedRow?->shortfallHours ?? 0) > 0;
+            $shortfallChange = match (true) {
+                ! $hadShortfall && $hasShortfall => 'appeared',
+                $hadShortfall && ! $hasShortfall => 'disappeared',
+                default => null,
+            };
+
+            if ($plainHours === $optimizedHours && $plainCost === $optimizedCost && $shortfallChange === null) {
+                continue;
+            }
+
+            $deltas[] = [
+                'worker_id' => (string) $workerId,
+                'name' => (string) (($plainRow ?? $optimizedRow)?->name ?? $workerId),
+                'plain_hours' => $plainHours,
+                'optimized_hours' => $optimizedHours,
+                'hours_delta' => $optimizedHours - $plainHours,
+                'plain_cost' => $plainCost,
+                'optimized_cost' => $optimizedCost,
+                'cost_delta' => round($optimizedCost - $plainCost, 2),
+                'shortfall_change' => $shortfallChange,
+            ];
+        }
+
+        usort(
+            $deltas,
+            static fn (array $left, array $right): int => abs($right['cost_delta']) <=> abs($left['cost_delta']),
+        );
+
+        return $deltas;
     }
 
     /**
@@ -91,7 +267,7 @@ final readonly class RosterBenchmark
 
     /**
      * This function calculates the total cost of the roster.
-     * 
+     *
      * @param  list<array{worker_id: string}>  $assignments
      * @param  Collection<array-key, mixed>  $costs
      */
@@ -108,7 +284,7 @@ final readonly class RosterBenchmark
 
     /**
      * This function calculates the total cost of the roster.
-     * 
+     *
      * @param  list<array{worker_id: string}>  $assignments
      * @return array<string, int>
      */
@@ -125,7 +301,7 @@ final readonly class RosterBenchmark
 
     /**
      * This function calculates the total shortfall hours of the roster.
-     * 
+     *
      * @param  array<string, int>  $scheduled
      * @param  Collection<array-key, mixed>  $minHours
      */
@@ -142,7 +318,7 @@ final readonly class RosterBenchmark
 
     /**
      * This function calculates the total max violations of the roster.
-     * 
+     *
      * @param  array<string, int>  $scheduled
      * @param  Collection<array-key, mixed>  $maxHours
      */
@@ -161,7 +337,7 @@ final readonly class RosterBenchmark
 
     /**
      * This function calculates the total standard deviation of the roster.
-     * 
+     *
      * @param  array<string, int>  $scheduled
      * @return float
      */

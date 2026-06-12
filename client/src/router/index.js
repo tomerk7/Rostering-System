@@ -5,6 +5,7 @@ import RosterBenchmarkView from '@/views/RosterBenchmarkView.vue'
 import RosterDetailsView from '@/views/RosterDetailsView.vue'
 import RosterGenerateView from '@/views/RosterGenerateView.vue'
 import RostersView from '@/views/RostersView.vue'
+import RosterStatsView from '@/views/RosterStatsView.vue'
 import WorkerFormView from '@/views/WorkerFormView.vue'
 import WorkersView from '@/views/WorkersView.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -59,6 +60,12 @@ const router = createRouter({
       path: '/rosters/:id',
       name: 'rosters.show',
       component: RosterDetailsView,
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/rosters/:id/stats',
+      name: 'rosters.stats',
+      component: RosterStatsView,
       meta: { requiresAuth: true },
     },
     {

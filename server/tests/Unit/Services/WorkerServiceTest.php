@@ -256,6 +256,7 @@ final class WorkerServiceTest extends TestCase
                 'shift_id' => $this->morningShift->id,
                 'work_date' => sprintf('2026-06-%02d', $day),
                 'source' => AssignmentSource::Auto,
+                'hourly_cost' => 50,
             ]);
         }
 
@@ -468,6 +469,7 @@ final class WorkerServiceTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         $this->service->deactivate($worker);
@@ -509,6 +511,7 @@ final class WorkerServiceTest extends TestCase
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-05',
             'source' => AssignmentSource::Auto,
+            'hourly_cost' => 50,
         ]);
 
         RosterAlert::query()->create([
