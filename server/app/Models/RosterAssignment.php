@@ -6,7 +6,6 @@ namespace App\Models;
 
 use App\Enums\AssignmentSource;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,28 +43,6 @@ final class RosterAssignment extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class);
-    }
-
-    /**
-     * Scope the query to only include auto assignments.
-     * 
-     * @param Builder $query
-     * @return Builder
-     */
-    public function scopeAuto(Builder $query): Builder
-    {
-        return $query->where('source', AssignmentSource::Auto->value);
-    }
-
-    /**
-     * Scope the query to only include manual assignments.
-     * 
-     * @param Builder $query
-     * @return Builder
-     */
-    public function scopeManual(Builder $query): Builder
-    {
-        return $query->where('source', AssignmentSource::Manual->value);
     }
 
     /**

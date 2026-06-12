@@ -19,7 +19,6 @@ return new class extends Migration
             $table->foreignId('shift_id')->constrained('shifts')->restrictOnDelete();
 
             $table->unique(['contract_id', 'day_of_week', 'shift_id']);
-            $table->index(['contract_id', 'day_of_week']);
         });
 
         DB::statement('ALTER TABLE contract_availability ADD CONSTRAINT contract_availability_day_of_week_range CHECK (day_of_week BETWEEN 0 AND 6)');

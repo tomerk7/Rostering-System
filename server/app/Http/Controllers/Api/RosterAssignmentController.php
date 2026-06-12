@@ -8,7 +8,6 @@ use App\Exceptions\Rostering\AssignmentRangeException;
 use App\Exceptions\Rostering\ManualAssignmentException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAssignmentRequest;
-use App\Http\Requests\UpdateAssignmentRequest;
 use App\Http\Resources\RosterAssignmentResource;
 use App\Http\Resources\RosterResource;
 use App\Models\Roster;
@@ -99,39 +98,6 @@ final class RosterAssignmentController extends Controller
             success: true,
             message: 'Assignment created successfully.',
             status: 201,
-            data: RosterResource::make($roster),
-        );
-    }
-
-    /**
-     * Reassign an existing assignment to a different worker on a draft roster.
-     * 
-     * @param UpdateAssignmentRequest $request
-     * @param Roster $roster
-     * @param RosterAssignment $assignment
-     * @return JsonResponse
-     */
-    public function update(UpdateAssignmentRequest $request, Roster $roster, RosterAssignment $assignment): JsonResponse
-    {
-        try {
-            $roster = $this->rosterAssignmentService->update(
-                $roster,
-                $assignment,
-                (string) $request->validated('worker_id'),
-            );
-        } catch (ManualAssignmentException $exception) {
-            return $this->response(
-                success: false,
-                message: $exception->getMessage(),
-                status: 422,
-                errors: ['assignment' => [$exception->getMessage()]],
-            );
-        }
-
-        return $this->response(
-            success: true,
-            message: 'Assignment updated successfully.',
-            status: 200,
             data: RosterResource::make($roster),
         );
     }

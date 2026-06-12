@@ -22,7 +22,8 @@ RUN apt-get update \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 COPY docker-start.sh /var/www/docker-start.sh
-RUN chmod +x /var/www/docker-start.sh
+COPY docker-start.prod.sh /var/www/docker-start.prod.sh
+RUN chmod +x /var/www/docker-start.sh /var/www/docker-start.prod.sh
 
 EXPOSE 8000
 

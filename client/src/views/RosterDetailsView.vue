@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { exportRoster } from '@/api/rosters'
+import { resolveErrorMessage } from '@/lib/apiError'
 import { useRostersStore } from '@/stores/rosters'
 import { useRosterReference } from '@/composables/useRosterReference'
 import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
@@ -29,6 +31,8 @@ const assignmentError = ref('')
 const assignmentContext = ref(null)
 const weekAnchor = ref('')
 const viewMode = ref('week')
+const exporting = ref(false)
+const exportError = ref('')
 
 /**
  * Formatted month and year label for the loaded roster.
@@ -106,6 +110,26 @@ const gridRange = computed(() => {
 
   return weekRange.value
 })
+
+/**
+ * Whether the roster has unresolved coverage shortages.
+ *
+ * @returns {boolean}
+ */
+const hasCoverageShortages = computed(
+  () => (rostersStore.summary?.coverage_shortage_count ?? 0) > 0,
+)
+
+/**
+ * Tooltip shown when export is disabled due to coverage shortages.
+ *
+ * @returns {string}
+ */
+const exportDisabledReason = computed(() => (
+  hasCoverageShortages.value
+    ? 'Export is available only when all shifts are fully assigned.'
+    : ''
+))
 
 onMounted(async () => {
   await loadRoster()
@@ -340,6 +364,38 @@ async function regenerateRoster() {
 
   await loadRoster()
 }
+
+/**
+ * Export the roster as CSV when fully assigned.
+ *
+ * @returns {Promise<void>}
+ */
+async function downloadExport() {
+  const roster = rostersStore.roster
+
+  if (!roster || hasCoverageShortages.value) {
+    return
+  }
+
+  exporting.value = true
+  exportError.value = ''
+
+  try {
+    const blob = await exportRoster(roster.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `roster-${roster.year}-${String(roster.month).padStart(2, '0')}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    exportError.value = resolveErrorMessage(error, 'Could not export roster. Please try again.')
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
@@ -368,6 +424,16 @@ async function regenerateRoster() {
         <button
           v-if="rostersStore.roster"
           type="button"
+          class="button"
+          :disabled="exporting || hasCoverageShortages"
+          :title="exportDisabledReason"
+          @click="downloadExport"
+        >
+          {{ exporting ? 'Exporting...' : 'Export CSV' }}
+        </button>
+        <button
+          v-if="rostersStore.roster"
+          type="button"
           class="button button--primary"
           :disabled="rostersStore.generating"
           @click="regenerateRoster"
@@ -386,6 +452,14 @@ async function regenerateRoster() {
     </header>
 
     <section class="panel">
+      <div
+        v-if="exportError"
+        class="alert"
+        role="alert"
+      >
+        {{ exportError }}
+      </div>
+
       <div
         v-if="rostersStore.error && !showAssignmentModal"
         class="alert"

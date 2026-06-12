@@ -10,7 +10,7 @@ namespace App\Enums;
  * The backing values mirror the `shifts.code` column. `code` stays a stable
  * contract used by seeders, CSV import/export and the rostering engine; the
  * human-facing display text comes from {@see self::label()} and may change
- * freely. Shift timing lives on the `shifts` table, not here.
+ * freely. Shift timing lives on the `shifts` table (`start_time`, `end_time`).
  */
 enum ShiftCode: string
 {

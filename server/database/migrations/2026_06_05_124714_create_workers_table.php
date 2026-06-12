@@ -14,9 +14,10 @@ return new class extends Migration
             $table->foreignId('role_id')->constrained('roles')->restrictOnDelete();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index('role_id');
-            $table->index(['is_active', 'role_id']);
+            $table->index('deleted_at');
         });
     }
     

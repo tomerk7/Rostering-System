@@ -110,7 +110,6 @@ final class ContractFactory extends Factory
                 ->firstOrCreate(
                     ['code' => $shift['code']],
                     [
-                        'label' => $shift['label'],
                         'start_time' => $shift['start_time'],
                         'end_time' => $shift['end_time'],
                         'duration_hours' => $shift['duration_hours'],

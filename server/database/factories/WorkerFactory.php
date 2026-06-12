@@ -36,6 +36,14 @@ final class WorkerFactory extends Factory
         ]);
     }
 
+    public function trashed(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'is_active' => false,
+            'deleted_at' => now(),
+        ]);
+    }
+
     private function roleId(): int
     {
         $roleId = Role::query()->inRandomOrder()->value('id');

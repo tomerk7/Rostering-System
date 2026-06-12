@@ -20,7 +20,10 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
     Route::post('workers/export', [WorkerController::class, 'export']);
     Route::get('workers/export/{exportId}', [WorkerController::class, 'exportStatus']);
     Route::get('workers/export/{exportId}/download', [WorkerController::class, 'exportDownload']);
-    Route::delete('workers', [WorkerController::class, 'destroyAll']);
+    Route::post('workers/delete-all', [WorkerController::class, 'deleteAll']);
+    Route::post('workers/restore-all', [WorkerController::class, 'restoreAll']);
+    Route::post('workers/{worker}/deactivate', [WorkerController::class, 'deactivate']);
+    Route::post('workers/{worker}/restore', [WorkerController::class, 'restore']);
 
     Route::apiResource('workers', WorkerController::class);
 
@@ -29,10 +32,15 @@ Route::middleware(['auth:sanctum'])->group(function (): void {
         ->whereNumber('roster');
     Route::post('rosters/{roster}/regenerate', [RosterController::class, 'regenerate'])
         ->whereNumber('roster');
+    Route::post('rosters/{roster}/export', [RosterController::class, 'export'])
+        ->whereNumber('roster');
+    Route::get('rosters/{roster}/export/{exportId}', [RosterController::class, 'exportStatus'])
+        ->whereNumber('roster');
+    Route::get('rosters/{roster}/export/{exportId}/download', [RosterController::class, 'exportDownload'])
+        ->whereNumber('roster');
     Route::scopeBindings()->group(function (): void {
         Route::get('rosters/{roster}/assignments', [RosterAssignmentController::class, 'index']);
         Route::post('rosters/{roster}/assignments', [RosterAssignmentController::class, 'store']);
-        Route::put('rosters/{roster}/assignments/{assignment}', [RosterAssignmentController::class, 'update']);
         Route::delete('rosters/{roster}/assignments/{assignment}', [RosterAssignmentController::class, 'destroy']);
     })->whereNumber('roster')->whereNumber('assignment');
 });

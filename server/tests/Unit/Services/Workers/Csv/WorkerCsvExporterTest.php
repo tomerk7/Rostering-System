@@ -12,7 +12,6 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Tests\TestCase;
@@ -90,7 +89,7 @@ final class WorkerCsvExporterTest extends TestCase
             '100',
             '180',
             '',
-            '5-6',
+            '6-7',
             '',
         ], $rows[1]);
         self::assertSame([
@@ -101,10 +100,43 @@ final class WorkerCsvExporterTest extends TestCase
             '50.25',
             '80',
             '160',
-            '0|2|4',
-            '0|2|4',
+            '1|3|5',
+            '1|3|5',
             '',
         ], $rows[2]);
+    }
+
+    public function test_write_to_excludes_soft_deleted_workers(): void
+    {
+        $activeWorker = $this->createWorker(
+            fullName: 'Active Worker',
+            israeliId: $this->validIsraeliId(31111111),
+            role: $this->generalGuardRole,
+            isActive: true,
+            hourlyCost: 50.25,
+            minMonthlyHours: 80,
+            maxMonthlyHours: 160,
+            days: [0],
+            shiftIds: [$this->morningShift->id],
+        );
+        $trashedWorker = $this->createWorker(
+            fullName: 'Archived Worker',
+            israeliId: $this->validIsraeliId(41111111),
+            role: $this->generalGuardRole,
+            isActive: false,
+            hourlyCost: 40.00,
+            minMonthlyHours: 80,
+            maxMonthlyHours: 160,
+            days: [1],
+            shiftIds: [$this->morningShift->id],
+        );
+        $trashedWorker->delete();
+
+        $csv = $this->captureWriteTo();
+        $rows = $this->parseCsv($csv);
+
+        self::assertCount(2, $rows);
+        self::assertSame($activeWorker->israeli_id, $rows[1][1]);
     }
 
     public function test_stream_download_returns_csv_response_with_dated_filename(): void
@@ -112,8 +144,7 @@ final class WorkerCsvExporterTest extends TestCase
         CarbonImmutable::setTestNow('2026-06-07 12:00:00');
 
         $exportId = (string) Str::uuid();
-        $storedPath = "worker-exports/{$exportId}.csv";
-        $this->csvService->processExport($exportId, $storedPath);
+        $this->csvService->processExport($exportId);
 
         $response = $this->csvService->streamQueuedExport($exportId);
 
@@ -163,18 +194,21 @@ final class WorkerCsvExporterTest extends TestCase
     private function captureWriteTo(): string
     {
         $exportId = (string) Str::uuid();
-        $storedPath = "worker-exports/{$exportId}.csv";
-        $this->csvService->processExport($exportId, $storedPath);
+        $this->csvService->processExport($exportId);
 
-        return Storage::disk('local')->get($storedPath);
+        return $this->streamExportContents($exportId);
     }
 
     private function captureStreamDownload(): string
     {
         $exportId = (string) Str::uuid();
-        $storedPath = "worker-exports/{$exportId}.csv";
-        $this->csvService->processExport($exportId, $storedPath);
+        $this->csvService->processExport($exportId);
 
+        return $this->streamExportContents($exportId);
+    }
+
+    private function streamExportContents(string $exportId): string
+    {
         $response = $this->csvService->streamQueuedExport($exportId);
 
         ob_start();

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { buildRosterGrid } from '@/lib/rosterGrid'
+import { shiftLabel } from '@/lib/shifts'
 
 const props = defineProps({
   startDate: { type: String, required: true },
@@ -86,34 +87,46 @@ const issueCount = computed(() =>
 )
 
 /**
- * Aggregate a cell's role demands into an overall coverage summary.
+ * Aggregate a cell's per-role demands into an overall coverage summary.
+ *
+ * Status follows the same per-role shortage rules as `cell.isUnderstaffed`.
+ * Filled counts cap each role at its requirement so overstaffing in one role
+ * cannot mask a shortage in another.
  *
  * @param {object} cell
- * @returns {{ assigned: number, required: number, ratio: number, status: string }}
+ * @returns {{ filled: number, required: number, shortage: number, ratio: number, status: string }}
  */
 function coverageOf(cell) {
-  const assigned = cell.roles.reduce((sum, role) => sum + role.assigned, 0)
   const required = cell.roles.reduce((sum, role) => sum + role.required, 0)
-  const ratio = required === 0 ? 1 : Math.min(assigned / required, 1)
+  const shortage = cell.roles.reduce((sum, role) => sum + role.shortage, 0)
+  const filled = required - shortage
+  const ratio = required === 0 ? 1 : Math.min(filled / required, 1)
 
-  return { assigned, required, ratio, status: statusOf(assigned, required) }
+  return {
+    filled,
+    required,
+    shortage,
+    ratio,
+    status: statusOfCell(cell, filled, required),
+  }
 }
 
 /**
- * Derive a coverage status from assigned and required counts.
+ * Derive a coverage status from per-role shortages.
  *
- * @param {number} assigned
+ * @param {object} cell
+ * @param {number} filled
  * @param {number} required
  * @returns {'none'|'full'|'empty'|'short'}
  */
-function statusOf(assigned, required) {
+function statusOfCell(cell, filled, required) {
   if (required === 0) {
     return 'none'
   }
-  if (assigned >= required) {
+  if (!cell.isUnderstaffed) {
     return 'full'
   }
-  if (assigned === 0) {
+  if (filled === 0) {
     return 'empty'
   }
   return 'short'
@@ -126,14 +139,14 @@ function statusOf(assigned, required) {
  * @returns {string}
  */
 function statusLabel(cell) {
-  const { assigned, required, status } = coverageOf(cell)
+  const { shortage, status } = coverageOf(cell)
   if (status === 'none') {
     return 'No demand'
   }
   if (status === 'full') {
     return 'Fully staffed'
   }
-  return `Short ${required - assigned}`
+  return `Short ${shortage}`
 }
 
 /**
@@ -149,6 +162,16 @@ function initials(name) {
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
     .join('')
+}
+
+/**
+ * Build the visible worker label for a roster assignment.
+ *
+ * @param {{ workerName: string, roleName: string }} assignment
+ * @returns {string}
+ */
+function workerLabel(assignment) {
+  return `${assignment.workerName} - ${assignment.roleName}`
 }
 
 /**
@@ -284,7 +307,7 @@ function firstShortRoleId(cell) {
               scope="col"
             >
               <span class="roster-grid__shift-code">Shift {{ shift.code }}</span>
-              <span class="roster-grid__shift-label">{{ shift.label }}</span>
+              <span class="roster-grid__shift-label">{{ shiftLabel(shift) }}</span>
             </th>
           </tr>
         </thead>
@@ -335,12 +358,12 @@ function firstShortRoleId(cell) {
                   :class="`roster-grid__coverage--${coverageOf(cell).status}`"
                 >
                   <span class="roster-grid__coverage-count">
-                    {{ coverageOf(cell).assigned }}/{{ coverageOf(cell).required }}
+                    {{ coverageOf(cell).filled }}/{{ coverageOf(cell).required }}
                   </span>
                   <span class="roster-grid__coverage-status">{{ statusLabel(cell) }}</span>
                   <span
                     class="roster-grid__meter"
-                    :aria-label="`${coverageOf(cell).assigned} of ${coverageOf(cell).required} filled`"
+                    :aria-label="`${coverageOf(cell).filled} of ${coverageOf(cell).required} filled`"
                   >
                     <span
                       class="roster-grid__meter-fill"
@@ -373,7 +396,7 @@ function firstShortRoleId(cell) {
                     :title="`${assignment.workerName} · ${assignment.roleName} · ${assignment.source}`"
                   >
                     <span class="roster-grid__avatar">{{ initials(assignment.workerName) }}</span>
-                    <span class="roster-grid__worker">{{ assignment.workerName }}</span>
+                    <span class="roster-grid__worker">{{ workerLabel(assignment) }}</span>
                     <button
                       v-if="editable && assignment.assignmentId"
                       type="button"

@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['code', 'label', 'start_time', 'end_time', 'duration_hours'])]
+#[Fillable(['code', 'start_time', 'end_time', 'duration_hours'])]
 final class Shift extends Model
 {
     public $timestamps = false;

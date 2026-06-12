@@ -50,7 +50,19 @@ export async function updateWorker(workerId, payload) {
 }
 
 /**
- * Delete a worker by id.
+ * Deactivate a worker by id.
+ *
+ * @param {number|string} workerId
+ * @returns {Promise<object>}
+ */
+export async function deactivateWorker(workerId) {
+  const { data } = await api.post(`/api/workers/${workerId}/deactivate`)
+
+  return data
+}
+
+/**
+ * Soft-delete a worker by id.
  *
  * @param {number|string} workerId
  * @returns {Promise<object>}
@@ -62,12 +74,35 @@ export async function deleteWorker(workerId) {
 }
 
 /**
- * Delete all workers.
+ * Restore a soft-deleted worker by id.
+ *
+ * @param {number|string} workerId
+ * @returns {Promise<object>}
+ */
+export async function restoreWorker(workerId) {
+  const { data } = await api.post(`/api/workers/${workerId}/restore`)
+
+  return data
+}
+
+/**
+ * Soft-delete all non-archived workers.
  *
  * @returns {Promise<object>}
  */
 export async function deleteAllWorkers() {
-  const { data } = await api.delete('/api/workers')
+  const { data } = await api.post('/api/workers/delete-all')
+
+  return data
+}
+
+/**
+ * Restore all archived workers as active.
+ *
+ * @returns {Promise<object>}
+ */
+export async function restoreAllWorkers() {
+  const { data } = await api.post('/api/workers/restore-all')
 
   return data
 }

@@ -98,3 +98,78 @@ export async function deleteRoster(rosterId) {
 
   return data
 }
+
+/**
+ * Poll export status until completion or failure.
+ *
+ * @param {number|string} rosterId
+ * @param {string} exportId
+ * @param {number} [maxAttempts=120]
+ * @returns {Promise<object>}
+ */
+async function pollExportStatus(rosterId, exportId, maxAttempts = 120) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const { data } = await api.get(`/api/rosters/${rosterId}/export/${exportId}`)
+
+    if (data.data?.status === 'completed') {
+      return data
+    }
+
+    if (data.data?.status === 'failed') {
+      throw new Error(data.data?.message ?? 'Export failed.')
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+
+  throw new Error('Export timed out. Please try again.')
+}
+
+/**
+ * Resolve an export id from an immediate or async export response.
+ *
+ * @param {object} responseData
+ * @param {number} status
+ * @returns {string|null}
+ */
+function resolveExportId(responseData, status) {
+  if (status === 202 && responseData.data?.export_id) {
+    return responseData.data.export_id
+  }
+
+  if (responseData.data?.status === 'completed' && responseData.data?.export_id) {
+    return responseData.data.export_id
+  }
+
+  return null
+}
+
+/**
+ * Export a roster and return the resulting file blob.
+ *
+ * @param {number|string} rosterId
+ * @returns {Promise<Blob>}
+ */
+export async function exportRoster(rosterId) {
+  const { data, status } = await api.post(`/api/rosters/${rosterId}/export`)
+
+  let exportId = resolveExportId(data, status)
+
+  if (exportId === null) {
+    throw new Error(data.message ?? 'Export failed.')
+  }
+
+  if (status === 202) {
+    const polled = await pollExportStatus(rosterId, exportId)
+    exportId = polled.data?.export_id ?? exportId
+  }
+
+  const { data: blob } = await api.get(
+    `/api/rosters/${rosterId}/export/${exportId}/download`,
+    {
+      responseType: 'blob',
+    },
+  )
+
+  return blob
+}

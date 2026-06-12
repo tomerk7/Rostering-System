@@ -81,24 +81,6 @@ export function getRosterWeekRange(year, month, anchorDate) {
 }
 
 /**
- * Build ISO date strings for every day in a calendar month.
- *
- * @param {number} year
- * @param {number} month
- * @returns {string[]}
- */
-export function getDatesInMonth(year, month) {
-  const daysInMonth = new Date(year, month, 0).getDate()
-  const dates = []
-
-  for (let day = 1; day <= daysInMonth; day++) {
-    dates.push(`${year}-${padMonthDay(month)}-${padMonthDay(day)}`)
-  }
-
-  return dates
-}
-
-/**
  * Build ISO date strings for an inclusive date range.
  *
  * @param {string} startDate
@@ -266,34 +248,6 @@ function countAssignmentsBySlotRole(assignments, workersById) {
 }
 
 /**
- * Derive a role code from a display name when worker metadata is missing.
- *
- * @param {string} roleName
- * @returns {string}
- */
-function roleCodeFromName(roleName) {
-  if (!roleName) {
-    return 'unknown'
-  }
-
-  const normalized = roleName.toLowerCase()
-
-  if (normalized.includes('general')) {
-    return 'general_guard'
-  }
-
-  if (normalized.includes('screen')) {
-    return 'screener'
-  }
-
-  if (normalized.includes('super')) {
-    return 'supervisor'
-  }
-
-  return normalized.replace(/\s+/g, '_')
-}
-
-/**
  * Build display-ready assignment rows for a date and shift cell.
  *
  * @param {object[]} assignments
@@ -315,7 +269,6 @@ function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
           worker?.full_name
           ?? assignment.worker_name
           ?? `Worker #${assignment.worker_id}`,
-        roleCode: worker?.role.code ?? roleCodeFromName(assignment.role_name),
         roleName: worker?.role.name ?? assignment.role_name ?? 'Unknown',
         source: assignment.source,
       }
@@ -359,7 +312,6 @@ export function buildRosterGrid(params) {
 
         return {
           roleId: requirement.role_id,
-          roleCode: requirement.role.code,
           roleName: requirement.role.name,
           required,
           assigned,
@@ -371,8 +323,6 @@ export function buildRosterGrid(params) {
 
       return {
         shiftId: shift.id,
-        shiftCode: shift.code,
-        shiftLabel: shift.label,
         roles: roleDemands,
         assignments: buildAssignmentsForCell(assignments, workDate, shift.id, workersById),
         isUnderstaffed,
@@ -390,26 +340,4 @@ export function buildRosterGrid(params) {
     rangeLabel: formatDateRange(startDate, endDate),
     rows,
   }
-}
-
-/**
- * Format role demand counts as a compact summary string.
- *
- * @param {object[]} roles
- * @returns {string}
- */
-export function formatDemandSummary(roles) {
-  return roles
-    .map((role) => {
-      const shortCode = role.roleCode === 'general_guard'
-        ? 'G'
-        : role.roleCode === 'screener'
-          ? 'S'
-          : role.roleCode === 'supervisor'
-            ? 'Sup'
-            : role.roleCode.slice(0, 3)
-
-      return `${role.required} ${shortCode}`
-    })
-    .join(' / ')
 }

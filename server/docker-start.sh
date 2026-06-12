@@ -16,6 +16,10 @@ fi
 
 php artisan migrate --force;
 
+# Seed reference data (roles, shifts, staffing requirements) and the default
+# login user. Seeders are idempotent, so re-running on every boot is safe.
+php artisan db:seed --force;
+
 # Process queued jobs using the database queue connection.
 #
 # Wrapped in a restart loop so a worker that exits (timeout, OOM, fatal error,

@@ -78,53 +78,13 @@ final readonly class RosterAssignmentService
      * @return Roster
      * @throws ManualAssignmentException
      */
-    public function create(
-        Roster $roster,
-        string $workerId,
-        int $shiftId,
-        string $workDate,
-    ): Roster {
-        $assignment = $this->manualAssignmentService->create(
-            $roster,
-            $workerId,
-            $shiftId,
-            $workDate,
-        );
+    public function create(Roster $roster, string $workerId, int $shiftId, string $workDate): Roster
+    {
+        $assignment = $this->manualAssignmentService->create($roster, $workerId, $shiftId, $workDate);
 
         $roster->refresh();
 
-        return $this->rosterService->loadDetails(
-            $roster,
-            $assignment->work_date->toDateString(),
-        );
-    }
-
-    /**
-     * Reassign an existing assignment and return the refreshed roster view.
-     *
-     * @param Roster $roster
-     * @param RosterAssignment $assignment
-     * @param string $workerId
-     * @return Roster
-     * @throws ManualAssignmentException
-     */
-    public function update(
-        Roster $roster,
-        RosterAssignment $assignment,
-        string $workerId,
-    ): Roster {
-        $this->manualAssignmentService->change(
-            $roster,
-            $assignment,
-            $workerId,
-        );
-
-        $roster->refresh();
-
-        return $this->rosterService->loadDetails(
-            $roster,
-            $assignment->work_date->toDateString(),
-        );
+        return $this->rosterService->loadDetails($roster, $assignment->work_date->toDateString());
     }
 
     /**

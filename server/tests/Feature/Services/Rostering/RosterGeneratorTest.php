@@ -11,7 +11,6 @@ use App\Models\Shift;
 use App\Models\Worker;
 use App\Services\Rostering\Data\GenerationResult;
 use App\Services\Rostering\RosterGenerator;
-use Carbon\CarbonImmutable;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -121,64 +120,19 @@ final class RosterGeneratorTest extends TestCase
         self::assertNotContains($contractless->israeli_id, $assignedWorkerIds);
     }
 
-    public function test_generate_has_no_feasibility_issues_when_daily_demand_can_be_covered(): void
+    public function test_generate_excludes_soft_deleted_workers(): void
     {
-        $this->buildWorkforce(guards: 9, screeners: 3, supervisors: 2);
+        $active = $this->buildWorkforce(guards: 2, screeners: 0, supervisors: 0)[0];
 
-        self::assertSame([], $this->generator->generate(self::YEAR, self::MONTH)->feasibilityIssues);
-    }
+        $trashed = Worker::factory()->trashed()->create(['role_id' => $this->roleIdByCode['general_guard']]);
+        Contract::factory()->for($trashed)->withAvailability([0, 1, 2, 3, 4, 5, 6], $this->allShiftIds)->create();
 
-    public function test_generate_reports_feasibility_issues_for_an_understaffed_role(): void
-    {
-        $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
-        $this->createWorkers('screener', 3, [$date->dayOfWeek]);
-        $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
+        $result = $this->generator->generate(self::YEAR, self::MONTH);
 
-        $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
+        $assignedWorkerIds = array_unique(array_column($result->assignments, 'worker_id'));
 
-        self::assertCount(3, $guardIssues);
-        self::assertSame(6, $guardIssues[0]['required_workers']);
-        self::assertSame(5, $guardIssues[0]['available_workers']);
-    }
-
-    public function test_generate_feasibility_ignores_workers_unavailable_on_the_demand_weekday(): void
-    {
-        $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
-        $this->createWorkers('general_guard', 1, [($date->dayOfWeek + 3) % 7]);
-        $this->createWorkers('screener', 3, [$date->dayOfWeek]);
-        $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
-
-        $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
-
-        self::assertCount(3, $guardIssues);
-        self::assertSame(5, $guardIssues[0]['available_workers']);
-    }
-
-    public function test_generate_feasibility_excludes_inactive_and_contractless_workers(): void
-    {
-        $date = CarbonImmutable::create(self::YEAR, self::MONTH, 1)->startOfDay();
-        $this->createWorkers('general_guard', 5, [$date->dayOfWeek]);
-        $this->createWorkers('screener', 3, [$date->dayOfWeek]);
-        $this->createWorkers('supervisor', 2, [$date->dayOfWeek]);
-
-        $inactive = Worker::factory()->inactive()->create([
-            'role_id' => $this->roleIdByCode['general_guard'],
-        ]);
-        Contract::factory()
-            ->for($inactive)
-            ->withAvailability([$date->dayOfWeek], $this->allShiftIds)
-            ->create();
-
-        Worker::factory()->create([
-            'role_id' => $this->roleIdByCode['general_guard'],
-        ]);
-
-        $guardIssues = $this->feasibilityIssuesFor('general_guard', $date);
-
-        self::assertCount(3, $guardIssues);
-        self::assertSame(5, $guardIssues[0]['available_workers']);
+        self::assertContains($active->israeli_id, $assignedWorkerIds);
+        self::assertNotContains($trashed->israeli_id, $assignedWorkerIds);
     }
 
     /**
@@ -220,32 +174,4 @@ final class RosterGeneratorTest extends TestCase
         return $workers;
     }
 
-    /**
-     * @param  list<int>  $daysOfWeek
-     */
-    private function createWorkers(string $roleCode, int $count, array $daysOfWeek): void
-    {
-        for ($index = 0; $index < $count; $index++) {
-            $worker = Worker::factory()->create([
-                'role_id' => $this->roleIdByCode[$roleCode],
-            ]);
-
-            Contract::factory()
-                ->for($worker)
-                ->withAvailability($daysOfWeek, $this->allShiftIds)
-                ->create();
-        }
-    }
-
-    /**
-     * @return list<array{role_id: int, work_date: CarbonImmutable, shift_id: int, required_workers: int, available_workers: int}>
-     */
-    private function feasibilityIssuesFor(string $roleCode, CarbonImmutable $date): array
-    {
-        return array_values(array_filter(
-            $this->generator->generate(self::YEAR, self::MONTH)->feasibilityIssues,
-            fn (array $issue): bool => $issue['role_id'] === $this->roleIdByCode[$roleCode]
-                && $issue['work_date']->equalTo($date),
-        ));
-    }
 }

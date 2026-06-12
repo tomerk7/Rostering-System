@@ -45,6 +45,12 @@ final readonly class RosterService
     /**
      * Load one roster with enriched assignments, reports, and summary,
      * optionally omitting or filtering the listed assignments.
+     *
+     * @param Roster $roster
+     * @param ?string $date
+     * @param ?int $shiftId
+     * @param bool $includeAssignments
+     * @return Roster
      */
     public function loadDetails(
         Roster $roster,

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { filterEligibleWorkers } from '@/lib/eligibleWorkers'
+import { shiftLabel } from '@/lib/shifts'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
@@ -198,7 +199,7 @@ function onSubmit() {
               :key="shift.id"
               :value="shift.id"
             >
-              {{ shift.code }} — {{ shift.label }}
+              {{ shift.code }} — {{ shiftLabel(shift) }}
             </option>
           </select>
         </label>

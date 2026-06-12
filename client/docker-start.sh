@@ -1,6 +1,3 @@
 #!/usr/bin/env sh
-set -e
-
-npm install
-
-npm run dev -- --host 0.0.0.0 --port 5173
+# Backward-compatible entrypoint — delegates to the dev startup script.
+exec sh /app/docker-start.dev.sh

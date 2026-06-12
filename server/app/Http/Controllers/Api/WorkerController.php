@@ -105,6 +105,14 @@ final class WorkerController extends Controller
      */
     public function export(): JsonResponse
     {
+        if (! Worker::query()->exists()) {
+            return $this->response(
+                success: false,
+                message: 'No workers to export.',
+                status: 422,
+            );
+        }
+
         $exportId = $this->csvService->queueExport();
         $state = $this->csvService->getExportState($exportId);
 
@@ -271,7 +279,16 @@ final class WorkerController extends Controller
      */
     public function store(StoreWorkerRequest $request): JsonResponse
     {
-        $worker = $this->workerService->create($request->validated());
+        try {
+            $worker = $this->workerService->create($request->validated());
+        } catch (WorkerContractException $exception) {
+            return $this->response(
+                success: false,
+                message: $exception->getMessage(),
+                status: 422,
+                errors: ['contract.max_monthly_hours' => [$exception->getMessage()]],
+            );
+        }
 
         return $this->response(
             success: true,
@@ -328,28 +345,28 @@ final class WorkerController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Deactivate the specified worker.
      *
      * @param Worker $worker
      * @return JsonResponse
      */
-    public function destroy(Worker $worker): JsonResponse
+    public function deactivate(Worker $worker): JsonResponse
     {
-        $this->workerService->delete($worker);
+        $this->workerService->deactivate($worker);
 
         return $this->response(
             success: true,
-            message: 'Worker deleted successfully.',
+            message: 'Worker deactivated successfully.',
             status: 200,
         );
     }
 
     /**
-     * Remove every worker from storage.
+     * Soft-delete every non-archived worker.
      *
      * @return JsonResponse
      */
-    public function destroyAll(): JsonResponse
+    public function deleteAll(): JsonResponse
     {
         $deleted = $this->workerService->deleteAll();
 
@@ -360,6 +377,61 @@ final class WorkerController extends Controller
             data: [
                 'deleted' => $deleted,
             ],
+        );
+    }
+
+    /**
+     * Soft-delete the specified worker.
+     *
+     * @param Worker $worker
+     * @return JsonResponse
+     */
+    public function destroy(Worker $worker): JsonResponse
+    {
+        $this->workerService->softDelete($worker);
+
+        return $this->response(
+            success: true,
+            message: 'Worker deleted successfully.',
+            status: 200,
+        );
+    }
+
+    /**
+     * Restore every archived worker as active.
+     *
+     * @return JsonResponse
+     */
+    public function restoreAll(): JsonResponse
+    {
+        $restored = $this->workerService->restoreAll();
+
+        return $this->response(
+            success: true,
+            message: 'All workers restored successfully.',
+            status: 200,
+            data: [
+                'restored' => $restored,
+            ],
+        );
+    }
+
+    /**
+     * Restore a soft-deleted worker.
+     *
+     * @param string $worker
+     * @return JsonResponse
+     */
+    public function restore(string $worker): JsonResponse
+    {
+        $workerModel = Worker::withTrashed()->whereKey($worker)->firstOrFail();
+        $restoredWorker = $this->workerService->restore($workerModel);
+
+        return $this->response(
+            success: true,
+            message: 'Worker restored successfully.',
+            status: 200,
+            data: WorkerResource::make($restoredWorker),
         );
     }
 }

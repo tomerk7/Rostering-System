@@ -366,44 +366,6 @@ final class RosterApiTest extends TestCase
         ]);
     }
 
-    public function test_manual_assignment_worker_can_be_changed_on_a_draft_roster(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->create(['created_by' => $this->user->id]);
-
-        $original = $this->assignableWorker();
-
-        $assignment = RosterAssignment::query()->create([
-            'roster_id' => $roster->id,
-            'worker_id' => $original->israeli_id,
-            'shift_id' => $this->shiftA->id,
-            'work_date' => '2026-06-04',
-            'source' => AssignmentSource::Auto,
-        ]);
-
-        $replacement = Worker::query()
-            ->active()
-            ->whereHas('contract')
-            ->whereKeyNot($original->israeli_id)
-            ->where('role_id', $original->role_id)
-            ->firstOrFail();
-
-        $this->putJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}", [
-            'worker_id' => $replacement->israeli_id,
-        ])
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.assignments.0.worker_id', $replacement->israeli_id)
-            ->assertJsonPath('data.assignments.0.source', AssignmentSource::Manual->value);
-
-        $this->assertDatabaseHas('roster_assignments', [
-            'id' => $assignment->id,
-            'worker_id' => $replacement->israeli_id,
-            'source' => AssignmentSource::Manual->value,
-        ]);
-    }
-
     public function test_manual_assignment_can_be_deleted_from_a_draft_roster(): void
     {
         $roster = Roster::factory()
@@ -551,73 +513,6 @@ final class RosterApiTest extends TestCase
             'type' => RosterAlertType::HoursShortfall->value,
             'scheduled_hours' => 8,
             'min_hours' => 160,
-        ]);
-    }
-
-    public function test_manual_change_refreshes_hours_shortfall_alerts_for_both_workers(): void
-    {
-        $roster = Roster::factory()
-            ->forPeriod(self::YEAR, self::MONTH)
-            ->create(['created_by' => $this->user->id]);
-
-        $original = $this->assignableWorker();
-        $original->contract()->update(['min_monthly_hours' => 160]);
-
-        $replacement = Worker::query()
-            ->active()
-            ->whereHas('contract')
-            ->whereKeyNot($original->israeli_id)
-            ->where('role_id', $original->role_id)
-            ->firstOrFail();
-        $replacement->contract()->update(['min_monthly_hours' => 160, 'max_monthly_hours' => 240]);
-
-        $assignment = RosterAssignment::query()->create([
-            'roster_id' => $roster->id,
-            'worker_id' => $original->israeli_id,
-            'shift_id' => $this->shiftA->id,
-            'work_date' => '2026-06-06',
-            'source' => AssignmentSource::Auto,
-        ]);
-
-        RosterAlert::query()->create([
-            'roster_id' => $roster->id,
-            'type' => RosterAlertType::HoursShortfall,
-            'worker_id' => $original->israeli_id,
-            'min_hours' => 160,
-            'scheduled_hours' => 0,
-        ]);
-
-        RosterAlert::query()->create([
-            'roster_id' => $roster->id,
-            'type' => RosterAlertType::HoursShortfall,
-            'worker_id' => $replacement->israeli_id,
-            'min_hours' => 160,
-            'scheduled_hours' => 99,
-        ]);
-
-        $this->putJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}", [
-            'worker_id' => $replacement->israeli_id,
-        ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $hoursShortfalls = collect($this->getJson("/api/rosters/{$roster->id}")
-            ->assertOk()
-            ->json('data.reports.hours_shortfalls'))
-            ->keyBy('worker_id');
-
-        self::assertSame(0, $hoursShortfalls[$original->israeli_id]['scheduled_hours']);
-        self::assertSame(8, $hoursShortfalls[$replacement->israeli_id]['scheduled_hours']);
-
-        $this->assertDatabaseHas('roster_alerts', [
-            'roster_id' => $roster->id,
-            'worker_id' => $original->israeli_id,
-            'scheduled_hours' => 0,
-        ]);
-        $this->assertDatabaseHas('roster_alerts', [
-            'roster_id' => $roster->id,
-            'worker_id' => $replacement->israeli_id,
-            'scheduled_hours' => 8,
         ]);
     }
 

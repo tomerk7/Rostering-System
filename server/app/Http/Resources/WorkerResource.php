@@ -22,6 +22,8 @@ final class WorkerResource extends JsonResource
             'full_name' => $this->resource->full_name,
             'israeli_id' => $this->resource->israeli_id,
             'is_active' => $this->resource->is_active,
+            'deleted_at' => $this->resource->deleted_at?->toISOString(),
+            'is_trashed' => $this->resource->trashed(),
             'role' => [
                 'id' => $this->resource->role?->id,
                 'code' => $this->resource->role?->code,
@@ -38,7 +40,6 @@ final class WorkerResource extends JsonResource
                         'shift' => [
                             'id' => $slot->shift->id,
                             'code' => $slot->shift->code,
-                            'label' => $slot->shift->label,
                             'start_time' => $slot->shift->start_time,
                             'end_time' => $slot->shift->end_time,
                             'duration_hours' => $slot->shift->duration_hours,

@@ -15,7 +15,6 @@ return new class extends Migration
         Schema::create('shifts', function (Blueprint $table) {
             $table->id();
             $table->char('code', 1)->unique();
-            $table->string('label', 20);
             $table->time('start_time');
             $table->time('end_time');
             $table->smallInteger('duration_hours');

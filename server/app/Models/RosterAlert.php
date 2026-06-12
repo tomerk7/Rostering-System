@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
     'roster_id',
     'type',
     'worker_id',
+    'worker_name',
     'min_hours',
     'scheduled_hours',
 ])]

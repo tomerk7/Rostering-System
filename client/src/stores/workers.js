@@ -1,5 +1,12 @@
 import { defineStore } from 'pinia'
-import { deleteAllWorkers, deleteWorker, listWorkers } from '@/api/workers'
+import {
+  deleteAllWorkers as deleteAllWorkersApi,
+  deactivateWorker as deactivateWorkerApi,
+  deleteWorker as deleteWorkerApi,
+  listWorkers,
+  restoreAllWorkers as restoreAllWorkersApi,
+  restoreWorker as restoreWorkerApi,
+} from '@/api/workers'
 import { runStoreRequest } from '@/stores/storeRequest'
 
 const emptyMeta = {
@@ -7,7 +14,6 @@ const emptyMeta = {
   from: null,
   last_page: 1,
   per_page: 10,
-  to: null,
   total: 0,
 }
 
@@ -35,17 +41,30 @@ export const useWorkersStore = defineStore('workers', {
     meta: { ...emptyMeta },
     search: '',
     roleCode: '',
-    status: '',
+    status: 'active',
+    view: 'directory',
     page: 1,
-    perPage: 10,
     loading: false,
     error: '',
-    validationErrors: {},
-    deletingId: null,
+    deactivatingId: null,
+    deactivatingAll: false,
     deletingAll: false,
+    deletingId: null,
+    restoringId: null,
+    restoringAll: false,
   }),
 
   getters: {
+    /**
+     * Whether the archived workers view is active.
+     *
+     * @param {object} state
+     * @returns {boolean}
+     */
+    isArchivedView(state) {
+      return state.view === 'archived'
+    },
+
     /**
      * Query params for the workers list API.
      *
@@ -53,13 +72,20 @@ export const useWorkersStore = defineStore('workers', {
      * @returns {object}
      */
     params(state) {
-      return {
+      const params = {
         search: state.search || undefined,
         role_code: state.roleCode || undefined,
-        is_active: statusToBoolean(state.status),
         page: state.page,
-        per_page: state.perPage,
+        per_page: emptyMeta.per_page,
       }
+
+      if (state.view === 'archived') {
+        params.trashed = 'only'
+      } else {
+        params.is_active = statusToBoolean(state.status)
+      }
+
+      return params
     },
   },
 
@@ -71,7 +97,6 @@ export const useWorkersStore = defineStore('workers', {
      */
     clearErrors() {
       this.error = ''
-      this.validationErrors = {}
     },
 
     /**
@@ -89,6 +114,18 @@ export const useWorkersStore = defineStore('workers', {
           this.meta = response.meta
         },
       })
+    },
+
+    /**
+     * Switch between directory and archived views.
+     *
+     * @param {'directory'|'archived'} view
+     * @returns {Promise<void>}
+     */
+    setView(view) {
+      this.view = view
+      this.page = 1
+      return this.fetchWorkers()
     },
 
     /**
@@ -113,35 +150,90 @@ export const useWorkersStore = defineStore('workers', {
     },
 
     /**
-     * Delete a worker and refresh the list.
+     * Deactivate a worker and refresh the list.
      *
-     * @param {number} workerId
+     * @param {number|string} workerId
      * @returns {Promise<void>}
      */
-    removeWorker(workerId) {
+    deactivateWorker(workerId) {
       return runStoreRequest(this, {
-        loadingKey: 'deletingId',
+        loadingKey: 'deactivatingId',
         loadingValue: workerId,
         idleValue: null,
-        fallback: 'Could not delete worker. Please try again.',
+        fallback: 'Could not deactivate worker. Please try again.',
         request: async () => {
-          await deleteWorker(workerId)
+          await deactivateWorkerApi(workerId)
           await this.fetchWorkers()
         },
       })
     },
 
     /**
-     * Delete all workers and refresh the list.
+     * Soft-delete a worker and refresh the list.
+     *
+     * @param {number|string} workerId
+     * @returns {Promise<void>}
+     */
+    deleteWorker(workerId) {
+      return runStoreRequest(this, {
+        loadingKey: 'deletingId',
+        loadingValue: workerId,
+        idleValue: null,
+        fallback: 'Could not delete worker. Please try again.',
+        request: async () => {
+          await deleteWorkerApi(workerId)
+          await this.fetchWorkers()
+        },
+      })
+    },
+
+    /**
+     * Restore a soft-deleted worker and refresh the list.
+     *
+     * @param {number|string} workerId
+     * @returns {Promise<void>}
+     */
+    restoreWorker(workerId) {
+      return runStoreRequest(this, {
+        loadingKey: 'restoringId',
+        loadingValue: workerId,
+        idleValue: null,
+        fallback: 'Could not restore worker. Please try again.',
+        request: async () => {
+          await restoreWorkerApi(workerId)
+          await this.fetchWorkers()
+        },
+      })
+    },
+
+    /**
+     * Soft-delete all non-archived workers and refresh the list.
      *
      * @returns {Promise<void>}
      */
-    removeAllWorkers() {
+    deleteAllWorkers() {
       return runStoreRequest(this, {
         loadingKey: 'deletingAll',
         fallback: 'Could not delete all workers. Please try again.',
         request: async () => {
-          await deleteAllWorkers()
+          await deleteAllWorkersApi()
+          this.page = 1
+          await this.fetchWorkers()
+        },
+      })
+    },
+
+    /**
+     * Restore all archived workers as active and refresh the list.
+     *
+     * @returns {Promise<void>}
+     */
+    restoreAllWorkers() {
+      return runStoreRequest(this, {
+        loadingKey: 'restoringAll',
+        fallback: 'Could not restore all workers. Please try again.',
+        request: async () => {
+          await restoreAllWorkersApi()
           this.page = 1
           await this.fetchWorkers()
         },

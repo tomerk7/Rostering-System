@@ -1,0 +1,50 @@
+services:
+  db:
+    build:
+      context: ./db
+    container_name: rostering_db
+    env_file:
+      - ./db/.env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rostering -d rostering"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build:
+      context: ./server
+    container_name: rostering_server
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./server/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server:/var/www
+      - server_vendor:/var/www/vendor
+    command: ["sh", "/var/www/docker-start.sh"]
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: rostering_client
+    env_file:
+      - ./client/.env
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client:/app
+      - client_node_modules:/app/node_modules
+    command: ["sh", "/app/docker-start.dev.sh"]
+
+volumes:
+  server_vendor:
+  client_node_modules:

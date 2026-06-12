@@ -24,7 +24,6 @@ export const useRostersStore = defineStore('rosters', {
     roster: null,
     assignments: [],
     assignedHoursByWorker: {},
-    assignmentRange: null,
     currentYear: null,
     selectedMonth: null,
     loading: false,
@@ -101,7 +100,6 @@ export const useRostersStore = defineStore('rosters', {
           this.roster = response.data
           this.assignments = []
           this.assignedHoursByWorker = {}
-          this.assignmentRange = null
         },
       })
     },
@@ -121,10 +119,6 @@ export const useRostersStore = defineStore('rosters', {
           const response = await listAssignments(rosterId, range)
           this.assignments = response.data
           this.assignedHoursByWorker = response.meta?.assigned_hours_by_worker ?? {}
-          this.assignmentRange = {
-            fromDate: response.meta?.from_date ?? range.fromDate,
-            toDate: response.meta?.to_date ?? range.toDate,
-          }
 
           return response
         },
@@ -212,7 +206,6 @@ export const useRostersStore = defineStore('rosters', {
             this.roster = null
             this.assignments = []
             this.assignedHoursByWorker = {}
-            this.assignmentRange = null
           }
 
           this.rosters = this.rosters.filter((roster) => roster.id !== rosterId)

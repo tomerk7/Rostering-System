@@ -20,9 +20,9 @@ final class ReferenceDataSeeder extends Seeder
     ];
 
     public const SHIFTS = [
-        ['code' => ShiftCode::A->value, 'label' => 'morning', 'start_time' => '00:00:00', 'end_time' => '08:00:00', 'duration_hours' => 8],
-        ['code' => ShiftCode::B->value, 'label' => 'day', 'start_time' => '08:00:00', 'end_time' => '16:00:00', 'duration_hours' => 8],
-        ['code' => ShiftCode::C->value, 'label' => 'evening', 'start_time' => '16:00:00', 'end_time' => '00:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::A->value, 'start_time' => '00:00:00', 'end_time' => '08:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::B->value, 'start_time' => '08:00:00', 'end_time' => '16:00:00', 'duration_hours' => 8],
+        ['code' => ShiftCode::C->value, 'start_time' => '16:00:00', 'end_time' => '00:00:00', 'duration_hours' => 8],
     ];
 
     public const REQUIRED_COUNTS_BY_ROLE_CODE = [
@@ -47,7 +47,6 @@ final class ReferenceDataSeeder extends Seeder
             Shift::query()->updateOrCreate(
                 ['code' => $shift['code']],
                 [
-                    'label' => $shift['label'],
                     'start_time' => $shift['start_time'],
                     'end_time' => $shift['end_time'],
                     'duration_hours' => $shift['duration_hours'],

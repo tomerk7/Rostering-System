@@ -24,19 +24,15 @@ return new class extends Migration
 
             $table->string('type');
 
-            // Every alert is tied to a specific worker.
+            // Every alert is tied to a specific worker. worker_name is a snapshot
+            // at write time so alerts survive worker deletion as historical records.
             $table->char('worker_id', 9);
+            $table->string('worker_name')->nullable();
             $table->unsignedInteger('min_hours')->nullable();
             $table->unsignedInteger('scheduled_hours')->nullable();
 
             $table->timestamps();
 
-            $table->foreign('worker_id')
-                ->references('israeli_id')
-                ->on('workers')
-                ->cascadeOnDelete();
-
-            $table->index(['roster_id', 'type']);
             $table->index('worker_id');
         });
 

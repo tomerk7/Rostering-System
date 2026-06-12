@@ -41,9 +41,9 @@ FIXED_HEADERS = [
 ]
 
 SHIFT_COLUMNS = {
-    "A": "Shift_A",
-    "B": "Shift_B",
-    "C": "Shift_C",
+    "A": "00:00-08:00",
+    "B": "08:00-16:00",
+    "C": "16:00-00:00",
 }
 
 HEADERS = FIXED_HEADERS + [SHIFT_COLUMNS[code] for code in ("A", "B", "C")]
@@ -105,10 +105,10 @@ def compress_days(day_numbers: list[int]) -> str:
     if not day_numbers:
         return ""
 
-    days = sorted(set(day_numbers))
+    days = sorted(set(day + 1 for day in day_numbers))
 
-    if days == list(range(7)):
-        return "0-6"
+    if days == list(range(1, 8)):
+        return "1-7"
 
     parts: list[str] = []
     start = days[0]

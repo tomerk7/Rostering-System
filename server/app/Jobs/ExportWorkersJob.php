@@ -34,24 +34,23 @@ final class ExportWorkersJob implements ShouldQueue
      */
     public function __construct(
         private readonly string $exportId,
-        private readonly string $storedPath,
     ) {
     }
 
     /**
      * Execute the job.
-     * 
+     *
      * @param WorkerCsvService $csvService
      * @return void
      */
     public function handle(WorkerCsvService $csvService): void
     {
-        $csvService->processExport($this->exportId, $this->storedPath);
+        $csvService->processExport($this->exportId);
     }
 
     /**
      * Handle a job failure.
-     * 
+     *
      * @param Throwable|null $exception
      * @return void
      */
@@ -59,13 +58,11 @@ final class ExportWorkersJob implements ShouldQueue
     {
         Log::error('Export workers job failed.', [
             'export_id' => $this->exportId,
-            'stored_path' => $this->storedPath,
             'exception' => $exception,
         ]);
 
         app(WorkerCsvService::class)->markExportFailed(
             $this->exportId,
-            $this->storedPath,
             $exception?->getMessage() ?? 'Unknown error.',
         );
     }

@@ -8,6 +8,7 @@ import {
   getWorker,
   updateWorker,
 } from '@/api/workers'
+import { shiftLabel } from '@/lib/shifts'
 
 const route = useRoute()
 const router = useRouter()
@@ -448,7 +449,7 @@ function fieldError(field) {
                     :checked="isSlotSelected(day.value, shift.id)"
                     @change="setSlotSelected(day.value, shift.id, $event.target.checked)"
                   >
-                  <span>{{ shift.code }} - {{ shift.label }}</span>
+                  <span>{{ shift.code }} - {{ shiftLabel(shift) }}</span>
                 </label>
               </fieldset>
             </div>

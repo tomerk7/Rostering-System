@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Services;
 
+use App\Enums\AssignmentSource;
+use App\Enums\RosterAlertType;
+use App\Exceptions\Workers\WorkerContractException;
 use App\Models\Contract;
 use App\Models\ContractAvailability;
 use App\Models\Role;
-use App\Enums\AssignmentSource;
-use App\Exceptions\Workers\WorkerContractException;
 use App\Models\Roster;
+use App\Models\RosterAlert;
 use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\User;
@@ -18,6 +20,7 @@ use App\Services\Workers\WorkerService;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -330,7 +333,7 @@ final class WorkerServiceTest extends TestCase
 
         self::assertSame(['A', 'B', 'C'], $shifts->pluck('code')->all());
         self::assertSame(
-            ['id', 'code', 'label', 'start_time', 'end_time', 'duration_hours'],
+            ['id', 'code', 'start_time', 'end_time', 'duration_hours'],
             array_keys($shifts->first()->getAttributes()),
         );
     }
@@ -381,40 +384,398 @@ final class WorkerServiceTest extends TestCase
         }
     }
 
-    public function test_delete_removes_worker(): void
+    public function test_deactivate_marks_worker_inactive(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->generalGuardRole->id,
             'israeli_id' => $this->validIsraeliId(92111111),
+            'is_active' => true,
         ]);
 
-        $this->service->delete($worker);
+        $this->service->deactivate($worker);
 
-        $this->assertDatabaseMissing('workers', [
+        $this->assertDatabaseHas('workers', [
             'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
         ]);
     }
 
-    public function test_delete_removes_worker_roster_assignments(): void
+    public function test_deactivate_removes_upcoming_roster_assignments_preserves_past(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->generalGuardRole->id,
             'israeli_id' => $this->validIsraeliId(92111112),
+            'is_active' => true,
         ]);
-        $roster = Roster::factory()->create();
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create();
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
         RosterAssignment::factory()->create([
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => $past->copy()->day(10)->toDateString(),
+        ]);
+        RosterAssignment::factory()->create([
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => now()->startOfMonth()->addDays(4)->toDateString(),
+        ]);
+
+        $this->service->deactivate($worker);
+
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_deactivate_refreshes_coverage_shortages_for_removed_assignments(): void
+    {
+        $user = User::factory()->create();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(92111113),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create();
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
             'roster_id' => $roster->id,
             'worker_id' => $worker->israeli_id,
             'shift_id' => $this->morningShift->id,
-            'work_date' => '2026-06-10',
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
         ]);
 
-        $this->service->delete($worker);
+        $this->service->deactivate($worker);
 
-        $this->assertDatabaseMissing('workers', [
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-06-05 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+    }
+
+    public function test_delete_all_refreshes_roster_reports(): void
+    {
+        $user = User::factory()->create();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(92111114),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create();
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        RosterAlert::query()->create([
+            'roster_id' => $roster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+            'scheduled_hours' => 50,
+        ]);
+
+        $deleted = $this->service->deleteAll();
+
+        self::assertSame(1, $deleted);
+        $this->assertSoftDeleted('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-06-05 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_deactivate_keeps_past_roster_alerts_as_history(): void
+    {
+        $worker = Worker::factory()->create([
+            'full_name' => 'History Worker',
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111115),
+        ]);
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
+        RosterAlert::query()->create([
+            'roster_id' => $pastRoster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => $worker->full_name,
+            'min_hours' => 160,
+            'scheduled_hours' => 120,
+        ]);
+        RosterAlert::query()->create([
+            'roster_id' => $currentRoster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => $worker->full_name,
+            'min_hours' => 160,
+            'scheduled_hours' => 40,
+        ]);
+
+        $this->service->deactivate($worker);
+
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => 'History Worker',
+            'min_hours' => 160,
+            'scheduled_hours' => 120,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_delete_all_keeps_past_roster_alerts_as_history(): void
+    {
+        $worker = Worker::factory()->create([
+            'full_name' => 'History Worker',
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111116),
+        ]);
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
+        RosterAlert::query()->create([
+            'roster_id' => $pastRoster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => $worker->full_name,
+            'min_hours' => 160,
+            'scheduled_hours' => 120,
+        ]);
+        RosterAlert::query()->create([
+            'roster_id' => $currentRoster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => $worker->full_name,
+            'min_hours' => 160,
+            'scheduled_hours' => 40,
+        ]);
+
+        $this->service->deleteAll();
+
+        $this->assertSoftDeleted('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => 'History Worker',
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_soft_delete_marks_worker_trashed_and_inactive(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111118),
+            'is_active' => true,
+        ]);
+
+        $this->service->softDelete($worker);
+
+        $this->assertSoftDeleted('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+    }
+
+    public function test_soft_delete_removes_upcoming_roster_assignments_preserves_past(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111119),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create();
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
+        RosterAssignment::factory()->create([
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => $past->copy()->day(10)->toDateString(),
+        ]);
+        RosterAssignment::factory()->create([
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => now()->startOfMonth()->addDays(4)->toDateString(),
+        ]);
+
+        $this->service->softDelete($worker);
+
+        $this->assertSoftDeleted('workers', [
             'israeli_id' => $worker->israeli_id,
         ]);
-        $this->assertDatabaseCount('roster_assignments', 0);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_restore_clears_deleted_at_and_sets_active_status(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->generalGuardRole->id,
+            'israeli_id' => $this->validIsraeliId(92111120),
+            'is_active' => true,
+        ]);
+
+        $this->service->softDelete($worker);
+        $trashedWorker = Worker::withTrashed()->whereKey($worker->israeli_id)->firstOrFail();
+
+        $restoredWorker = $this->service->restore($trashedWorker);
+
+        self::assertFalse($restoredWorker->trashed());
+        self::assertTrue($restoredWorker->is_active);
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+    }
+
+    public function test_restore_all_restores_archived_workers_as_active(): void
+    {
+        $workers = Worker::factory()
+            ->count(2)
+            ->create(['role_id' => $this->generalGuardRole->id]);
+
+        foreach ($workers as $worker) {
+            $this->service->softDelete($worker);
+        }
+
+        $restored = $this->service->restoreAll();
+
+        self::assertSame(2, $restored);
+        foreach ($workers as $worker) {
+            $this->assertDatabaseHas('workers', [
+                'israeli_id' => $worker->israeli_id,
+                'is_active' => true,
+                'deleted_at' => null,
+            ]);
+        }
+    }
+
+    public function test_reactivate_worker_via_update_makes_them_schedulable_again(): void
+    {
+        $user = User::factory()->create();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(92111117),
+            'is_active' => false,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        $this->service->update($worker, $this->workerData([
+            'israeli_id' => $worker->israeli_id,
+            'role_id' => $this->supervisorRole->id,
+            'is_active' => true,
+            'availability' => $this->availabilityPairs([4], [$this->morningShift->id]),
+            'contract' => [
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ],
+        ]));
+
+        self::assertTrue(Worker::query()->active()->whereKey($worker->israeli_id)->exists());
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 160,
+            'scheduled_hours' => 0,
+        ]);
     }
 
     /**

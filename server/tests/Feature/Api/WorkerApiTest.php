@@ -6,7 +6,6 @@ namespace Tests\Feature\Api;
 
 use App\Enums\AssignmentSource;
 use App\Enums\RosterAlertType;
-use App\Events\WorkersImported;
 use App\Models\Contract;
 use App\Models\ContractAvailability;
 use App\Models\Role;
@@ -20,7 +19,7 @@ use App\Services\Workers\Csv\WorkerCsvService;
 use Database\Seeders\ReferenceDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
@@ -264,6 +263,34 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('data.contract.max_monthly_hours', 120);
     }
 
+    public function test_worker_create_refreshes_hours_shortfall_alert_on_existing_rosters(): void
+    {
+        $user = User::query()->firstOrFail();
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        $payload = $this->workerPayload([
+            'full_name' => 'New Shortfall Worker',
+            'israeli_id' => $this->validIsraeliId(51345678),
+            'contract' => [
+                'hourly_cost' => 72.50,
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ],
+        ]);
+
+        $this->postJson('/api/workers', $payload)->assertCreated();
+
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $payload['israeli_id'],
+            'type' => RosterAlertType::HoursShortfall->value,
+            'min_hours' => 160,
+            'scheduled_hours' => 0,
+        ]);
+    }
+
     public function test_worker_edit_refreshes_hours_shortfall_alert_on_existing_rosters(): void
     {
         $user = User::query()->firstOrFail();
@@ -416,7 +443,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '55.00',
                 minMonthlyHours: '160',
                 maxMonthlyHours: '240',
-                shiftA: '0|1',
+                shiftA: '1|2',
             ),
         ])->assertOk();
 
@@ -432,41 +459,6 @@ final class WorkerApiTest extends TestCase
             'worker_id' => $worker->israeli_id,
             'min_hours' => 999,
         ]);
-    }
-
-    public function test_worker_import_dispatches_one_aggregate_event(): void
-    {
-        Event::fake([WorkersImported::class]);
-
-        $this->importCsv([
-            $this->csvRow(
-                fullName: 'First Imported Worker',
-                israeliId: $this->validIsraeliId(74345679),
-                role: 'General Guard',
-                status: 'Active',
-                hourlyCost: '55.00',
-                minMonthlyHours: '120',
-                maxMonthlyHours: '200',
-                shiftA: '0|1',
-            ),
-            $this->csvRow(
-                fullName: 'Second Imported Worker',
-                israeliId: $this->validIsraeliId(75345679),
-                role: 'Supervisor',
-                status: 'Active',
-                hourlyCost: '75.00',
-                minMonthlyHours: '120',
-                maxMonthlyHours: '200',
-                shiftA: '0|1',
-            ),
-        ])->assertOk();
-
-        Event::assertDispatchedTimes(WorkersImported::class, 1);
-        Event::assertDispatched(
-            WorkersImported::class,
-            static fn (WorkersImported $event): bool => $event->created === 2
-                && $event->updated === 0,
-        );
     }
 
     public function test_worker_import_rejects_lower_max_hours_when_roster_assignments_exceed_it(): void
@@ -511,7 +503,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '75.00',
                 minMonthlyHours: '80',
                 maxMonthlyHours: '120',
-                shiftA: '0-6',
+                shiftA: '1-7',
             ),
         ]);
 
@@ -549,15 +541,27 @@ final class WorkerApiTest extends TestCase
                 'max_monthly_hours' => 180,
             ]);
 
-        $roster = Roster::factory()
+        $pastRoster = Roster::factory()
             ->forPeriod(2026, 1)
             ->create(['created_by' => $user->id]);
 
         RosterAssignment::query()->create([
-            'roster_id' => $roster->id,
+            'roster_id' => $pastRoster->id,
             'worker_id' => $worker->israeli_id,
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-01-01',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $upcomingRoster = Roster::factory()
+            ->forPeriod(2026, 7)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $upcomingRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-07-02',
             'source' => AssignmentSource::Auto,
         ]);
 
@@ -570,26 +574,33 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '75.00',
                 minMonthlyHours: '8',
                 maxMonthlyHours: '180',
-                shiftA: '0-3',
+                shiftA: '1-4',
             ),
         ])->assertOk();
 
-        $this->assertDatabaseMissing('roster_assignments', [
-            'roster_id' => $roster->id,
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
             'worker_id' => $worker->israeli_id,
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-01-01 00:00:00',
         ]);
+
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $upcomingRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-07-02 00:00:00',
+        ]);
         $this->assertDatabaseHas('coverage_shortages', [
-            'roster_id' => $roster->id,
-            'work_date' => '2026-01-01 00:00:00',
+            'roster_id' => $upcomingRoster->id,
+            'work_date' => '2026-07-02 00:00:00',
             'shift_id' => $this->morningShift->id,
             'role_id' => $this->supervisorRole->id,
             'required_count' => 1,
             'assigned_count' => 0,
         ]);
         $this->assertDatabaseHas('roster_alerts', [
-            'roster_id' => $roster->id,
+            'roster_id' => $upcomingRoster->id,
             'worker_id' => $worker->israeli_id,
             'type' => RosterAlertType::HoursShortfall->value,
             'min_hours' => 8,
@@ -690,14 +701,13 @@ final class WorkerApiTest extends TestCase
             ->assertJsonPath('data.roles.0.code', 'general_guard')
             ->assertJsonPath('data.roles.0.name', 'General Guard')
             ->assertJsonPath('data.shifts.0.code', 'A')
-            ->assertJsonPath('data.shifts.0.label', 'morning')
             ->assertJsonCount(3, 'data.roles')
             ->assertJsonCount(3, 'data.shifts')
             ->assertJsonCount(9, 'data.shift_role_requirements')
             ->assertJsonStructure([
                 'data' => [
                     'roles' => [['id', 'code', 'name']],
-                    'shifts' => [['id', 'code', 'label', 'start_time', 'end_time', 'duration_hours']],
+                    'shifts' => [['id', 'code', 'start_time', 'end_time', 'duration_hours']],
                     'shift_role_requirements' => [[
                         'shift_id',
                         'role_id',
@@ -750,8 +760,8 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '50.25',
                 minMonthlyHours: '80',
                 maxMonthlyHours: '160',
-                shiftA: '0|2|4',
-                shiftB: '0|2|4',
+                shiftA: '1|3|5',
+                shiftB: '1|3|5',
             ),
         ]);
 
@@ -809,7 +819,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '75.50',
                 minMonthlyHours: '100',
                 maxMonthlyHours: '180',
-                shiftC: '5-6',
+                shiftC: '6-7',
             ),
         ]);
 
@@ -842,7 +852,7 @@ final class WorkerApiTest extends TestCase
     public function test_worker_reimporting_same_csv_is_idempotent(): void
     {
         $rows = [
-            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', '0|1', '0|1'),
+            $this->csvRow('First Worker', $this->validIsraeliId(92345678), 'General Guard', 'Active', '51.00', '80', '160', '1|2', '1|2'),
             $this->csvRow('Second Worker', $this->validIsraeliId(10234567), 'Supervisor', 'Inactive', '72.00', '100', '180', '', '2|3', '2|3'),
         ];
 
@@ -881,7 +891,7 @@ final class WorkerApiTest extends TestCase
                 hourlyCost: '-1',
                 minMonthlyHours: '160',
                 maxMonthlyHours: '80',
-                shiftA: '7',
+                shiftA: '8',
             ),
         ]);
 
@@ -904,7 +914,7 @@ final class WorkerApiTest extends TestCase
         self::assertContains('status', $fields);
         self::assertContains('hourly_cost', $fields);
         self::assertContains('max_monthly_hours', $fields);
-        self::assertContains('Shift_A', $fields);
+        self::assertContains('00:00-08:00', $fields);
         self::assertSame([2], array_values(array_unique(array_column($errors, 'line'))));
 
         $this->assertDatabaseCount('workers', 0);
@@ -967,64 +977,372 @@ final class WorkerApiTest extends TestCase
         self::assertSame($exportedCsv, $this->exportCsv());
     }
 
-    public function test_worker_can_be_deleted(): void
+    public function test_worker_csv_import_parses_day_expressions_in_one_to_seven_range(): void
+    {
+        $singleDayId = $this->validIsraeliId(13234567);
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Single Day Worker',
+                israeliId: $singleDayId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '50.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '160',
+                shiftA: '1',
+            ),
+        ])->assertOk();
+        $this->assertAvailability(
+            Worker::query()->where('israeli_id', $singleDayId)->firstOrFail(),
+            [0],
+            [$this->morningShift->id],
+        );
+
+        $rangeId = $this->validIsraeliId(13334567);
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Range Worker',
+                israeliId: $rangeId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '50.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '160',
+                shiftB: '2-6',
+            ),
+        ])->assertOk();
+        $this->assertAvailability(
+            Worker::query()->where('israeli_id', $rangeId)->firstOrFail(),
+            [1, 2, 3, 4, 5],
+            [$this->dayShift->id],
+        );
+
+        $listId = $this->validIsraeliId(13434567);
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'List Worker',
+                israeliId: $listId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '50.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '160',
+                shiftC: '1|3|5',
+            ),
+        ])->assertOk();
+        $this->assertAvailability(
+            Worker::query()->where('israeli_id', $listId)->firstOrFail(),
+            [0, 2, 4],
+            [$this->eveningShift->id],
+        );
+
+        $allDaysId = $this->validIsraeliId(14234567);
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'All Days Worker',
+                israeliId: $allDaysId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '50.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '160',
+                shiftA: '1-7',
+            ),
+        ])->assertOk();
+        $this->assertAvailability(
+            Worker::query()->where('israeli_id', $allDaysId)->firstOrFail(),
+            [0, 1, 2, 3, 4, 5, 6],
+            [$this->morningShift->id],
+        );
+
+        foreach (['0', '8'] as $invalidDay) {
+            $response = $this->importCsv([
+                $this->csvRow(
+                    fullName: 'Invalid Day Worker',
+                    israeliId: $this->validIsraeliId(15234567 + (int) $invalidDay),
+                    role: 'General Guard',
+                    status: 'Active',
+                    hourlyCost: '50.00',
+                    minMonthlyHours: '80',
+                    maxMonthlyHours: '160',
+                    shiftA: $invalidDay,
+                ),
+            ]);
+
+            $response
+                ->assertOk()
+                ->assertJsonPath('data.skipped', 1);
+
+            self::assertContains('00:00-08:00', array_column($response->json('errors'), 'field'));
+        }
+    }
+
+    public function test_worker_csv_export_import_round_trip_preserves_stored_day_of_week(): void
+    {
+        $israeliId = $this->validIsraeliId(16234567);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Round Trip Worker',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->role->id,
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 2, 4, 5, 6], [$this->morningShift->id, $this->dayShift->id])
+            ->create([
+                'hourly_cost' => 52.50,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 160,
+            ]);
+
+        $exportedCsv = $this->exportCsv();
+        self::assertStringContainsString('1|3|5-7', $exportedCsv);
+
+        $this->importFile($this->writeTempCsv($exportedCsv))->assertOk();
+
+        $worker->refresh();
+        $this->assertAvailability($worker, [0, 2, 4, 5, 6], [$this->morningShift->id, $this->dayShift->id]);
+    }
+
+    public function test_worker_can_be_deactivated(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->role->id,
             'israeli_id' => $this->validIsraeliId(62345678),
+            'is_active' => true,
         ]);
         Contract::factory()
             ->for($worker)
             ->withAvailability([0], [$this->morningShift->id])
             ->create();
 
-        $this->deleteJson("/api/workers/{$worker->israeli_id}")
+        $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Worker deactivated successfully.');
 
-        $this->assertDatabaseMissing('workers', [
+        $this->assertDatabaseHas('workers', [
             'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
         ]);
 
-        $this->getJson('/api/workers')
+        $this->getJson('/api/workers?is_active=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
+
+        $this->getJson('/api/workers?is_active=0')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
     }
 
-    public function test_worker_with_roster_assignments_can_be_deleted(): void
+    public function test_worker_with_roster_assignments_can_be_deactivated(): void
     {
         $worker = Worker::factory()->create([
             'role_id' => $this->role->id,
             'israeli_id' => $this->validIsraeliId(62345679),
+            'is_active' => true,
         ]);
         Contract::factory()
             ->for($worker)
             ->withAvailability([0], [$this->morningShift->id])
             ->create();
 
-        $roster = Roster::factory()->create();
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
         RosterAssignment::factory()->create([
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => $past->copy()->day(10)->toDateString(),
+        ]);
+        RosterAssignment::factory()->create([
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => now()->startOfMonth()->addDays(4)->toDateString(),
+        ]);
+
+        $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Worker deactivated successfully.');
+
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_worker_deactivate_refreshes_coverage_shortages_and_alerts(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345680),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
             'roster_id' => $roster->id,
             'worker_id' => $worker->israeli_id,
             'shift_id' => $this->morningShift->id,
-            'work_date' => '2026-06-10',
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
         ]);
 
-        $this->deleteJson("/api/workers/{$worker->israeli_id}")
+        RosterAlert::query()->create([
+            'roster_id' => $roster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+            'scheduled_hours' => 50,
+        ]);
+
+        $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")->assertOk();
+
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-06-05 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_worker_deactivate_keeps_past_roster_alerts_and_assignments_as_history(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'full_name' => 'History Worker',
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345682),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create();
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()
+            ->forPeriod((int) $past->year, (int) $past->month)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => $past->copy()->day(10)->toDateString(),
+            'source' => AssignmentSource::Auto,
+        ]);
+        RosterAlert::query()->create([
+            'roster_id' => $pastRoster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => $worker->full_name,
+            'min_hours' => 160,
+            'scheduled_hours' => 120,
+        ]);
+
+        $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('message', 'Worker deactivated successfully.');
 
-        $this->assertDatabaseMissing('workers', [
+        $this->assertDatabaseHas('workers', [
             'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
         ]);
-        $this->assertDatabaseCount('roster_assignments', 0);
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'worker_name' => 'History Worker',
+        ]);
+
+        $this->getJson("/api/rosters/{$pastRoster->id}")
+            ->assertOk()
+            ->assertJsonPath('data.reports.hours_shortfalls.0.worker_id', $worker->israeli_id)
+            ->assertJsonPath('data.reports.hours_shortfalls.0.worker_name', 'History Worker')
+            ->assertJsonPath('data.reports.hours_shortfalls.0.shortfall_hours', 40);
+    }
+
+    public function test_roster_show_returns_refreshed_reports_after_worker_deactivate(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345681),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        $this->postJson("/api/workers/{$worker->israeli_id}/deactivate")->assertOk();
+
+        $response = $this->getJson("/api/rosters/{$roster->id}")->assertOk();
+
+        $shortage = collect($response->json('data.reports.coverage_shortages'))
+            ->first(static fn (array $row): bool => $row['work_date'] === '2026-06-05'
+                && $row['shift_code'] === 'A'
+                && $row['role_name'] === 'Supervisor');
+
+        self::assertNotNull($shortage);
+        self::assertSame(1, $shortage['missing']);
+        self::assertGreaterThan(0, $response->json('data.summary.coverage_shortage_count'));
+        self::assertCount(0, $response->json('data.reports.hours_shortfalls'));
     }
 
     public function test_all_workers_can_be_deleted(): void
     {
         $workers = Worker::factory()
             ->count(3)
-            ->create(['role_id' => $this->role->id]);
+            ->create(['role_id' => $this->role->id, 'is_active' => true]);
 
         foreach ($workers as $worker) {
             Contract::factory()
@@ -1033,26 +1351,380 @@ final class WorkerApiTest extends TestCase
                 ->create();
         }
 
-        $roster = Roster::factory()->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
         RosterAssignment::factory()->create([
-            'roster_id' => $roster->id,
+            'roster_id' => $currentRoster->id,
             'worker_id' => $workers[0]->israeli_id,
             'shift_id' => $this->morningShift->id,
-            'work_date' => '2026-06-10',
+            'work_date' => now()->startOfMonth()->addDays(4)->toDateString(),
         ]);
 
-        $this->deleteJson('/api/workers')
+        $this->postJson('/api/workers/delete-all')
             ->assertOk()
             ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'All workers deleted successfully.')
             ->assertJsonPath('data.deleted', 3);
 
-        $this->assertDatabaseCount('workers', 0);
-        $this->assertDatabaseCount('contracts', 0);
-        $this->assertDatabaseCount('roster_assignments', 0);
+        $this->assertDatabaseCount('workers', 3);
+        $this->assertDatabaseCount('contracts', 3);
+        foreach ($workers as $worker) {
+            $this->assertSoftDeleted('workers', [
+                'israeli_id' => $worker->israeli_id,
+                'is_active' => false,
+            ]);
+        }
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $currentRoster->id,
+        ]);
 
         $this->getJson('/api/workers')
             ->assertOk()
             ->assertJsonPath('meta.total', 0);
+
+        $this->getJson('/api/workers?trashed=only')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+    }
+
+    public function test_all_workers_delete_refreshes_roster_reports(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345682),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 8,
+                'max_monthly_hours' => 180,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        RosterAssignment::query()->create([
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => '2026-06-05',
+            'source' => AssignmentSource::Auto,
+        ]);
+
+        RosterAlert::query()->create([
+            'roster_id' => $roster->id,
+            'type' => RosterAlertType::HoursShortfall,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 999,
+            'scheduled_hours' => 50,
+        ]);
+
+        $this->postJson('/api/workers/delete-all')
+            ->assertOk()
+            ->assertJsonPath('message', 'All workers deleted successfully.')
+            ->assertJsonPath('data.deleted', 1);
+
+        $this->assertSoftDeleted('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+        $this->assertDatabaseHas('coverage_shortages', [
+            'roster_id' => $roster->id,
+            'work_date' => '2026-06-05 00:00:00',
+            'shift_id' => $this->morningShift->id,
+            'role_id' => $this->supervisorRole->id,
+            'required_count' => 1,
+            'assigned_count' => 0,
+        ]);
+        $this->assertDatabaseMissing('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_worker_can_be_reactivated_via_update(): void
+    {
+        $user = User::query()->firstOrFail();
+        $worker = Worker::factory()->create([
+            'role_id' => $this->supervisorRole->id,
+            'israeli_id' => $this->validIsraeliId(62345683),
+            'is_active' => false,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([4], [$this->morningShift->id])
+            ->create([
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $roster = Roster::factory()
+            ->forPeriod(2026, 6)
+            ->create(['created_by' => $user->id]);
+
+        $this->putJson("/api/workers/{$worker->israeli_id}", $this->workerPayload([
+            'is_active' => true,
+            'role_id' => $this->supervisorRole->id,
+            'contract' => [
+                'hourly_cost' => 72.50,
+                'min_monthly_hours' => 160,
+                'max_monthly_hours' => 240,
+            ],
+            'availability' => [
+                ['day_of_week' => 4, 'shift_id' => $this->morningShift->id],
+            ],
+        ]))
+            ->assertOk()
+            ->assertJsonPath('message', 'Worker updated successfully.')
+            ->assertJsonPath('data.is_active', true);
+
+        $worker->refresh();
+        self::assertTrue($worker->is_active);
+
+        $this->getJson('/api/workers?is_active=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+
+        $this->assertDatabaseHas('roster_alerts', [
+            'roster_id' => $roster->id,
+            'worker_id' => $worker->israeli_id,
+            'min_hours' => 160,
+            'scheduled_hours' => 0,
+        ]);
+    }
+
+    public function test_worker_can_be_soft_deleted(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345684),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create();
+
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('message', 'Worker deleted successfully.');
+
+        $this->assertSoftDeleted('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => false,
+        ]);
+
+        $this->getJson('/api/workers')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+
+        $this->getJson('/api/workers?trashed=only')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_soft_deleted_worker_is_hidden_from_default_list_but_inactive_worker_is_visible(): void
+    {
+        $inactiveWorker = Worker::factory()->inactive()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345685),
+        ]);
+        $deletedWorker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345686),
+            'is_active' => true,
+        ]);
+
+        $this->deleteJson("/api/workers/{$deletedWorker->israeli_id}")->assertOk();
+
+        $this->getJson('/api/workers?is_active=0')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.israeli_id', $inactiveWorker->israeli_id);
+
+        $this->getJson('/api/workers?trashed=only')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.israeli_id', $deletedWorker->israeli_id);
+    }
+
+    public function test_soft_deleted_worker_returns_not_found_for_show_and_update(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345687),
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create();
+
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")->assertOk();
+
+        $this->getJson("/api/workers/{$worker->israeli_id}")
+            ->assertNotFound();
+
+        $this->putJson("/api/workers/{$worker->israeli_id}", $this->workerPayload([
+            'is_active' => true,
+        ]))->assertNotFound();
+    }
+
+    public function test_soft_deleted_worker_can_be_restored(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345688),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create();
+
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")->assertOk();
+
+        $this->postJson("/api/workers/{$worker->israeli_id}/restore")
+            ->assertOk()
+            ->assertJsonPath('message', 'Worker restored successfully.')
+            ->assertJsonPath('data.is_trashed', false)
+            ->assertJsonPath('data.is_active', true);
+
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $worker->israeli_id,
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+
+        $this->getJson('/api/workers?is_active=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_all_archived_workers_can_be_restored(): void
+    {
+        $workers = Worker::factory()
+            ->count(3)
+            ->create(['role_id' => $this->role->id, 'is_active' => true]);
+
+        foreach ($workers as $worker) {
+            Contract::factory()
+                ->for($worker)
+                ->withAvailability([0], [$this->morningShift->id])
+                ->create();
+            $this->deleteJson("/api/workers/{$worker->israeli_id}")->assertOk();
+        }
+
+        $this->postJson('/api/workers/restore-all')
+            ->assertOk()
+            ->assertJsonPath('message', 'All workers restored successfully.')
+            ->assertJsonPath('data.restored', 3);
+
+        foreach ($workers as $worker) {
+            $this->assertDatabaseHas('workers', [
+                'israeli_id' => $worker->israeli_id,
+                'is_active' => true,
+                'deleted_at' => null,
+            ]);
+        }
+
+        $this->getJson('/api/workers?trashed=only')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
+
+        $this->getJson('/api/workers?is_active=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 3);
+    }
+
+    public function test_soft_delete_removes_upcoming_assignments_preserves_past(): void
+    {
+        $worker = Worker::factory()->create([
+            'role_id' => $this->role->id,
+            'israeli_id' => $this->validIsraeliId(62345689),
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create();
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()->forPeriod((int) $past->year, (int) $past->month)->create();
+        $currentRoster = Roster::factory()->forPeriod((int) now()->year, (int) now()->month)->create();
+
+        RosterAssignment::factory()->create([
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => $past->copy()->day(10)->toDateString(),
+        ]);
+        RosterAssignment::factory()->create([
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+            'shift_id' => $this->morningShift->id,
+            'work_date' => now()->startOfMonth()->addDays(4)->toDateString(),
+        ]);
+
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")->assertOk();
+
+        $this->assertDatabaseHas('roster_assignments', [
+            'roster_id' => $pastRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+        $this->assertDatabaseMissing('roster_assignments', [
+            'roster_id' => $currentRoster->id,
+            'worker_id' => $worker->israeli_id,
+        ]);
+    }
+
+    public function test_worker_import_restores_soft_deleted_worker_by_israeli_id(): void
+    {
+        $israeliId = $this->validIsraeliId(62345690);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Archived Import Worker',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->role->id,
+            'is_active' => false,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 40,
+                'min_monthly_hours' => 60,
+                'max_monthly_hours' => 120,
+            ]);
+
+        $worker->delete();
+        $this->assertSoftDeleted('workers', ['israeli_id' => $israeliId]);
+
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Restored Import Worker',
+                israeliId: $israeliId,
+                role: 'General Guard',
+                status: 'Active',
+                hourlyCost: '55.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '160',
+                shiftA: '1',
+            ),
+        ])->assertOk();
+
+        $this->assertDatabaseHas('workers', [
+            'israeli_id' => $israeliId,
+            'full_name' => 'Restored Import Worker',
+            'is_active' => true,
+            'deleted_at' => null,
+        ]);
+
+        $this->getJson('/api/workers?is_active=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1);
     }
 
     private function importFile(string $path): TestResponse

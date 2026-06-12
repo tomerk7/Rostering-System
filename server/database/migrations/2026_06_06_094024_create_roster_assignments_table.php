@@ -28,14 +28,11 @@ return new class extends Migration
             // Prevent assigning the same worker to the same date and shift more than once in the same roster.
             $table->unique(['roster_id', 'worker_id', 'work_date', 'shift_id']);
 
-            // Per-slot demand checking and grid render and fill counts.
+            // Per-roster date-range filtering and calendar-ordered assignment reads.
             $table->index(['roster_id', 'work_date', 'shift_id']);
 
-            // No-3-shifts-per-day rule and per-worker monthly-hour totals.
-            $table->index(['worker_id', 'work_date']);
-
-            // Per-worker monthly hour aggregation within a roster.
-            $table->index(['roster_id', 'worker_id']);
+            // Cross-roster per-worker lookups: worker deletion cleanup and contract max-hours validation.
+            $table->index(['worker_id']);
         });
 
         $allowedSources = implode(', ', array_map(

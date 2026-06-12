@@ -73,59 +73,6 @@ final readonly class ManualAssignmentService
     }
 
     /**
-     * Reassign an existing assignment to a different worker, enforcing the same
-     * hard constraints as a fresh manual assignment.
-     *
-     * @param Roster $roster
-     * @param RosterAssignment $assignment
-     * @param string $workerId
-     * @return RosterAssignment
-     * @throws ManualAssignmentException
-     */
-    public function change(Roster $roster, RosterAssignment $assignment, string $workerId): RosterAssignment
-    {
-        if ((int) $assignment->roster_id !== (int) $roster->id) {
-            throw ManualAssignmentException::assignmentNotInRoster();
-        }
-
-        if ((string) $assignment->worker_id === $workerId) {
-            return $assignment;
-        }
-
-        $date = CarbonImmutable::parse($assignment->work_date->toDateString())->startOfDay();
-        $shiftId = (int) $assignment->shift_id;
-
-        $worker = Worker::query()
-            ->active()
-            ->whereHas('contract')
-            ->with(['contract.availability'])
-            ->whereKey($workerId)
-            ->first();
-
-        if ($worker === null) {
-            throw ManualAssignmentException::inactiveWorker();
-        }
-
-        $shift = Shift::query()->whereKey($shiftId)->firstOrFail();
-
-        $this->assertWorkerAvailability($worker, $date, $shiftId);
-        $this->assertUniqueSlot($roster, $workerId, $shiftId, $date);
-        $this->assertDailyShiftLimit($roster, $workerId, $date);
-        $this->assertWithinMaxHours($roster, $worker, $shift);
-
-        return DB::transaction(function () use ($roster, $assignment, $workerId): RosterAssignment {
-            $assignment->update([
-                'worker_id' => $workerId,
-                'source' => AssignmentSource::Manual,
-            ]);
-
-            $this->reportService->refreshReports($roster);
-
-            return $assignment;
-        });
-    }
-
-    /**
      * Remove an assignment from a draft roster.
      *
      * @param Roster $roster
@@ -159,13 +106,13 @@ final readonly class ManualAssignmentService
     {
         $contract = $worker->contract;
 
-        $available = $contract->availability
-            ->contains(static fn ($slot): bool => (int) $slot->day_of_week === $date->dayOfWeek
-                && (int) $slot->shift_id === $shiftId);
-
-        if (! $available) {
-            throw ManualAssignmentException::unavailableDay();
+        foreach ($contract->availability as $slot) {
+            if ((int) $slot->day_of_week === $date->dayOfWeek && (int) $slot->shift_id === $shiftId) {
+                return;
+            }
         }
+
+        throw ManualAssignmentException::unavailableDay();
     }
 
     /**

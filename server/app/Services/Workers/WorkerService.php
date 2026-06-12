@@ -11,11 +11,11 @@ use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
 use App\Services\Rostering\RosterReportService;
-use Exception;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 final readonly class WorkerService
@@ -47,8 +47,17 @@ final readonly class WorkerService
     {
         $perPage = min((int) $request->integer('per_page', 15), 1000);
 
-        return Worker::query()
-            ->with(self::RELATIONS)
+        $query = Worker::query()->with(self::RELATIONS);
+
+        $trashed = (string) $request->string('trashed');
+
+        if ($trashed === 'only') {
+            $query->onlyTrashed();
+        } elseif ($trashed === 'with') {
+            $query->withTrashed();
+        }
+
+        return $query
             ->when($request->filled('search'), function (Builder $query) use ($request): void {
                 $this->applySearch($query, (string) $request->string('search'));
             })
@@ -86,6 +95,11 @@ final readonly class WorkerService
      */
     public function create(array $data): Worker
     {
+        $this->contractValidator->assertMaxHoursAllowed(
+            $data['israeli_id'],
+            (int) $data['contract']['max_monthly_hours'],
+        );
+
         return DB::transaction(function () use ($data): Worker {
             $worker = Worker::query()->create([
                 'full_name' => $data['full_name'],
@@ -103,7 +117,11 @@ final readonly class WorkerService
 
             $this->replaceAvailability($contract, $data);
 
-            return $worker->load(self::RELATIONS);
+            $createdWorker = $worker->load(self::RELATIONS);
+
+            $this->reportService->refreshReportsForWorkers([$createdWorker->israeli_id]);
+
+            return $createdWorker;
         });
     }
 
@@ -137,41 +155,132 @@ final readonly class WorkerService
 
             $updatedWorker = $worker->load(self::RELATIONS);
 
-            $this->refreshRosterReports();
+            $this->reportService->refreshReportsForWorkers([$updatedWorker->israeli_id]);
 
             return $updatedWorker;
         });
     }
 
     /**
-     * Delete a worker and their roster assignments.
+     * Deactivate a worker and refresh upcoming roster reports.
+     *
+     * Past-roster assignments, alerts, and coverage shortages are preserved.
      *
      * @param Worker $worker
      * @return void
      */
-    public function delete(Worker $worker): void
+    public function deactivate(Worker $worker): void
     {
-        DB::transaction(function () use ($worker): void {
-            RosterAssignment::query()
-                ->where('worker_id', $worker->israeli_id)
-                ->delete();
+        if (! $worker->is_active) {
+            return;
+        }
 
-            $worker->delete();
+        DB::transaction(function () use ($worker): void {
+            $worker->update(['is_active' => false]);
+
+            $this->reportService->refreshReportsForWorkers([$worker->israeli_id]);
         });
     }
 
     /**
-     * Delete every worker and their roster assignments.
+     * Soft-delete every non-archived worker and refresh upcoming roster reports.
+     *
+     * Past-roster assignments, alerts, and coverage shortages are preserved.
      *
      * @return int
      */
     public function deleteAll(): int
     {
-        return DB::transaction(function (): int {
-            RosterAssignment::query()->delete();
+        $deleted = DB::transaction(function (): int {
+            $deleted = Worker::query()->count();
 
-            return Worker::query()->delete();
+            if ($deleted === 0) {
+                return 0;
+            }
+
+            Worker::query()->update(['is_active' => false]);
+            Worker::query()->delete();
+
+            RosterAssignment::query()
+                ->whereHas('roster', function (Builder $query): void {
+                    $query->whereDate('period_start', '>=', Carbon::now()->startOfMonth()->toDateString());
+                })
+                ->delete();
+
+            $this->reportService->removeUpcomingAlerts();
+
+            return $deleted;
         });
+
+        if ($deleted > 0) {
+            $this->reportService->refreshCoverageForUpcomingRosters();
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * Soft-delete a worker and refresh upcoming roster reports.
+     *
+     * Past-roster assignments, alerts, and coverage shortages are preserved.
+     *
+     * @param Worker $worker
+     * @return void
+     */
+    public function softDelete(Worker $worker): void
+    {
+        DB::transaction(function () use ($worker): void {
+            $worker->update(['is_active' => false]);
+            $worker->delete();
+
+            $this->reportService->refreshReportsForWorkers([$worker->israeli_id]);
+        });
+    }
+
+    /**
+     * Restore a soft-deleted worker as active and refresh upcoming roster reports.
+     *
+     * @param Worker $worker
+     * @return Worker
+     */
+    public function restore(Worker $worker): Worker
+    {
+        return DB::transaction(function () use ($worker): Worker {
+            $worker->restore();
+            $worker->update(['is_active' => true]);
+
+            $restoredWorker = $worker->load(self::RELATIONS);
+
+            $this->reportService->refreshReportsForWorkers([$restoredWorker->israeli_id]);
+
+            return $restoredWorker;
+        });
+    }
+
+    /**
+     * Restore every archived worker as active and refresh upcoming roster reports.
+     *
+     * @return int
+     */
+    public function restoreAll(): int
+    {
+        /** @var list<string> $workerIds */
+        $workerIds = Worker::onlyTrashed()->pluck('israeli_id')->all();
+
+        if ($workerIds === []) {
+            return 0;
+        }
+
+        DB::transaction(function () use ($workerIds): void {
+            Worker::onlyTrashed()->restore();
+            Worker::query()
+                ->whereIn('israeli_id', $workerIds)
+                ->update(['is_active' => true]);
+        });
+
+        $this->reportService->refreshReportsForWorkers($workerIds);
+
+        return count($workerIds);
     }
 
     /**
@@ -196,7 +305,7 @@ final readonly class WorkerService
                 ->get(['id', 'code', 'name']),
             'shifts' => Shift::query()
                 ->orderBy('code')
-                ->get(['id', 'code', 'label', 'start_time', 'end_time', 'duration_hours']),
+                ->get(['id', 'code', 'start_time', 'end_time', 'duration_hours']),
             'shift_role_requirements' => ShiftRoleRequirement::query()
                 ->with(['role:id,code,name'])
                 ->orderBy('shift_id')
@@ -214,16 +323,6 @@ final readonly class WorkerService
                 ])
                 ->values(),
         ];
-    }
-
-    /**
-     * Recompute persisted roster coverage shortages and hours-shortfall alerts.
-     *
-     * @throws Exception
-     */
-    private function refreshRosterReports(): void
-    {
-        $this->reportService->refreshAllReports();
     }
 
     /**

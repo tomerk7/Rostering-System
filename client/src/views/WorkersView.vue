@@ -1,65 +1,31 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useWorkersStore } from '@/stores/workers'
-import { downloadWorkersSample, exportWorkers, importWorkers } from '@/api/workers'
-import { isAxiosError } from 'axios'
+import { exportWorkers } from '@/api/workers'
+import WorkerImportModal from '@/components/workers/WorkerImportModal.vue'
 
 const workersStore = useWorkersStore()
 
 const showImport = ref(false)
-const importFile = ref(null)
-const importing = ref(false)
-const importError = ref('')
-const importSummary = ref(null)
-const importErrors = ref([])
 const exporting = ref(false)
-const downloadingSample = ref(false)
 
 function openImport() {
   showImport.value = true
-  importFile.value = null
-  importError.value = ''
-  importSummary.value = null
-  importErrors.value = []
 }
 
 function closeImport() {
   showImport.value = false
 }
 
-function onFileChange(event) {
-  importFile.value = event.target.files?.[0] ?? null
-}
-
-async function submitImport() {
-  if (importFile.value === null) {
-    importError.value = 'Please choose a CSV file to import.'
-    return
-  }
-
-  importing.value = true
-  importError.value = ''
-  importSummary.value = null
-  importErrors.value = []
-
-  try {
-    const response = await importWorkers(importFile.value)
-    importSummary.value = response.data
-    importErrors.value = response.errors ?? []
-    await workersStore.fetchWorkers()
-  } catch (error) {
-    if (isAxiosError(error) && error.response?.status === 422) {
-      const fileErrors = error.response.data?.errors?.file
-      importError.value = fileErrors?.[0] ?? 'The uploaded file is invalid.'
-    } else {
-      importError.value = 'Import failed. Please try again.'
-    }
-  } finally {
-    importing.value = false
-  }
+async function onWorkersImported() {
+  await workersStore.fetchWorkers()
 }
 
 async function downloadExport() {
+  if (workersStore.meta.total === 0) {
+    return
+  }
+
   exporting.value = true
 
   try {
@@ -76,27 +42,6 @@ async function downloadExport() {
     workersStore.error = 'Could not export workers. Please try again.'
   } finally {
     exporting.value = false
-  }
-}
-
-async function downloadSample() {
-  downloadingSample.value = true
-  importError.value = ''
-
-  try {
-    const blob = await downloadWorkersSample()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'workers-sample.csv'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    URL.revokeObjectURL(url)
-  } catch {
-    importError.value = 'Could not download sample CSV. Please try again.'
-  } finally {
-    downloadingSample.value = false
   }
 }
 
@@ -123,16 +68,71 @@ onMounted(async () => {
 async function resetFilters() {
   workersStore.search = ''
   workersStore.roleCode = ''
-  workersStore.status = ''
+  workersStore.status = 'active'
   await workersStore.applyFilters()
 }
 
-async function deleteWorker(worker) {
-  if (!window.confirm(`Delete ${worker.full_name}?`)) {
+async function showDirectory() {
+  if (workersStore.view === 'directory') {
     return
   }
 
-  await workersStore.removeWorker(worker.israeli_id)
+  workersStore.status = 'active'
+  await workersStore.setView('directory')
+}
+
+async function showArchived() {
+  if (workersStore.view === 'archived') {
+    return
+  }
+
+  await workersStore.setView('archived')
+}
+
+async function deactivateWorker(worker) {
+  if (!window.confirm(
+    `Deactivate ${worker.full_name}? They will be removed from current and future rosters but remain in this list as inactive.`,
+  )) {
+    return
+  }
+
+  await workersStore.deactivateWorker(worker.israeli_id)
+}
+
+async function deleteWorker(worker) {
+  if (!window.confirm(
+    `Delete ${worker.full_name}? They will be archived and hidden from this list. Past roster history is kept.`,
+  )) {
+    return
+  }
+
+  await workersStore.deleteWorker(worker.israeli_id)
+}
+
+async function restoreWorker(worker) {
+  if (!window.confirm(
+    `Restore ${worker.full_name}? They will return to the directory as active.`,
+  )) {
+    return
+  }
+
+  await workersStore.restoreWorker(worker.israeli_id)
+}
+
+async function restoreAllWorkers() {
+  const total = workersStore.meta.total
+
+  if (total === 0) {
+    return
+  }
+
+  if (!window.confirm(
+    `Restore all ${total} archived workers? They will return to the directory as active.`,
+  )) {
+    return
+  }
+
+  await workersStore.restoreAllWorkers()
 }
 
 async function deleteAllWorkers() {
@@ -142,11 +142,13 @@ async function deleteAllWorkers() {
     return
   }
 
-  if (!window.confirm(`Delete all ${total} workers? This cannot be undone.`)) {
+  if (!window.confirm(
+    `Delete all ${total} workers shown? They will be archived and hidden from the directory. Past roster history is kept.`,
+  )) {
     return
   }
 
-  await workersStore.removeAllWorkers()
+  await workersStore.deleteAllWorkers()
 }
 
 function formatCurrency(value) {
@@ -194,7 +196,8 @@ function availabilitySummary(worker) {
         <button
           type="button"
           class="button"
-          :disabled="exporting"
+          :disabled="exporting || workersStore.meta.total === 0 || workersStore.isArchivedView"
+          :title="workersStore.meta.total === 0 ? 'Export is available only when workers exist.' : ''"
           @click="downloadExport"
         >
           {{ exporting ? 'Exporting...' : 'Export CSV' }}
@@ -207,6 +210,7 @@ function availabilitySummary(worker) {
           Import CSV
         </button>
         <button
+          v-if="!workersStore.isArchivedView"
           type="button"
           class="button button--danger"
           :disabled="workersStore.meta.total === 0 || workersStore.deletingAll"
@@ -214,7 +218,17 @@ function availabilitySummary(worker) {
         >
           {{ workersStore.deletingAll ? 'Deleting...' : 'Delete all' }}
         </button>
+        <button
+          v-if="workersStore.isArchivedView"
+          type="button"
+          class="button button--primary"
+          :disabled="workersStore.meta.total === 0 || workersStore.restoringAll"
+          @click="restoreAllWorkers"
+        >
+          {{ workersStore.restoringAll ? 'Restoring...' : 'Restore all' }}
+        </button>
         <RouterLink
+          v-if="!workersStore.isArchivedView"
           class="button button--primary"
           :to="{ name: 'workers.create' }"
         >
@@ -222,6 +236,25 @@ function availabilitySummary(worker) {
         </RouterLink>
       </div>
     </header>
+
+    <div class="view-toggle">
+      <button
+        type="button"
+        class="button"
+        :class="{ 'button--primary': !workersStore.isArchivedView }"
+        @click="showDirectory"
+      >
+        Directory
+      </button>
+      <button
+        type="button"
+        class="button"
+        :class="{ 'button--primary': workersStore.isArchivedView }"
+        @click="showArchived"
+      >
+        Archived
+      </button>
+    </div>
 
     <section class="panel">
       <form
@@ -254,7 +287,10 @@ function availabilitySummary(worker) {
           </select>
         </label>
 
-        <label class="field">
+        <label
+          v-if="!workersStore.isArchivedView"
+          class="field"
+        >
           <span class="field__label">Status</span>
           <select
             v-model="workersStore.status"
@@ -341,6 +377,13 @@ function availabilitySummary(worker) {
                 <td>{{ worker.role.name ?? '-' }}</td>
                 <td>
                   <span
+                    v-if="workersStore.isArchivedView"
+                    class="badge badge--muted"
+                  >
+                    Archived
+                  </span>
+                  <span
+                    v-else
                     class="badge"
                     :class="worker.is_active ? 'badge--success' : 'badge--muted'"
                   >
@@ -356,20 +399,41 @@ function availabilitySummary(worker) {
                 </td>
                 <td>{{ availabilitySummary(worker) }}</td>
                 <td class="table__actions">
-                  <RouterLink
-                    class="button"
-                    :to="{ name: 'workers.edit', params: { id: worker.israeli_id } }"
-                  >
-                    Edit
-                  </RouterLink>
-                  <button
-                    type="button"
-                    class="button button--danger"
-                    :disabled="workersStore.deletingId === worker.israeli_id"
-                    @click="deleteWorker(worker)"
-                  >
-                    {{ workersStore.deletingId === worker.israeli_id ? 'Deleting...' : 'Delete' }}
-                  </button>
+                  <template v-if="workersStore.isArchivedView">
+                    <button
+                      type="button"
+                      class="button button--primary"
+                      :disabled="workersStore.restoringId === worker.israeli_id"
+                      @click="restoreWorker(worker)"
+                    >
+                      {{ workersStore.restoringId === worker.israeli_id ? 'Restoring...' : 'Restore' }}
+                    </button>
+                  </template>
+                  <template v-else>
+                    <RouterLink
+                      class="button"
+                      :to="{ name: 'workers.edit', params: { id: worker.israeli_id } }"
+                    >
+                      Edit
+                    </RouterLink>
+                    <button
+                      v-if="worker.is_active"
+                      type="button"
+                      class="button button--danger"
+                      :disabled="workersStore.deactivatingId === worker.israeli_id"
+                      @click="deactivateWorker(worker)"
+                    >
+                      {{ workersStore.deactivatingId === worker.israeli_id ? 'Deactivating...' : 'Deactivate' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="button button--danger"
+                      :disabled="workersStore.deletingId === worker.israeli_id"
+                      @click="deleteWorker(worker)"
+                    >
+                      {{ workersStore.deletingId === worker.israeli_id ? 'Deleting...' : 'Delete' }}
+                    </button>
+                  </template>
                 </td>
               </tr>
             </template>
@@ -404,123 +468,11 @@ function availabilitySummary(worker) {
       </footer>
     </section>
 
-    <div
-      v-if="showImport"
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      @click.self="closeImport"
-    >
-      <div class="modal__card">
-        <header class="modal__header">
-          <h2 class="modal__title">
-            Import workers from CSV
-          </h2>
-          <button
-            type="button"
-            class="button"
-            @click="closeImport"
-          >
-            Close
-          </button>
-        </header>
-
-        <p class="modal__hint">
-          One row per worker. Fixed columns: full_name, israeli_id, role, status,
-          hourly_cost, min_monthly_hours, max_monthly_hours. Then one column per shift
-          (Shift_A, Shift_B, Shift_C) with a day expression such as 1-5, 0|6, or 0-6
-          (0=Sunday through 6=Saturday). Leave a shift cell empty when unavailable.
-        </p>
-
-        <label class="field">
-          <span class="field__label">CSV file</span>
-          <input
-            class="input"
-            type="file"
-            accept=".csv,text/csv"
-            @change="onFileChange"
-          >
-        </label>
-
-        <div>
-          <button
-            type="button"
-            class="button"
-            :disabled="downloadingSample || importing"
-            @click="downloadSample"
-          >
-            {{ downloadingSample ? 'Downloading...' : 'Download sample' }}
-          </button>
-        </div>
-
-        <div
-          v-if="importError"
-          class="alert"
-          role="alert"
-        >
-          {{ importError }}
-        </div>
-
-        <div
-          v-if="importSummary"
-          class="alert alert--success"
-          role="status"
-        >
-          Imported {{ importSummary.imported }} of {{ importSummary.total }} rows
-          ({{ importSummary.created }} created, {{ importSummary.updated }} updated,
-          {{ importSummary.skipped }} skipped).
-        </div>
-
-        <div
-          v-if="importErrors.length"
-          class="import-errors"
-        >
-          <h3 class="import-errors__title">
-            Row errors ({{ importErrors.length }})
-          </h3>
-          <div class="table-wrap">
-            <table class="table import-errors__table">
-              <thead>
-                <tr>
-                  <th>Line</th>
-                  <th>Field</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(rowError, index) in importErrors"
-                  :key="`${rowError.line}-${index}`"
-                >
-                  <td>{{ rowError.line }}</td>
-                  <td>{{ rowError.field }}</td>
-                  <td>{{ rowError.message }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <footer class="modal__footer">
-          <button
-            type="button"
-            class="button"
-            :disabled="importing"
-            @click="closeImport"
-          >
-            Done
-          </button>
-          <button
-            type="button"
-            class="button button--primary"
-            :disabled="importing || importFile === null"
-            @click="submitImport"
-          >
-            {{ importing ? 'Importing...' : 'Import' }}
-          </button>
-        </footer>
-      </div>
-    </div>
+    <WorkerImportModal
+      :show="showImport"
+      @close="closeImport"
+      @imported="onWorkersImported"
+    />
   </main>
 </template>
 
@@ -529,7 +481,6 @@ function availabilitySummary(worker) {
 @import '@/assets/ui/forms.css';
 @import '@/assets/ui/page.css';
 @import '@/assets/ui/table.css';
-@import '@/assets/ui/modal.css';
 
 .toolbar {
   display: grid;
@@ -541,6 +492,12 @@ function availabilitySummary(worker) {
 .toolbar__actions {
   display: flex;
   gap: 0.5rem;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .pagination {
@@ -559,16 +516,6 @@ function availabilitySummary(worker) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-}
-
-.import-errors__title {
-  margin: 0 0 0.5rem;
-  font-size: 0.9375rem;
-  color: #334155;
-}
-
-.import-errors__table {
-  min-width: 0;
 }
 
 @media (max-width: 820px) {

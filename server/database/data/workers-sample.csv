@@ -1,13 +1,13 @@
-full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,Shift_A,Shift_B,Shift_C
-Dana Cohen,234567816,Supervisor,Active,75.00,120,180,0-3,0-3,
-Yossi Levi,314159260,General Guard,Active,52.50,80,160,0-6,0-6,0-6
-Maya Bar,271828188,Screener,Inactive,60.00,0,120,,1|3|5,
-Avi Mizrahi,161803390,General Guard,Active,50.00,100,170,,1-5,1-5
-Noa Friedman,141421354,Screener,Active,58.25,60,140,0|2|4,,0|2|4
-Eitan Shapiro,577215668,Supervisor,Active,82.50,130,190,,1-5,
-Tamar Azoulay,999999998,General Guard,Active,49.90,90,165,0-6,0|1|3|5,
-Omer Katz,123456782,General Guard,Inactive,51.00,0,150,,,2|3|4
-Shira Test,864208640,Screener,Active,61.75,70,150,1-4,0-4,0-4
-Itai Golan,135724680,General Guard,Active,53.00,110,175,,3-6,3-6
-Lior Avraham,246813570,Supervisor,Active,79.00,125,185,0-5,0-5,
-Gal Ben-David,753198647,General Guard,Active,52.00,95,168,2-4,,0|4|5|6
+full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,00:00-08:00,08:00-16:00,16:00-00:00
+Dana Cohen,234567816,Supervisor,Active,75.00,120,180,1-4,1-4,
+Yossi Levi,314159260,General Guard,Active,52.50,80,160,1-7,1-7,1-7
+Maya Bar,271828188,Screener,Inactive,60.00,0,120,,2|4|6,
+Avi Mizrahi,161803390,General Guard,Active,50.00,100,170,,2-6,2-6
+Noa Friedman,141421354,Screener,Active,58.25,60,140,1|3|5,,1|3|5
+Eitan Shapiro,577215668,Supervisor,Active,82.50,130,190,,2-6,
+Tamar Azoulay,999999998,General Guard,Active,49.90,90,165,1-7,1|2|4|6,
+Omer Katz,123456782,General Guard,Inactive,51.00,0,150,,,3|4|5
+Shira Test,864208640,Screener,Active,61.75,70,150,2-5,1-5,1-5
+Itai Golan,135724680,General Guard,Active,53.00,110,175,,4-7,4-7
+Lior Avraham,246813570,Supervisor,Active,79.00,125,185,1-6,1-6,
+Gal Ben-David,753198647,General Guard,Active,52.00,95,168,3-5,,1|5|6|7

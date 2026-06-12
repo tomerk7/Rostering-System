@@ -8,23 +8,56 @@ else
 compose := docker compose
 endif
 
-server := $(compose) exec server
-client := $(compose) exec client
+compose_dev := $(compose) -f docker-compose.dev.yml
+compose_prod := $(compose) -f docker-compose.prod.yml
 
-docker-init:
+server := $(compose_dev) exec server
+client := $(compose_dev) exec client
+
+docker-init: docker-init-dev
+
+docker-init-dev:
 	[ -f server/.env ] || cp server/.env.example server/.env
 	[ -f db/.env ] || cp db/.env.example db/.env
 	[ -f client/.env ] || cp client/.env.example client/.env
-	$(compose) up -d --build
+	$(compose_dev) up -d --build
 
-docker-up:
-	$(compose) up -d
+docker-init-prod:
+	[ -f server/.env ] || cp server/.env.example server/.env
+	[ -f db/.env ] || cp db/.env.example db/.env
+	[ -f client/.env ] || cp client/.env.example client/.env
+	$(compose_prod) up -d --build
+	@sh scripts/wait-prod-client-build.sh "$(compose_prod)" || true
+	@$(MAKE) docker-print-prod-urls
+
+docker-up: docker-up-dev
+
+docker-up-dev:
+	$(compose_dev) up -d
+
+docker-up-prod:
+	$(compose_prod) up -d
 
 docker-down:
-	$(compose) down
+	$(compose_dev) down
+	-$(compose_prod) down
 
-docker-rebuild:
-	$(compose) up -d --build
+docker-rebuild: docker-rebuild-dev
+
+docker-rebuild-dev:
+	$(compose_dev) up -d --build
+
+docker-rebuild-prod:
+	$(compose_prod) up -d --build
+	@sh scripts/wait-prod-client-build.sh "$(compose_prod)" || true
+	@$(MAKE) docker-print-prod-urls
+
+docker-print-prod-urls:
+	@echo ""
+	@echo "Production stack is ready."
+	@echo "  Client: http://localhost:5173/"
+	@echo "  API:    http://localhost:8000/"
+	@echo ""
 
 db-migrate:
 	$(server) php artisan migrate
@@ -42,22 +75,22 @@ db-seeders:
 	$(server) php artisan db:seed --force
 
 db-psql:
-	$(compose) exec db psql -U rostering -d rostering
+	$(compose_dev) exec db psql -U rostering -d rostering
 
 db-logs:
-	$(compose) logs -f db
+	$(compose_dev) logs -f db
 
 server-logs:
-	$(compose) logs -f server
+	$(compose_dev) logs -f server
 
 server-restart:
-	$(compose) restart server
+	$(compose_dev) restart server
 
 server-app-logs:
-	$(compose) exec server tail -f storage/logs/laravel.log
+	$(compose_dev) exec server tail -f storage/logs/laravel.log
 
 client-logs:
-	$(compose) logs -f client
+	$(compose_dev) logs -f client
 
 artisan-ide-helper:
 	$(server) sh -c "composer require --dev barryvdh/laravel-ide-helper"
