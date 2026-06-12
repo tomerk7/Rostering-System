@@ -14,7 +14,9 @@ return new class extends Migration
     {
         Schema::create('contracts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('worker_id')->unique()->constrained('workers')->cascadeOnDelete();
+            $table->char('worker_id', 9);
+            $table->foreign('worker_id')->references('israeli_id')->on('workers')->cascadeOnDelete();
+            $table->unique('worker_id');
             $table->decimal('hourly_cost', 8, 2);
             $table->unsignedSmallInteger('min_monthly_hours');
             $table->unsignedSmallInteger('max_monthly_hours');

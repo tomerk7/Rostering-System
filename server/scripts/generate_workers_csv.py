@@ -60,27 +60,8 @@ PROFILE_COUNTS: dict[str, dict[str, int]] = {
 }
 
 
-def is_valid_israeli_id(value: str) -> bool:
-    if len(value) != 9 or not value.isdigit():
-        return False
-
-    total = 0
-    for index, digit_char in enumerate(value):
-        product = int(digit_char) * (1 if index % 2 == 0 else 2)
-        total += product // 10 + product % 10
-
-    return total % 10 == 0
-
-
 def generate_israeli_id(base_number: int) -> str:
-    base = f"{base_number % 100_000_000:08d}"
-
-    for check_digit in range(10):
-        candidate = f"{base}{check_digit}"
-        if is_valid_israeli_id(candidate):
-            return candidate
-
-    raise ValueError(f"Could not derive a valid Israeli ID from base {base_number}")
+    return f"{base_number % 1_000_000_000:09d}"
 
 
 def join_tokens(tokens: list[str]) -> str:

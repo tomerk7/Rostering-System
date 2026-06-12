@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Unit\Services\Rostering;
 
 use App\Enums\AssignmentSource;
+use App\Services\Rostering\Data\RosterSlot;
+use App\Services\Rostering\Data\RosterWorker;
 use App\Services\Rostering\RosteringEngine;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
@@ -55,7 +57,7 @@ final class RosteringEngineTest extends TestCase
             15 => $this->worker(role: self::ROLE_GUARD, maxHours: 8, assignedHours: 8),
         ];
 
-        self::assertSame([10], $this->engine->availableWorkerIds($slot, $workers));
+        self::assertSame(['10'], $this->engine->availableWorkerIds($slot, $workers));
     }
 
     public function test_available_worker_ids_excludes_workers_already_in_the_slot(): void
@@ -66,7 +68,7 @@ final class RosteringEngineTest extends TestCase
             11 => $this->worker(role: self::ROLE_GUARD),
         ];
 
-        self::assertSame([11], $this->engine->availableWorkerIds($slot, $workers, [10 => true]));
+        self::assertSame(['11'], $this->engine->availableWorkerIds($slot, $workers, ['10' => true]));
     }
 
     public function test_best_candidate_prefers_the_worker_furthest_below_minimum_hours(): void
@@ -77,27 +79,17 @@ final class RosteringEngineTest extends TestCase
             12 => $this->worker(minHours: 100, assignedHours: 96), // deficit 4
         ];
 
-        self::assertSame(11, $this->engine->bestCandidate([10, 11, 12], $workers));
+        self::assertSame('11', $this->engine->bestCandidate(['10', '11', '12'], $workers));
     }
 
-    public function test_best_candidate_breaks_equal_deficit_by_lowest_cost(): void
+    public function test_best_candidate_breaks_equal_shortfall_by_lowest_id(): void
     {
         $workers = [
-            10 => $this->worker(hourlyCost: 90.0, minHours: 100, assignedHours: 50),
-            11 => $this->worker(hourlyCost: 40.0, minHours: 100, assignedHours: 50),
+            21 => $this->worker(minHours: 100, assignedHours: 50),
+            20 => $this->worker(minHours: 100, assignedHours: 50),
         ];
 
-        self::assertSame(11, $this->engine->bestCandidate([10, 11], $workers));
-    }
-
-    public function test_best_candidate_breaks_equal_deficit_and_cost_by_lowest_id(): void
-    {
-        $workers = [
-            21 => $this->worker(hourlyCost: 50.0, minHours: 100, assignedHours: 50),
-            20 => $this->worker(hourlyCost: 50.0, minHours: 100, assignedHours: 50),
-        ];
-
-        self::assertSame(20, $this->engine->bestCandidate([21, 20], $workers));
+        self::assertSame('20', $this->engine->bestCandidate(['21', '20'], $workers));
     }
 
     public function test_order_slots_fills_scarcest_role_first_then_date_then_shift(): void
@@ -116,9 +108,9 @@ final class RosteringEngineTest extends TestCase
         $ordered = $this->engine->orderSlots($slots);
 
         $signature = array_map(
-            static fn (array $slot): string => $slot['required_count']
-                .':'.$slot['work_date']->toDateString()
-                .':'.$slot['shift_id'],
+            static fn (RosterSlot $slot): string => $slot->requiredCount
+                .':'.$slot->workDate->toDateString()
+                .':'.$slot->shiftId,
             $ordered,
         );
 
@@ -165,8 +157,8 @@ final class RosteringEngineTest extends TestCase
         $assignments = $this->engine->generate($slots, $workers);
 
         self::assertCount(2, $assignments);
-        self::assertSame(2, $workers[10]['shifts_per_date'][$this->date->toDateString()]);
-        self::assertSame(16, $workers[10]['assigned_hours']);
+        self::assertSame(2, $workers[10]->shiftsPerDate[$this->date->toDateString()]);
+        self::assertSame(16, $workers[10]->assignedHours);
     }
 
     public function test_generate_never_exceeds_max_monthly_hours(): void
@@ -189,7 +181,7 @@ final class RosteringEngineTest extends TestCase
         $assignments = $this->engine->generate($slots, $workers);
 
         self::assertCount(2, $assignments);
-        self::assertSame(16, $workers[10]['assigned_hours']);
+        self::assertSame(16, $workers[10]->assignedHours);
     }
 
     public function test_generate_marks_every_assignment_as_auto(): void
@@ -201,7 +193,7 @@ final class RosteringEngineTest extends TestCase
 
         self::assertCount(1, $assignments);
         self::assertSame(AssignmentSource::Auto->value, $assignments[0]['source']);
-        self::assertSame(10, $assignments[0]['worker_id']);
+        self::assertSame('10', $assignments[0]['worker_id']);
         self::assertSame(self::SHIFT_A, $assignments[0]['shift_id']);
         self::assertTrue($assignments[0]['work_date']->equalTo($this->date));
     }
@@ -244,7 +236,7 @@ final class RosteringEngineTest extends TestCase
         $shortfalls = $this->engine->reportHoursShortfalls($workers);
 
         self::assertCount(1, $shortfalls);
-        self::assertSame(11, $shortfalls[0]['worker_id']);
+        self::assertSame('11', $shortfalls[0]['worker_id']);
         self::assertSame(120, $shortfalls[0]['min_hours']);
         self::assertSame(80, $shortfalls[0]['scheduled_hours']);
     }
@@ -266,8 +258,6 @@ final class RosteringEngineTest extends TestCase
 
     /**
      * Build a single staffing slot for the fixed test date.
-     *
-     * @return array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}
      */
     private function slot(
         int $shiftId,
@@ -275,14 +265,14 @@ final class RosteringEngineTest extends TestCase
         int $required = 1,
         ?CarbonImmutable $date = null,
         int $durationHours = 8,
-    ): array {
-        return [
-            'work_date' => $date ?? $this->date,
-            'shift_id' => $shiftId,
-            'role_id' => $roleId,
-            'required_count' => $required,
-            'duration_hours' => $durationHours,
-        ];
+    ): RosterSlot {
+        return new RosterSlot(
+            workDate: $date ?? $this->date,
+            shiftId: $shiftId,
+            roleId: $roleId,
+            requiredCount: $required,
+            durationHours: $durationHours,
+        );
     }
 
     /**
@@ -292,7 +282,6 @@ final class RosteringEngineTest extends TestCase
      * @param  list<int>|null  $days
      * @param  list<int>|null  $shifts
      * @param  array<string, int>  $shiftsPerDate
-     * @return array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}
      */
     private function worker(
         int $role = self::ROLE_GUARD,
@@ -303,7 +292,7 @@ final class RosteringEngineTest extends TestCase
         ?array $shifts = null,
         int $assignedHours = 0,
         array $shiftsPerDate = [],
-    ): array {
+    ): RosterWorker {
         $days ??= [$this->dayOfWeek];
         $shifts ??= [self::SHIFT_A];
 
@@ -315,21 +304,21 @@ final class RosteringEngineTest extends TestCase
             }
         }
 
-        return [
-            'role_id' => $role,
-            'hourly_cost' => $hourlyCost,
-            'min_hours' => $minHours,
-            'max_hours' => $maxHours,
-            'availability' => $availability,
-            'assigned_hours' => $assignedHours,
-            'shifts_per_date' => $shiftsPerDate,
-        ];
+        return new RosterWorker(
+            roleId: $role,
+            hourlyCost: $hourlyCost,
+            minHours: $minHours,
+            maxHours: $maxHours,
+            availability: $availability,
+            assignedHours: $assignedHours,
+            shiftsPerDate: $shiftsPerDate,
+        );
     }
 
     /**
      * A small but non-trivial set of slots for the determinism test.
      *
-     * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
+     * @return list<RosterSlot>
      */
     private function monthlySlots(): array
     {
@@ -350,7 +339,7 @@ final class RosteringEngineTest extends TestCase
     /**
      * A workforce with overlapping availability so scoring tie-breaks matter.
      *
-     * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}>
+     * @return array<int, RosterWorker>
      */
     private function workforce(): array
     {

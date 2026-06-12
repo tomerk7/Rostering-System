@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering;
 
+use App\Enums\RosterStatus;
 use App\Models\Role;
 use App\Models\Roster;
+use App\Models\RosterAssignment;
 use App\Models\Shift;
 use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
+use App\Services\Rostering\Data\GenerationResult;
+use App\Services\Rostering\Data\RosterSlot;
+use App\Services\Rostering\Data\RosterWorker;
 use Carbon\CarbonImmutable;
 use Exception;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 
@@ -24,13 +30,11 @@ final readonly class RosterService
      * Constructor.
      *
      * @param RosterGenerator $generator
-     * @param RosterPersister $persister
      * @param RosteringEngine $engine
      * @return void
      */
     public function __construct(
         private RosterGenerator $generator,
-        private RosterPersister $persister,
         private RosteringEngine $engine,
     ) {}
 
@@ -115,7 +119,7 @@ final readonly class RosterService
      * Enrich the previewed assignments with worker, shift, and role names so the
      * grid renders them without depending on the client's worker cache.
      *
-     * @param  list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
+     * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
      * @return list<array<string, mixed>>
      */
     private function previewAssignments(array $assignments): array
@@ -126,9 +130,9 @@ final readonly class RosterService
 
         $workers = Worker::query()
             ->with('role')
-            ->whereIn('id', array_values(array_unique(array_column($assignments, 'worker_id'))))
+            ->whereIn('israeli_id', array_values(array_unique(array_column($assignments, 'worker_id'))))
             ->get()
-            ->keyBy('id');
+            ->keyBy('israeli_id');
 
         $shifts = Shift::query()
             ->whereIn('id', array_values(array_unique(array_column($assignments, 'shift_id'))))
@@ -170,12 +174,20 @@ final readonly class RosterService
     {
         $result = $this->generator->generate($year, $month);
 
+        return $this->saveGenerationResult($result, $userId);
+    }
+
+    /**
+     * Persist a generated roster, replacing any existing roster for the same month.
+     */
+    public function saveGenerationResult(GenerationResult $result, int $userId): Roster
+    {
         return DB::transaction(function () use ($result, $userId): Roster {
             Roster::query()
                 ->forPeriod($result->year, $result->month)
                 ->delete();
 
-            return $this->persister->save($result, $userId);
+            return $this->persistGenerationResult($result, $userId);
         });
     }
 
@@ -187,7 +199,61 @@ final readonly class RosterService
      */
     public function delete(Roster $roster): void
     {
-        $this->persister->delete($roster);
+        $roster->delete();
+    }
+
+    /**
+     * Save a generated roster with its assignments.
+     */
+    private function persistGenerationResult(GenerationResult $result, int $createdBy): Roster
+    {
+        $now = Carbon::now();
+
+        $roster = Roster::query()->create([
+            'year' => $result->year,
+            'month' => $result->month,
+            'status' => RosterStatus::Published,
+            'generated_at' => $now,
+            'published_at' => $now,
+            'created_by' => $createdBy,
+        ]);
+
+        $this->insertAssignments($roster, $result->assignments);
+
+        return $roster;
+    }
+
+    /**
+     * Bulk-insert the generation assignments for a roster.
+     *
+     * Uses a single insert for the high-volume fact table; timestamps and the
+     * date string are set explicitly because insert() bypasses Eloquent casts.
+     *
+     * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
+     */
+    private function insertAssignments(Roster $roster, array $assignments): void
+    {
+        if ($assignments === []) {
+            return;
+        }
+
+        $now = Carbon::now();
+        $rosterId = $roster->getKey();
+
+        $rows = array_map(
+            static fn (array $assignment): array => [
+                'roster_id' => $rosterId,
+                'worker_id' => $assignment['worker_id'],
+                'shift_id' => $assignment['shift_id'],
+                'work_date' => $assignment['work_date']->toDateString(),
+                'source' => $assignment['source'],
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            $assignments,
+        );
+
+        RosterAssignment::query()->insert($rows);
     }
 
     /**
@@ -206,13 +272,13 @@ final readonly class RosterService
         $engineAssignments = [];
 
         foreach ($assignments as $assignment) {
-            $workerId = (int) $assignment->worker_id;
+            $workerId = (string) $assignment->worker_id;
 
             if (! isset($workers[$workerId])) {
                 continue;
             }
 
-            $workers[$workerId]['assigned_hours'] +=
+            $workers[$workerId]->assignedHours +=
                 (int) ($assignment->shift?->duration_hours ?? 0);
 
             $engineAssignments[] = [
@@ -249,12 +315,12 @@ final readonly class RosterService
      * Build the enriched reports payload.
      *
      * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>  $coverageShortages
-     * @param  list<array{worker_id: int, min_hours: int, scheduled_hours: int}>  $hoursShortfalls
+     * @param  list<array{worker_id: string, min_hours: int, scheduled_hours: int}>  $hoursShortfalls
      * @return array{coverage_shortages: list<array<string, mixed>>, hours_shortfalls: list<array<string, mixed>>}
      */
     private function reports(array $coverageShortages, array $hoursShortfalls): array
     {
-        $lookups = $this->warmLookups($coverageShortages, $hoursShortfalls);
+        $lookups = $this->loadReportLookups($coverageShortages, $hoursShortfalls);
 
         return [
             'coverage_shortages' => array_map(
@@ -291,7 +357,7 @@ final readonly class RosterService
      * contract plus any worker referenced by the stored assignments.
      *
      * @param  Collection<int, \App\Models\RosterAssignment>  $assignments
-     * @return array<int, array{role_id: int, min_hours: int, assigned_hours: int}>
+     * @return array<string, RosterWorker>
      */
     private function buildWorkerState(Collection $assignments): array
     {
@@ -303,25 +369,23 @@ final readonly class RosterService
             ->with('contract')
             ->get()
             ->each(function (Worker $worker) use (&$workers): void {
-                $workers[(int) $worker->id] = [
-                    'role_id' => (int) $worker->role_id,
-                    'min_hours' => (int) $worker->contract->min_monthly_hours,
-                    'assigned_hours' => 0,
-                ];
+                $workers[(string) $worker->israeli_id] = new RosterWorker(
+                    roleId: (int) $worker->role_id,
+                    minHours: (int) $worker->contract->min_monthly_hours,
+                );
             });
 
         foreach ($assignments as $assignment) {
             $worker = $assignment->worker;
 
-            if ($worker === null || isset($workers[(int) $worker->id])) {
+            if ($worker === null || isset($workers[(string) $worker->israeli_id])) {
                 continue;
             }
 
-            $workers[(int) $worker->id] = [
-                'role_id' => (int) $worker->role_id,
-                'min_hours' => (int) ($worker->contract?->min_monthly_hours ?? 0),
-                'assigned_hours' => 0,
-            ];
+            $workers[(string) $worker->israeli_id] = new RosterWorker(
+                roleId: (int) $worker->role_id,
+                minHours: (int) ($worker->contract?->min_monthly_hours ?? 0),
+            );
         }
 
         return $workers;
@@ -330,7 +394,7 @@ final readonly class RosterService
     /**
      * Expand the roster month into every staffing slot from shift_role_requirements.
      *
-     * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
+     * @return list<RosterSlot>
      */
     private function buildSlots(int $year, int $month): array
     {
@@ -354,13 +418,13 @@ final readonly class RosterService
             $date = $firstDay->addDays($day);
 
             foreach ($requirements as $requirement) {
-                $slots[] = [
-                    'work_date' => $date,
-                    'shift_id' => (int) $requirement->shift_id,
-                    'role_id' => (int) $requirement->role_id,
-                    'required_count' => (int) $requirement->required_count,
-                    'duration_hours' => (int) $requirement->shift->duration_hours,
-                ];
+                $slots[] = new RosterSlot(
+                    workDate: $date,
+                    shiftId: (int) $requirement->shift_id,
+                    roleId: (int) $requirement->role_id,
+                    requiredCount: (int) $requirement->required_count,
+                    durationHours: (int) $requirement->shift->duration_hours,
+                );
             }
         }
 
@@ -371,20 +435,17 @@ final readonly class RosterService
      * Enrich a coverage shortage with the shift and role names.
      *
      * @param  array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}  $shortage
-     * @param  array{workers: SupportCollection<int, Worker>, shifts: SupportCollection<int, Shift>, roles: SupportCollection<int, Role>}  $lookups
+     * @param  array{worker_names: SupportCollection<int, string>, shift_codes: SupportCollection<int, string>, role_names: SupportCollection<int, string>}  $lookups
      * @return array<string, mixed>
      */
     private function enrichCoverageShortage(array $shortage, array $lookups): array
     {
-        $shift = $lookups['shifts']->get($shortage['shift_id']);
-        $role = $lookups['roles']->get($shortage['role_id']);
-
         return [
             'work_date' => $shortage['work_date']->toDateString(),
             'shift_id' => $shortage['shift_id'],
-            'shift_code' => $shift?->code,
+            'shift_code' => $lookups['shift_codes']->get($shortage['shift_id']),
             'role_id' => $shortage['role_id'],
-            'role_name' => $role?->name,
+            'role_name' => $lookups['role_names']->get($shortage['role_id']),
             'required' => $shortage['required'],
             'assigned' => $shortage['assigned'],
             'missing' => $shortage['required'] - $shortage['assigned'],
@@ -394,17 +455,15 @@ final readonly class RosterService
     /**
      * Enrich a hours shortfall with the worker name.
      *
-     * @param  array{worker_id: int, min_hours: int, scheduled_hours: int}  $shortfall
-     * @param  array{workers: SupportCollection<int, Worker>, shifts: SupportCollection<int, Shift>, roles: SupportCollection<int, Role>}  $lookups
+     * @param  array{worker_id: string, min_hours: int, scheduled_hours: int}  $shortfall
+     * @param  array{worker_names: SupportCollection<string, string>, shift_codes: SupportCollection<int, string>, role_names: SupportCollection<int, string>}  $lookups
      * @return array<string, mixed>
      */
     private function enrichHoursShortfall(array $shortfall, array $lookups): array
     {
-        $worker = $lookups['workers']->get($shortfall['worker_id']);
-
         return [
             'worker_id' => $shortfall['worker_id'],
-            'worker_name' => $worker?->full_name,
+            'worker_name' => $lookups['worker_names']->get($shortfall['worker_id']),
             'min_hours' => $shortfall['min_hours'],
             'scheduled_hours' => $shortfall['scheduled_hours'],
             'shortfall_hours' => $shortfall['min_hours'] - $shortfall['scheduled_hours'],
@@ -412,26 +471,32 @@ final readonly class RosterService
     }
 
     /**
-     * Resolve the workers, shifts, and roles referenced by the reports.
+     * Load the labels referenced by the reports, keyed by model id.
      *
      * @param  list<array{shift_id: int, role_id: int}>  $coverageShortages
-     * @param  list<array{worker_id: int}>  $hoursShortfalls
+     * @param  list<array{worker_id: string}>  $hoursShortfalls
      * @return array{
-     *     workers: SupportCollection<int, Worker>,
-     *     shifts: SupportCollection<int, Shift>,
-     *     roles: SupportCollection<int, Role>
+     *     worker_names: SupportCollection<string, string>,
+     *     shift_codes: SupportCollection<int, string>,
+     *     role_names: SupportCollection<int, string>
      * }
      */
-    private function warmLookups(array $coverageShortages, array $hoursShortfalls): array
+    private function loadReportLookups(array $coverageShortages, array $hoursShortfalls): array
     {
-        $workerIds = array_unique(array_column($hoursShortfalls, 'worker_id'));
-        $shiftIds = array_unique(array_column($coverageShortages, 'shift_id'));
-        $roleIds = array_unique(array_column($coverageShortages, 'role_id'));
+        $workerIds = array_values(array_unique(array_column($hoursShortfalls, 'worker_id')));
+        $shiftIds = array_values(array_unique(array_column($coverageShortages, 'shift_id')));
+        $roleIds = array_values(array_unique(array_column($coverageShortages, 'role_id')));
 
         return [
-            'workers' => Worker::query()->whereIn('id', $workerIds)->get()->keyBy('id'),
-            'shifts' => Shift::query()->whereIn('id', $shiftIds)->get()->keyBy('id'),
-            'roles' => Role::query()->whereIn('id', $roleIds)->get()->keyBy('id'),
+            'worker_names' => $workerIds === []
+                ? collect()
+                : Worker::query()->whereKey($workerIds)->pluck('full_name', 'israeli_id'),
+            'shift_codes' => $shiftIds === []
+                ? collect()
+                : Shift::query()->whereKey($shiftIds)->pluck('code', 'id'),
+            'role_names' => $roleIds === []
+                ? collect()
+                : Role::query()->whereKey($roleIds)->pluck('name', 'id'),
         ];
     }
 }

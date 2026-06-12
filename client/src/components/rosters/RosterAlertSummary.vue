@@ -1,120 +1,85 @@
 <script setup>
-import { computed, ref } from 'vue'
-import { formatWorkDateLabel } from '@/lib/rosterGrid'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
-  summary: { type: Object, default: null },
   reports: { type: Object, required: true },
   workersById: { type: Map, required: true },
-  shifts: { type: Array, default: () => [] },
-  roles: { type: Array, default: () => [] },
 })
 
-const shiftsById = computed(() => new Map((props.shifts ?? []).map((shift) => [shift.id, shift])))
-const rolesById = computed(() => new Map((props.roles ?? []).map((role) => [role.id, role])))
+const hoursCount = computed(() => props.reports.hours_shortfalls.length)
+const hasAlerts = computed(() => hoursCount.value > 0)
 
-const hasAlerts = computed(
-  () => props.reports.coverage_shortages.length > 0 || props.reports.hours_shortfalls.length > 0,
+const isExpanded = ref(true)
+
+watch(
+  hasAlerts,
+  (value) => {
+    if (value) {
+      isExpanded.value = true
+    }
+  },
+  { immediate: true },
 )
 
-const isExpanded = ref(false)
+const sortedHoursShortfalls = computed(() => {
+  return [...props.reports.hours_shortfalls].sort(
+    (left, right) => shortfallGap(right) - shortfallGap(left),
+  )
+})
 
 function workerName(shortfall) {
-  return props.workersById.get(shortfall.worker_id)?.full_name ?? `Worker #${shortfall.worker_id}`
+  return shortfall.worker_name
+    ?? props.workersById.get(shortfall.worker_id)?.full_name
+    ?? `Worker #${shortfall.worker_id}`
 }
 
-function shortageLabel(shortage) {
-  const shift = shiftsById.value.get(shortage.shift_id)
-  const role = rolesById.value.get(shortage.role_id)
-
-  return `${formatWorkDateLabel(shortage.work_date)} · Shift ${shift?.code ?? shortage.shift_id} · ${role?.name ?? `Role #${shortage.role_id}`}`
+function shortfallGap(shortfall) {
+  return shortfall.shortfall_hours ?? Math.max(shortfall.min_hours - shortfall.scheduled_hours, 0)
 }
 </script>
 
 <template>
-  <section class="roster-alerts">
-    <header class="roster-alerts__header">
-      <button
-        type="button"
-        class="roster-alerts__toggle"
-        :aria-expanded="isExpanded"
-        aria-controls="roster-alerts-body"
-        @click="isExpanded = !isExpanded"
-      >
+  <section
+    v-if="hasAlerts"
+    class="roster-alerts roster-alerts--warning"
+  >
+    <button
+      type="button"
+      class="roster-alerts__header"
+      :aria-expanded="isExpanded"
+      aria-controls="roster-alerts-body"
+      @click="isExpanded = !isExpanded"
+    >
+      <h2 class="roster-alerts__title">
+        Hour shortfalls
+      </h2>
+      <p class="roster-alerts__meta">
+        {{ hoursCount }} worker{{ hoursCount === 1 ? '' : 's' }} below minimum hours
         <span
           class="roster-alerts__chevron"
           :class="{ 'roster-alerts__chevron--expanded': isExpanded }"
           aria-hidden="true"
-        >
-          ▸
-        </span>
-        <h2 class="roster-alerts__title">
-          Roster alerts
-        </h2>
-      </button>
-      <p
-        v-if="summary"
-        class="roster-alerts__meta"
-      >
-        {{ summary.assignment_count }} assignments ·
-        {{ summary.coverage_shortage_count }} coverage gaps ·
-        {{ summary.hours_shortfall_count }} hour shortfalls
+        >▸</span>
       </p>
-    </header>
+    </button>
 
     <div
-      v-show="isExpanded"
+      v-if="isExpanded"
       id="roster-alerts-body"
-      class="roster-alerts__body"
+      class="roster-alerts__scroll"
     >
-      <p
-        v-if="!hasAlerts"
-        class="roster-alerts__ok"
-      >
-        No coverage shortages or minimum-hour shortfalls detected.
-      </p>
-
-      <div
-        v-else
-        class="roster-alerts__groups"
-      >
-        <div
-          v-if="reports.coverage_shortages.length"
-          class="roster-alerts__group"
+      <ul class="roster-alerts__list">
+        <li
+          v-for="shortfall in sortedHoursShortfalls"
+          :key="shortfall.worker_id"
+          class="roster-alerts__item roster-alerts__item--info"
         >
-          <h3 class="roster-alerts__group-title">
-            Coverage shortages ({{ reports.coverage_shortages.length }})
-          </h3>
-          <ul class="roster-alerts__list">
-            <li
-              v-for="(shortage, index) in reports.coverage_shortages"
-              :key="`${shortage.work_date}-${shortage.shift_id}-${shortage.role_id}-${index}`"
-              class="roster-alerts__item roster-alerts__item--warning"
-            >
-              {{ shortageLabel(shortage) }}: {{ shortage.assigned }}/{{ shortage.required }} assigned
-            </li>
-          </ul>
-        </div>
-
-        <div
-          v-if="reports.hours_shortfalls.length"
-          class="roster-alerts__group"
-        >
-          <h3 class="roster-alerts__group-title">
-            Minimum-hour shortfalls ({{ reports.hours_shortfalls.length }})
-          </h3>
-          <ul class="roster-alerts__list">
-            <li
-              v-for="shortfall in reports.hours_shortfalls"
-              :key="shortfall.worker_id"
-              class="roster-alerts__item roster-alerts__item--info"
-            >
-              {{ workerName(shortfall) }}: {{ shortfall.scheduled_hours }}h scheduled,
-              {{ shortfall.min_hours }}h minimum
-            </li>
-          </ul>
-        </div>
-      </div>
+          <span class="roster-alerts__item-main">{{ workerName(shortfall) }}</span>
+          <span class="roster-alerts__item-meta">
+            {{ shortfall.scheduled_hours }}h / {{ shortfall.min_hours }}h · −{{ shortfallGap(shortfall) }}h
+          </span>
+        </li>
+      </ul>
     </div>
   </section>
 </template>

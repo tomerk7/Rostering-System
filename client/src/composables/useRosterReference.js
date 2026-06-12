@@ -7,7 +7,11 @@ export function useRosterReference() {
     workersById: new Map(),
     loading: false,
     error: '',
-    async load() {
+    async load({ force = false } = {}) {
+      if (!force && state.reference != null && state.workersById.size > 0) {
+        return
+      }
+
       state.loading = true
       state.error = ''
 
@@ -18,7 +22,7 @@ export function useRosterReference() {
         ])
 
         state.reference = referenceResponse.data
-        state.workersById = new Map(workersResponse.data.map((worker) => [worker.id, worker]))
+        state.workersById = new Map(workersResponse.data.map((worker) => [worker.israeli_id, worker]))
       } catch {
         state.error = 'Could not load roster reference data.'
       } finally {

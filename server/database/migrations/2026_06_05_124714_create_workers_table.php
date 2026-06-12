@@ -9,9 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('workers', function (Blueprint $table) {
-            $table->id();
+            $table->char('israeli_id', 9)->primary();
             $table->string('full_name', 255);
-            $table->char('israeli_id', 9)->unique();
             $table->foreignId('role_id')->constrained('roles')->restrictOnDelete();
             $table->boolean('is_active')->default(true);
             $table->timestamps();

@@ -23,7 +23,7 @@ final class WorkerFactory extends Factory
     {
         return [
             'full_name' => fake()->name(),
-            'israeli_id' => $this->validIsraeliId(),
+            'israeli_id' => $this->israeliId(),
             'role_id' => $this->roleId(),
             'is_active' => true,
         ];
@@ -52,24 +52,13 @@ final class WorkerFactory extends Factory
             ->getKey();
     }
 
-    private function validIsraeliId(): string
+    private function israeliId(): string
     {
-        $baseDigits = str_pad(
-            (string) fake()->unique()->numberBetween(1, 99_999_999),
-            8,
+        return str_pad(
+            (string) fake()->unique()->numberBetween(1, 999_999_999),
+            9,
             '0',
             STR_PAD_LEFT,
         );
-
-        $sum = 0;
-
-        for ($index = 0; $index < 8; $index++) {
-            $product = (int) $baseDigits[$index] * ($index % 2 === 0 ? 1 : 2);
-            $sum += intdiv($product, 10) + ($product % 10);
-        }
-
-        $checkDigit = (10 - ($sum % 10)) % 10;
-
-        return $baseDigits.$checkDigit;
     }
 }

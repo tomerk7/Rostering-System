@@ -7,6 +7,8 @@ namespace App\Services\Rostering;
 use App\Models\ContractAvailability;
 use App\Models\ShiftRoleRequirement;
 use App\Services\Rostering\Data\GenerationResult;
+use App\Services\Rostering\Data\RosterSlot;
+use App\Services\Rostering\Data\RosterWorker;
 use Carbon\CarbonImmutable;
 use Exception;
 use Illuminate\Support\Facades\DB;
@@ -79,7 +81,7 @@ final readonly class RosterGenerator
 
         ContractAvailability::query()
             ->join('contracts', 'contracts.id', '=', 'contract_availability.contract_id')
-            ->join('workers', 'workers.id', '=', 'contracts.worker_id')
+            ->join('workers', 'workers.israeli_id', '=', 'contracts.worker_id')
             ->where('workers.is_active', true)
             ->whereIn('workers.role_id', $roleIds)
             ->select('workers.role_id', 'contract_availability.day_of_week', 'contract_availability.shift_id')
@@ -125,7 +127,7 @@ final readonly class RosterGenerator
      * Expand the target month into every staffing slot by crossing each calendar
      * day with the data-driven demand in shift_role_requirements.
      *
-     * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
+     * @return list<RosterSlot>
      *
      * @throws Exception
      */
@@ -151,13 +153,13 @@ final readonly class RosterGenerator
             $date = $firstDay->addDays($day);
 
             foreach ($requirements as $requirement) {
-                $slots[] = [
-                    'work_date' => $date,
-                    'shift_id' => (int) $requirement->shift_id,
-                    'role_id' => (int) $requirement->role_id,
-                    'required_count' => (int) $requirement->required_count,
-                    'duration_hours' => (int) $requirement->shift->duration_hours,
-                ];
+                $slots[] = new RosterSlot(
+                    workDate: $date,
+                    shiftId: (int) $requirement->shift_id,
+                    roleId: (int) $requirement->role_id,
+                    requiredCount: (int) $requirement->required_count,
+                    durationHours: (int) $requirement->shift->duration_hours,
+                );
             }
         }
 
@@ -167,53 +169,66 @@ final readonly class RosterGenerator
     /**
      * Build the worker state used by the rostering engine.
      *
-     * @return array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}>
+     * @return array<string, RosterWorker>
      *
      * @throws Exception
      */
     private function resolveWorkers(): array
     {
-        $workers = [];
+        /** @var array<string, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int}> $workerRows */
+        $workerRows = [];
 
         foreach (DB::table('workers')
-            ->join('contracts', 'contracts.worker_id', '=', 'workers.id')
+            ->join('contracts', 'contracts.worker_id', '=', 'workers.israeli_id')
             ->where('workers.is_active', true)
             ->select([
-                'workers.id',
+                'workers.israeli_id',
                 'workers.role_id',
                 'contracts.hourly_cost',
                 'contracts.min_monthly_hours',
                 'contracts.max_monthly_hours',
             ])
-            ->orderBy('workers.id')
+            ->orderBy('workers.israeli_id')
             ->cursor() as $worker) {
-            $workers[(int) $worker->id] = [
+            $workerRows[(string) $worker->israeli_id] = [
                 'role_id' => (int) $worker->role_id,
                 'hourly_cost' => (float) $worker->hourly_cost,
                 'min_hours' => (int) $worker->min_monthly_hours,
                 'max_hours' => (int) $worker->max_monthly_hours,
-                'availability' => [],
-                'assigned_hours' => 0,
-                'shifts_per_date' => [],
             ];
         }
 
+        /** @var array<string, array<int, array<int, true>>> $availabilityByWorker */
+        $availabilityByWorker = [];
+
         foreach (DB::table('contract_availability')
             ->join('contracts', 'contracts.id', '=', 'contract_availability.contract_id')
-            ->join('workers', 'workers.id', '=', 'contracts.worker_id')
+            ->join('workers', 'workers.israeli_id', '=', 'contracts.worker_id')
             ->where('workers.is_active', true)
             ->select(
-                'workers.id AS worker_id',
+                'workers.israeli_id AS worker_id',
                 'contract_availability.day_of_week',
                 'contract_availability.shift_id',
             )
-            ->orderBy('workers.id')
+            ->orderBy('workers.israeli_id')
             ->cursor() as $availability) {
-            $workerId = (int) $availability->worker_id;
+            $workerId = (string) $availability->worker_id;
             $dayOfWeek = (int) $availability->day_of_week;
             $shiftId = (int) $availability->shift_id;
 
-            $workers[$workerId]['availability'][$dayOfWeek][$shiftId] = true;
+            $availabilityByWorker[$workerId][$dayOfWeek][$shiftId] = true;
+        }
+
+        $workers = [];
+
+        foreach ($workerRows as $workerId => $row) {
+            $workers[$workerId] = new RosterWorker(
+                roleId: $row['role_id'],
+                hourlyCost: $row['hourly_cost'],
+                minHours: $row['min_hours'],
+                maxHours: $row['max_hours'],
+                availability: $availabilityByWorker[$workerId] ?? [],
+            );
         }
 
         return $workers;

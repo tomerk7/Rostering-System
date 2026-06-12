@@ -18,7 +18,8 @@ return new class extends Migration
         Schema::create('roster_assignments', function (Blueprint $table) {
             $table->id();
             $table->foreignId('roster_id')->constrained('rosters')->cascadeOnDelete();
-            $table->foreignId('worker_id')->constrained('workers')->restrictOnDelete();
+            $table->char('worker_id', 9);
+            $table->foreign('worker_id')->references('israeli_id')->on('workers')->restrictOnDelete();
             $table->foreignId('shift_id')->constrained('shifts')->restrictOnDelete();
             $table->date('work_date');
             $table->string('source')->default(AssignmentSource::Auto->value);

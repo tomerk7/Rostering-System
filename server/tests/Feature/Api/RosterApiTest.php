@@ -200,7 +200,7 @@ final class RosterApiTest extends TestCase
         $worker = $this->assignableWorker();
 
         $response = $this->postJson("/api/rosters/{$roster->id}/assignments", [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-01',
         ]);
@@ -210,13 +210,13 @@ final class RosterApiTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.id', $roster->id)
             ->assertJsonPath('data.assignments_count', 1)
-            ->assertJsonPath('data.assignments.0.worker_id', $worker->id)
+            ->assertJsonPath('data.assignments.0.worker_id', $worker->israeli_id)
             ->assertJsonPath('data.assignments.0.shift_code', 'A')
             ->assertJsonPath('data.assignments.0.source', AssignmentSource::Manual->value);
 
         $this->assertDatabaseHas('roster_assignments', [
             'roster_id' => $roster->id,
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-01 00:00:00',
             'source' => AssignmentSource::Manual->value,
@@ -233,7 +233,7 @@ final class RosterApiTest extends TestCase
 
         $assignment = RosterAssignment::query()->create([
             'roster_id' => $roster->id,
-            'worker_id' => $original->id,
+            'worker_id' => $original->israeli_id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-04',
             'source' => AssignmentSource::Auto,
@@ -242,21 +242,21 @@ final class RosterApiTest extends TestCase
         $replacement = Worker::query()
             ->active()
             ->whereHas('contract')
-            ->whereKeyNot($original->id)
+            ->whereKeyNot($original->israeli_id)
             ->where('role_id', $original->role_id)
             ->firstOrFail();
 
         $this->putJson("/api/rosters/{$roster->id}/assignments/{$assignment->id}", [
-            'worker_id' => $replacement->id,
+            'worker_id' => $replacement->israeli_id,
         ])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.assignments.0.worker_id', $replacement->id)
+            ->assertJsonPath('data.assignments.0.worker_id', $replacement->israeli_id)
             ->assertJsonPath('data.assignments.0.source', AssignmentSource::Manual->value);
 
         $this->assertDatabaseHas('roster_assignments', [
             'id' => $assignment->id,
-            'worker_id' => $replacement->id,
+            'worker_id' => $replacement->israeli_id,
             'source' => AssignmentSource::Manual->value,
         ]);
     }
@@ -271,7 +271,7 @@ final class RosterApiTest extends TestCase
 
         $assignment = RosterAssignment::query()->create([
             'roster_id' => $roster->id,
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-02',
             'source' => AssignmentSource::Manual,
@@ -295,7 +295,7 @@ final class RosterApiTest extends TestCase
         foreach ([$this->shiftA, $this->shiftB] as $shift) {
             RosterAssignment::query()->create([
                 'roster_id' => $roster->id,
-                'worker_id' => $worker->id,
+                'worker_id' => $worker->israeli_id,
                 'shift_id' => $shift->id,
                 'work_date' => '2026-06-03',
                 'source' => AssignmentSource::Auto,
@@ -303,7 +303,7 @@ final class RosterApiTest extends TestCase
         }
 
         $this->postJson("/api/rosters/{$roster->id}/assignments", [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'shift_id' => $this->shiftC->id,
             'work_date' => '2026-06-03',
         ])
@@ -334,7 +334,7 @@ final class RosterApiTest extends TestCase
 
         RosterAssignment::query()->create([
             'roster_id' => $roster->id,
-            'worker_id' => $this->assignableWorker()->id,
+            'worker_id' => $this->assignableWorker()->israeli_id,
             'shift_id' => $this->shiftA->id,
             'work_date' => '2026-06-01',
             'source' => AssignmentSource::Auto,

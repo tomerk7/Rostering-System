@@ -28,16 +28,6 @@ const periodLabel = computed(() => {
 
 const activeWorkers = computed(() => Array.from(referenceData.workersById.values()))
 
-const modalWorkers = computed(() => {
-  const roleId = assignmentContext.value?.roleId
-
-  if (!roleId) {
-    return activeWorkers.value
-  }
-
-  return activeWorkers.value.filter((worker) => worker.role.id === roleId)
-})
-
 onMounted(async () => {
   await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
 })
@@ -184,11 +174,8 @@ async function deleteRoster() {
 
       <template v-else-if="referenceData.reference">
         <RosterAlertSummary
-          :summary="rostersStore.summary"
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
-          :shifts="referenceData.reference.shifts"
-          :roles="referenceData.reference.roles"
         />
 
         <RosterGrid
@@ -209,7 +196,8 @@ async function deleteRoster() {
 
     <AssignmentFormModal
       :show="showAssignmentModal"
-      :workers="modalWorkers.length ? modalWorkers : activeWorkers"
+      :workers="activeWorkers"
+      :assignments="rostersStore.assignments"
       :shifts="referenceData.reference?.shifts ?? []"
       :roles="referenceData.reference?.roles"
       :initial-date="assignmentContext?.workDate"

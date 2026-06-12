@@ -35,7 +35,6 @@ onMounted(() => {
   rostersStore.clearErrors()
   rostersStore.selectedYear = currentYear
   rostersStore.selectedMonth = null
-  referenceData.load()
 })
 
 function onPeriodChange() {
@@ -48,10 +47,13 @@ async function generateRoster() {
     return
   }
 
-  await rostersStore.generate(
-    rostersStore.selectedYear,
-    rostersStore.selectedMonth,
-  )
+  await Promise.all([
+    referenceData.load(),
+    rostersStore.generate(
+      rostersStore.selectedYear,
+      rostersStore.selectedMonth,
+    ),
+  ])
 }
 
 async function saveRoster() {
@@ -189,11 +191,8 @@ async function saveRoster() {
         </p>
 
         <RosterAlertSummary
-          :summary="rostersStore.summary"
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
-          :shifts="referenceData.reference.shifts"
-          :roles="referenceData.reference.roles"
         />
 
         <RosterGrid

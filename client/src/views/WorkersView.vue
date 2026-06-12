@@ -132,7 +132,7 @@ async function deleteWorker(worker) {
     return
   }
 
-  await workersStore.removeWorker(worker.id)
+  await workersStore.removeWorker(worker.israeli_id)
 }
 
 async function deleteAllWorkers() {
@@ -332,7 +332,7 @@ function availabilitySummary(worker) {
             <template v-else>
               <tr
                 v-for="worker in workersStore.workers"
-                :key="worker.id"
+                :key="worker.israeli_id"
               >
                 <td>
                   <strong>{{ worker.full_name }}</strong>
@@ -358,17 +358,17 @@ function availabilitySummary(worker) {
                 <td class="table__actions">
                   <RouterLink
                     class="button"
-                    :to="{ name: 'workers.edit', params: { id: worker.id } }"
+                    :to="{ name: 'workers.edit', params: { id: worker.israeli_id } }"
                   >
                     Edit
                   </RouterLink>
                   <button
                     type="button"
                     class="button button--danger"
-                    :disabled="workersStore.deletingId === worker.id"
+                    :disabled="workersStore.deletingId === worker.israeli_id"
                     @click="deleteWorker(worker)"
                   >
-                    {{ workersStore.deletingId === worker.id ? 'Deleting...' : 'Delete' }}
+                    {{ workersStore.deletingId === worker.israeli_id ? 'Deleting...' : 'Delete' }}
                   </button>
                 </td>
               </tr>

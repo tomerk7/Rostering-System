@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Models\Worker;
-use App\Rules\IsraeliId;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -29,13 +27,6 @@ final class UpdateWorkerRequest extends FormRequest
     {
         return [
             'full_name' => ['required', 'string', 'max:255'],
-            'israeli_id' => [
-                'required',
-                'string',
-                'size:9',
-                new IsraeliId,
-                Rule::unique('workers', 'israeli_id')->ignore($this->workerId()),
-            ],
             'role_id' => ['required', 'integer', Rule::exists('roles', 'id')],
             'is_active' => ['required', 'boolean'],
 
@@ -48,21 +39,5 @@ final class UpdateWorkerRequest extends FormRequest
             'availability.*.day_of_week' => ['required', 'integer', 'between:0,6'],
             'availability.*.shift_id' => ['required', 'integer', Rule::exists('shifts', 'id')],
         ];
-    }
-
-    /**
-     * Get the worker ID from the route.
-     *
-     * @return int|string|null
-     */
-    private function workerId(): int|string|null
-    {
-        $worker = $this->route('worker');
-
-        if ($worker instanceof Worker) {
-            return $worker->getKey();
-        }
-
-        return is_scalar($worker) ? $worker : null;
     }
 }

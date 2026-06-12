@@ -41,7 +41,7 @@ final class RosterAssignmentController extends Controller
         try {
             $this->manualAssignmentService->create(
                 $roster,
-                (int) $request->validated('worker_id'),
+                (string) $request->validated('worker_id'),
                 (int) $request->validated('shift_id'),
                 (string) $request->validated('work_date'),
             );
@@ -78,7 +78,7 @@ final class RosterAssignmentController extends Controller
             $this->manualAssignmentService->change(
                 $roster,
                 $assignment,
-                (int) $request->validated('worker_id'),
+                (string) $request->validated('worker_id'),
             );
         } catch (ManualAssignmentException $exception) {
             return $this->response(

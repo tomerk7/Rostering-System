@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services\Rostering;
 
 use App\Enums\AssignmentSource;
+use App\Services\Rostering\Data\RosterSlot;
+use App\Services\Rostering\Data\RosterWorker;
 use Carbon\CarbonImmutable;
 
 /**
@@ -24,20 +26,19 @@ final readonly class RosteringEngine
      * role match, available that weekday and shift, not already placed in this
      * (date, shift), under the per-day shift ceiling, and within max hours.
      *
-     * @param  array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}  $slot
-     * @param  array<int, array{role_id: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>, ...}>  $workers
-     * @param  array<int, true>  $assignedWorkerIds  workers already placed in this slot's (date, shift)
-     * @return list<int>
+     * @param  array<string, RosterWorker>  $workers
+     * @param  array<string, true>  $assignedWorkerIds  workers already placed in this slot's (date, shift)
+     * @return list<string>
      */
-    public function availableWorkerIds(array $slot, array $workers, array $assignedWorkerIds = []): array
+    public function availableWorkerIds(RosterSlot $slot, array $workers, array $assignedWorkerIds = []): array
     {
-        $dayOfWeek = $slot['work_date']->dayOfWeek;
-        $dateKey = $slot['work_date']->toDateString();
+        $dayOfWeek = $slot->workDate->dayOfWeek;
+        $dateKey = $slot->workDate->toDateString();
 
         $candidateIds = [];
 
         foreach ($workers as $workerId => $worker) {
-            if ($worker['role_id'] !== $slot['role_id']) {
+            if ($worker->roleId !== $slot->roleId) {
                 continue;
             }
 
@@ -45,19 +46,19 @@ final readonly class RosteringEngine
                 continue;
             }
 
-            if (! isset($worker['availability'][$dayOfWeek][$slot['shift_id']])) {
+            if (! isset($worker->availability[$dayOfWeek][$slot->shiftId])) {
                 continue;
             }
 
-            if (($worker['shifts_per_date'][$dateKey] ?? 0) >= self::MAX_SHIFTS_PER_DAY) {
+            if (($worker->shiftsPerDate[$dateKey] ?? 0) >= self::MAX_SHIFTS_PER_DAY) {
                 continue;
             }
 
-            if ($worker['max_hours'] < $worker['assigned_hours'] + $slot['duration_hours']) {
+            if ($worker->maxHours < $worker->assignedHours + $slot->durationHours) {
                 continue;
             }
 
-            $candidateIds[] = $workerId;
+            $candidateIds[] = (string) $workerId;
         }
 
         return $candidateIds;
@@ -75,24 +76,24 @@ final readonly class RosteringEngine
      * Worker counters are mutated in place so the caller can read the final
      * scheduled hours for shortfall reporting after construction.
      *
-     * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>  $slots
-     * @param  array<int, array{role_id: int, hourly_cost: float, min_hours: int, max_hours: int, availability: array<int, array<int, true>>, assigned_hours: int, shifts_per_date: array<string, int>}>  $workers
-     * @return list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>
+     * @param  list<RosterSlot>  $slots
+     * @param  array<string, RosterWorker>  $workers
+     * @return list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>
      */
-    public function generate(array $slots, array &$workers): array
+    public function generate(array $slots, array $workers): array
     {
         $assignments = [];
 
         foreach ($this->orderSlots($slots) as $slot) {
-            $dateKey = $slot['work_date']->toDateString();
+            $dateKey = $slot->workDate->toDateString();
 
-            /** @var array<int, true> $assignedToSlot */
+            /** @var array<string, true> $assignedToSlot */
             $assignedToSlot = [];
 
-            for ($position = 0; $position < $slot['required_count']; $position++) {
+            for ($position = 0; $position < $slot->requiredCount; $position++) {
                 $candidateIds = $this->availableWorkerIds($slot, $workers, $assignedToSlot);
 
-                if ($candidateIds === []) {
+                if (empty($candidateIds)) {
                     break;
                 }
 
@@ -100,13 +101,13 @@ final readonly class RosteringEngine
 
                 $assignments[] = [
                     'worker_id' => $bestId,
-                    'shift_id' => $slot['shift_id'],
-                    'work_date' => $slot['work_date'],
+                    'shift_id' => $slot->shiftId,
+                    'work_date' => $slot->workDate,
                     'source' => AssignmentSource::Auto->value,
                 ];
 
-                $workers[$bestId]['assigned_hours'] += $slot['duration_hours'];
-                $workers[$bestId]['shifts_per_date'][$dateKey] = ($workers[$bestId]['shifts_per_date'][$dateKey] ?? 0) + 1;
+                $workers[$bestId]->assignedHours += $slot->durationHours;
+                $workers[$bestId]->shiftsPerDate[$dateKey] = ($workers[$bestId]->shiftsPerDate[$dateKey] ?? 0) + 1;
                 $assignedToSlot[$bestId] = true;
             }
         }
@@ -121,16 +122,16 @@ final readonly class RosteringEngine
      * Supervisor (1) -> Screener (2) -> General Guard (6). Remaining keys make the
      * ordering total and therefore deterministic for identical input.
      *
-     * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>  $slots
-     * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>
+     * @param  list<RosterSlot>  $slots
+     * @return list<RosterSlot>
      */
     public function orderSlots(array $slots): array
     {
-        usort($slots, static function (array $a, array $b): int {
-            return $a['required_count'] <=> $b['required_count']
-                ?: $a['role_id'] <=> $b['role_id']
-                ?: $a['work_date']->getTimestamp() <=> $b['work_date']->getTimestamp()
-                ?: $a['shift_id'] <=> $b['shift_id'];
+        usort($slots, static function (RosterSlot $a, RosterSlot $b): int {
+            return $a->requiredCount <=> $b->requiredCount
+                ?: $a->roleId <=> $b->roleId
+                ?: $a->workDate->getTimestamp() <=> $b->workDate->getTimestamp()
+                ?: $a->shiftId <=> $b->shiftId;
         });
 
         return $slots;
@@ -139,33 +140,55 @@ final readonly class RosteringEngine
     /**
      * Pick the best worker id from a non-empty candidate set using an ordered,
      * fully tie-broken score: furthest below min_monthly_hours first (pushes
-     * everyone toward their contracted minimum), then lowest hourly_cost, then
-     * lowest worker id as a stable tiebreak guaranteeing deterministic output.
+     * everyone toward their contracted minimum), then lowest worker id as a
+     * stable tiebreak guaranteeing deterministic output.
      *
-     * @param  list<int>  $candidateIds
-     * @param  array<int, array{min_hours: int, hourly_cost: float, assigned_hours: int, ...}>  $workers
+     * @param  list<string>  $candidateIds
+     * @param  array<string, RosterWorker>  $workers
      */
-    public function bestCandidate(array $candidateIds, array $workers): int
+    public function bestCandidate(array $candidateIds, array $workers): string
     {
         $bestId = null;
-        $bestDeficit = 0;
+        $bestShortfall = 0.0;
 
         foreach ($candidateIds as $candidateId) {
             $worker = $workers[$candidateId];
-            $deficit = $worker['min_hours'] - $worker['assigned_hours'];
 
-            $isBetter = $bestId === null
-                || $deficit > $bestDeficit
-                || ($deficit === $bestDeficit)
-                || ($deficit === $bestDeficit && $candidateId < $bestId);
+            // Proportional shortfall: how far below the contracted minimum this
+            // worker is, expressed as a fraction of that minimum so workers on
+            // small and large contracts are pushed toward their minimum fairly.
+            // Guarded against a zero minimum (no contracted floor).
+            $deficit = $worker->minHours - $worker->assignedHours;
+            $shortfall = $worker->minHours > 0 ? $deficit / $worker->minHours : 0.0;
 
-            if ($isBetter) {
+            if (empty($bestId)) {
                 $bestId = $candidateId;
-                $bestDeficit = $deficit;
+                $bestShortfall = $shortfall;
+
+                continue;
+            }
+
+            // Ordered, fully tie-broken comparison: largest shortfall first,
+            // then lowest israeli_id for deterministic output.
+            if ($shortfall > $bestShortfall) {
+                $comparison = 1;
+            } elseif ($shortfall < $bestShortfall) {
+                $comparison = -1;
+            } elseif ($bestId < $candidateId) {
+                $comparison = -1;
+            } elseif ($bestId > $candidateId) {
+                $comparison = 1;
+            } else {
+                $comparison = 0;
+            }
+
+            if ($comparison > 0) {
+                $bestId = $candidateId;
+                $bestShortfall = $shortfall;
             }
         }
 
-        return (int) $bestId;
+        return (string) $bestId;
     }
 
     /**
@@ -173,9 +196,9 @@ final readonly class RosteringEngine
      * return the understaffed slots. Each assignment's role is derived from its
      * worker (role is not stored on the assignment), then counted per slot key.
      *
-     * @param  list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required_count: int, duration_hours: int}>  $slots
-     * @param  list<array{worker_id: int, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
-     * @param  array<int, array{role_id: int, ...}>  $workers
+     * @param  list<RosterSlot>  $slots
+     * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable, source: string}>  $assignments
+     * @param  array<string, RosterWorker>  $workers
      * @return list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>
      */
     public function validateCoverage(array $slots, array $assignments, array $workers): array
@@ -184,7 +207,7 @@ final readonly class RosteringEngine
         $assignedByKey = [];
 
         foreach ($assignments as $assignment) {
-            $roleId = $workers[$assignment['worker_id']]['role_id'];
+            $roleId = $workers[$assignment['worker_id']]->roleId;
             $key = $this->coverageKey($assignment['work_date'], $assignment['shift_id'], $roleId);
             $assignedByKey[$key] = ($assignedByKey[$key] ?? 0) + 1;
         }
@@ -192,15 +215,15 @@ final readonly class RosteringEngine
         $shortages = [];
 
         foreach ($slots as $slot) {
-            $key = $this->coverageKey($slot['work_date'], $slot['shift_id'], $slot['role_id']);
+            $key = $this->coverageKey($slot->workDate, $slot->shiftId, $slot->roleId);
             $assigned = $assignedByKey[$key] ?? 0;
 
-            if ($assigned < $slot['required_count']) {
+            if ($assigned < $slot->requiredCount) {
                 $shortages[] = [
-                    'work_date' => $slot['work_date'],
-                    'shift_id' => $slot['shift_id'],
-                    'role_id' => $slot['role_id'],
-                    'required' => $slot['required_count'],
+                    'work_date' => $slot->workDate,
+                    'shift_id' => $slot->shiftId,
+                    'role_id' => $slot->roleId,
+                    'required' => $slot->requiredCount,
                     'assigned' => $assigned,
                 ];
             }
@@ -218,19 +241,19 @@ final readonly class RosteringEngine
      * the admin sees it in the pre-save preview. Workers ordered by id for
      * deterministic output.
      *
-     * @param  array<int, array{min_hours: int, assigned_hours: int, ...}>  $workers
-     * @return list<array{worker_id: int, min_hours: int, scheduled_hours: int}>
+     * @param  array<string, RosterWorker>  $workers
+     * @return list<array{worker_id: string, min_hours: int, scheduled_hours: int}>
      */
     public function reportHoursShortfalls(array $workers): array
     {
         $shortfalls = [];
 
         foreach ($workers as $workerId => $worker) {
-            if ($worker['assigned_hours'] < $worker['min_hours']) {
+            if ($worker->assignedHours < $worker->minHours) {
                 $shortfalls[] = [
-                    'worker_id' => $workerId,
-                    'min_hours' => $worker['min_hours'],
-                    'scheduled_hours' => $worker['assigned_hours'],
+                    'worker_id' => (string) $workerId,
+                    'min_hours' => $worker->minHours,
+                    'scheduled_hours' => $worker->assignedHours,
                 ];
             }
         }
@@ -240,11 +263,6 @@ final readonly class RosteringEngine
 
     /**
      * Build the stable aggregation key for one (date, shift, role) slot.
-     * 
-     * @param CarbonImmutable $date
-     * @param int $shiftId
-     * @param int $roleId
-     * @return string
      */
     private function coverageKey(CarbonImmutable $date, int $shiftId, int $roleId): string
     {

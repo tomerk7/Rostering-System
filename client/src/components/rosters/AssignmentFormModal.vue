@@ -1,10 +1,12 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { filterEligibleWorkers } from '@/lib/eligibleWorkers'
 
 const props = defineProps({
   show: { type: Boolean, required: true },
   workers: { type: Array, required: true },
   shifts: { type: Array, required: true },
+  assignments: { type: Array, default: () => [] },
   roles: { type: Array, default: undefined },
   initialDate: { type: String, default: undefined },
   initialShiftId: { type: Number, default: undefined },
@@ -20,17 +22,26 @@ const shiftId = ref('')
 const workDate = ref('')
 
 const rolesById = computed(() => new Map((props.roles ?? []).map((role) => [role.id, role])))
+const shiftsById = computed(() => new Map(props.shifts.map((shift) => [shift.id, shift])))
 
 const suggestedRole = computed(() =>
   props.initialRoleId ? rolesById.value.get(props.initialRoleId) : null,
 )
 
+const hasSlotSelection = computed(() => workDate.value !== '' && shiftId.value !== '')
+
 const filteredWorkers = computed(() => {
-  if (!props.initialRoleId) {
-    return props.workers
+  if (!hasSlotSelection.value) {
+    return []
   }
 
-  return props.workers.filter((worker) => worker.role.id === props.initialRoleId)
+  return filterEligibleWorkers(props.workers, {
+    workDate: workDate.value,
+    shiftId: Number(shiftId.value),
+    roleId: props.initialRoleId ?? null,
+    assignments: props.assignments,
+    shiftsById: shiftsById.value,
+  })
 })
 
 watch(
@@ -46,13 +57,26 @@ watch(
   },
 )
 
+watch([workDate, shiftId, filteredWorkers], () => {
+  if (workerId.value === '') {
+    return
+  }
+
+  const selectedId = Number(workerId.value)
+  const stillEligible = filteredWorkers.value.some((worker) => worker.israeli_id === selectedId)
+
+  if (!stillEligible) {
+    workerId.value = ''
+  }
+})
+
 function onSubmit() {
   if (workerId.value === '' || shiftId.value === '' || workDate.value === '') {
     return
   }
 
   emit('submit', {
-    worker_id: Number(workerId.value),
+    worker_id: workerId.value,
     shift_id: Number(shiftId.value),
     work_date: workDate.value,
   })
@@ -103,16 +127,25 @@ function onSubmit() {
             v-model="workerId"
             class="input"
             required
+            :disabled="!hasSlotSelection"
           >
-            <option value="">Select worker</option>
+            <option value="">
+              {{ hasSlotSelection ? 'Select worker' : 'Choose date and shift first' }}
+            </option>
             <option
               v-for="worker in filteredWorkers"
-              :key="worker.id"
-              :value="worker.id"
+              :key="worker.israeli_id"
+              :value="worker.israeli_id"
             >
               {{ worker.full_name }} ({{ worker.role.name ?? worker.role.code }})
             </option>
           </select>
+          <span
+            v-if="hasSlotSelection && filteredWorkers.length === 0"
+            class="field__hint"
+          >
+            No workers are eligible for this date and shift.
+          </span>
         </label>
 
         <label class="field">
@@ -183,5 +216,10 @@ function onSubmit() {
 .modal__hint--emphasis {
   color: #c2410c;
   font-weight: 600;
+}
+
+.field__hint {
+  color: #9a3412;
+  font-size: 0.875rem;
 }
 </style>

@@ -12,12 +12,12 @@ import {
 const route = useRoute()
 const router = useRouter()
 
-const workerId = computed(() => {
-  const id = Number(route.params.id)
+const workerIsraeliId = computed(() => {
+  const id = String(route.params.id ?? '').trim()
 
-  return Number.isInteger(id) && id > 0 ? id : null
+  return /^\d{9}$/.test(id) ? id : null
 })
-const isEdit = computed(() => workerId.value !== null)
+const isEdit = computed(() => workerIsraeliId.value !== null)
 
 const referenceData = ref({ roles: [], shifts: [], shift_role_requirements: [] })
 const loading = ref(false)
@@ -101,8 +101,8 @@ async function loadForm() {
     const referenceResponse = await getReferenceData()
     referenceData.value = referenceResponse.data
 
-    if (workerId.value !== null) {
-      const workerResponse = await getWorker(workerId.value)
+    if (workerIsraeliId.value !== null) {
+      const workerResponse = await getWorker(workerIsraeliId.value)
       const worker = workerResponse.data
 
       form.full_name = worker.full_name
@@ -129,13 +129,12 @@ async function submitForm() {
   try {
     const payload = buildPayload()
 
-    if (workerId.value !== null) {
-      await updateWorker(workerId.value, payload)
+    if (workerIsraeliId.value !== null) {
+      await updateWorker(workerIsraeliId.value, payload)
     } else {
-      await createWorker(payload)
+      const response = await createWorker(payload)
+      await router.push({ name: 'workers.edit', params: { id: response.data.israeli_id } })
     }
-
-    await router.push({ name: 'workers' })
   } catch (error) {
     if (isAxiosError(error) && error.response?.status === 422) {
       const data = error.response.data
@@ -161,9 +160,8 @@ function buildAvailabilityPayload() {
 }
 
 function buildPayload() {
-  return {
+  const payload = {
     full_name: form.full_name.trim(),
-    israeli_id: form.israeli_id.trim(),
     role_id: form.role_id,
     is_active: form.is_active,
     contract: {
@@ -173,6 +171,12 @@ function buildPayload() {
     },
     availability: buildAvailabilityPayload(),
   }
+
+  if (!isEdit.value) {
+    payload.israeli_id = form.israeli_id.trim()
+  }
+
+  return payload
 }
 
 function fieldError(field) {
@@ -261,6 +265,7 @@ function fieldError(field) {
                 type="text"
                 inputmode="numeric"
                 maxlength="9"
+                :disabled="isEdit"
               >
               <span
                 v-if="fieldError('israeli_id')"
@@ -381,44 +386,28 @@ function fieldError(field) {
             </p>
           </div>
 
-          <div class="availability-matrix">
-            <table class="availability-matrix__table">
-              <thead>
-                <tr>
-                  <th scope="col">Day</th>
-                  <th
-                    v-for="shift in referenceData.shifts"
-                    :key="shift.id"
-                    scope="col"
-                  >
-                    {{ shift.code }} - {{ shift.label }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="day in dayOptions"
-                  :key="day.value"
+          <div>
+            <div class="choice-grid">
+              <fieldset
+                v-for="day in dayOptions"
+                :key="day.value"
+                class="choice-group"
+              >
+                <legend>{{ day.label }}</legend>
+                <label
+                  v-for="shift in referenceData.shifts"
+                  :key="`${day.value}-${shift.id}`"
+                  class="check-field"
                 >
-                  <th scope="row">
-                    {{ day.label }}
-                  </th>
-                  <td
-                    v-for="shift in referenceData.shifts"
-                    :key="`${day.value}-${shift.id}`"
+                  <input
+                    type="checkbox"
+                    :checked="isSlotSelected(day.value, shift.id)"
+                    @change="setSlotSelected(day.value, shift.id, $event.target.checked)"
                   >
-                    <label class="check-field availability-matrix__cell">
-                      <input
-                        type="checkbox"
-                        :checked="isSlotSelected(day.value, shift.id)"
-                        @change="setSlotSelected(day.value, shift.id, $event.target.checked)"
-                      >
-                      <span>{{ shift.code }}</span>
-                    </label>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  <span>{{ shift.code }} - {{ shift.label }}</span>
+                </label>
+              </fieldset>
+            </div>
             <span
               v-if="fieldError('availability')"
               class="field__error"

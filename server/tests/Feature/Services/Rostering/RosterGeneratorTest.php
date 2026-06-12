@@ -116,9 +116,9 @@ final class RosterGeneratorTest extends TestCase
 
         $assignedWorkerIds = array_unique(array_column($result->assignments, 'worker_id'));
 
-        self::assertContains($active->id, $assignedWorkerIds);
-        self::assertNotContains($inactive->id, $assignedWorkerIds);
-        self::assertNotContains($contractless->id, $assignedWorkerIds);
+        self::assertContains($active->israeli_id, $assignedWorkerIds);
+        self::assertNotContains($inactive->israeli_id, $assignedWorkerIds);
+        self::assertNotContains($contractless->israeli_id, $assignedWorkerIds);
     }
 
     public function test_generate_has_no_feasibility_issues_when_daily_demand_can_be_covered(): void

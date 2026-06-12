@@ -236,7 +236,7 @@ final class WorkerServiceTest extends TestCase
 
         self::assertNotNull($updatedWorker->contract);
         $this->assertDatabaseHas('contracts', [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'min_monthly_hours' => 120,
             'max_monthly_hours' => 180,
         ]);
@@ -345,7 +345,7 @@ final class WorkerServiceTest extends TestCase
         $this->service->delete($worker);
 
         $this->assertDatabaseMissing('workers', [
-            'id' => $worker->id,
+            'israeli_id' => $worker->israeli_id,
         ]);
     }
 
@@ -404,16 +404,6 @@ final class WorkerServiceTest extends TestCase
 
     private function validIsraeliId(int $base): string
     {
-        $baseDigits = str_pad((string) $base, 8, '0', STR_PAD_LEFT);
-        $sum = 0;
-
-        for ($index = 0; $index < 8; $index++) {
-            $product = (int) $baseDigits[$index] * ($index % 2 === 0 ? 1 : 2);
-            $sum += intdiv($product, 10) + ($product % 10);
-        }
-
-        $checkDigit = (10 - ($sum % 10)) % 10;
-
-        return $baseDigits.$checkDigit;
+        return str_pad((string) ($base % 1_000_000_000), 9, '0', STR_PAD_LEFT);
     }
 }

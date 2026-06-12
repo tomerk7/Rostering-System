@@ -19,7 +19,6 @@ final class WorkerResource extends JsonResource
         $contract = $this->resource->contract;
 
         return [
-            'id' => $this->resource->id,
             'full_name' => $this->resource->full_name,
             'israeli_id' => $this->resource->israeli_id,
             'is_active' => $this->resource->is_active,

@@ -100,7 +100,7 @@ final class WorkerApiTest extends TestCase
         $worker = Worker::query()->where('israeli_id', $payload['israeli_id'])->firstOrFail();
 
         $this->assertDatabaseHas('contracts', [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'min_monthly_hours' => 120,
             'max_monthly_hours' => 180,
         ]);
@@ -122,9 +122,9 @@ final class WorkerApiTest extends TestCase
                 'max_monthly_hours' => 120,
             ]);
 
-        $this->getJson("/api/workers/{$worker->id}")
+        $this->getJson("/api/workers/{$worker->israeli_id}")
             ->assertOk()
-            ->assertJsonPath('data.id', $worker->id)
+            ->assertJsonPath('data.israeli_id', $worker->israeli_id)
             ->assertJsonPath('data.contract.availability.0.shift.id', $this->morningShift->id);
 
         $payload = $this->workerPayload([
@@ -133,7 +133,7 @@ final class WorkerApiTest extends TestCase
             'availability' => $this->availabilityPairs([4, 5], [$this->dayShift->id]),
         ]);
 
-        $this->putJson("/api/workers/{$worker->id}", $payload)
+        $this->putJson("/api/workers/{$worker->israeli_id}", $payload)
             ->assertOk()
             ->assertJsonPath('data.full_name', 'Updated Worker')
             ->assertJsonCount(2, 'data.contract.availability')
@@ -328,7 +328,7 @@ final class WorkerApiTest extends TestCase
         self::assertTrue($worker->is_active);
 
         $this->assertDatabaseHas('contracts', [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'hourly_cost' => '50.25',
             'min_monthly_hours' => 80,
             'max_monthly_hours' => 160,
@@ -385,7 +385,7 @@ final class WorkerApiTest extends TestCase
         $this->assertDatabaseCount('workers', 1);
         $this->assertDatabaseCount('contracts', 1);
         $this->assertDatabaseHas('contracts', [
-            'worker_id' => $worker->id,
+            'worker_id' => $worker->israeli_id,
             'hourly_cost' => '75.50',
             'min_monthly_hours' => 100,
             'max_monthly_hours' => 180,
@@ -430,7 +430,7 @@ final class WorkerApiTest extends TestCase
         $response = $this->importCsv([
             $this->csvRow(
                 fullName: 'Invalid Worker',
-                israeliId: '123456789',
+                israeliId: '12345',
                 role: 'Pilot',
                 status: 'Paused',
                 hourlyCost: '-1',
@@ -468,7 +468,7 @@ final class WorkerApiTest extends TestCase
 
         $response = $this->importCsv([
             $this->csvRow('Valid Worker', $validIsraeliId, 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A|B;Tue:A|B'),
-            $this->csvRow('Bad Checksum', '123456789', 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A'),
+            $this->csvRow('Bad ID', '12345', 'General Guard', 'Active', '50.00', '80', '160', 'Mon:A'),
             $this->csvRow('Bad Range', $this->validIsraeliId(12234567), 'Supervisor', 'Active', '50.00', '160', '80', 'Mon:A'),
         ]);
 
@@ -529,12 +529,12 @@ final class WorkerApiTest extends TestCase
             ->withAvailability([0], [$this->morningShift->id])
             ->create();
 
-        $this->deleteJson("/api/workers/{$worker->id}")
+        $this->deleteJson("/api/workers/{$worker->israeli_id}")
             ->assertOk()
             ->assertJsonPath('success', true);
 
         $this->assertDatabaseMissing('workers', [
-            'id' => $worker->id,
+            'israeli_id' => $worker->israeli_id,
         ]);
 
         $this->getJson('/api/workers')
@@ -558,7 +558,7 @@ final class WorkerApiTest extends TestCase
         $roster = Roster::factory()->create();
         RosterAssignment::factory()->create([
             'roster_id' => $roster->id,
-            'worker_id' => $workers[0]->id,
+            'worker_id' => $workers[0]->israeli_id,
             'shift_id' => $this->morningShift->id,
             'work_date' => '2026-06-10',
         ]);
@@ -754,16 +754,6 @@ final class WorkerApiTest extends TestCase
 
     private function validIsraeliId(int $base): string
     {
-        $baseDigits = str_pad((string) $base, 8, '0', STR_PAD_LEFT);
-        $sum = 0;
-
-        for ($index = 0; $index < 8; $index++) {
-            $product = (int) $baseDigits[$index] * ($index % 2 === 0 ? 1 : 2);
-            $sum += intdiv($product, 10) + ($product % 10);
-        }
-
-        $checkDigit = (10 - ($sum % 10)) % 10;
-
-        return $baseDigits.$checkDigit;
+        return str_pad((string) ($base % 1_000_000_000), 9, '0', STR_PAD_LEFT);
     }
 }

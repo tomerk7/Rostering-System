@@ -103,9 +103,8 @@ final readonly class WorkerService
         return DB::transaction(function () use ($worker, $data): Worker {
             $worker->update([
                 'full_name' => $data['full_name'],
-                'israeli_id' => $data['israeli_id'],
                 'role_id' => $data['role_id'],
-                'is_active' => $data['is_active']
+                'is_active' => $data['is_active'],
             ]);
 
             /** @var Contract $contract */

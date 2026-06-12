@@ -16,6 +16,12 @@ final class Worker extends Model
 {
     use HasFactory;
 
+    protected $primaryKey = 'israeli_id';
+
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
@@ -23,7 +29,7 @@ final class Worker extends Model
 
     public function contract(): HasOne
     {
-        return $this->hasOne(Contract::class);
+        return $this->hasOne(Contract::class, 'worker_id', 'israeli_id');
     }
 
     public function scopeActive(Builder $query): Builder

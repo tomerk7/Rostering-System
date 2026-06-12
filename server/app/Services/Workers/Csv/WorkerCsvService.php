@@ -713,16 +713,12 @@ final class WorkerCsvService
                 ['full_name', 'role_id', 'is_active', 'updated_at'],
             );
 
-            $workerIdByIsraeliId = Worker::query()
-                ->whereIn('israeli_id', $israeliIds)
-                ->pluck('id', 'israeli_id');
-
-            $contractRows = array_map(static function (array $row) use ($workerIdByIsraeliId, $now): array {
+            $contractRows = array_map(static function (array $row) use ($now): array {
                 /** @var array{hourly_cost: float|int|string, min_monthly_hours: int, max_monthly_hours: int} $contract */
                 $contract = $row['contract'];
 
                 return [
-                    'worker_id' => (int) $workerIdByIsraeliId[$row['israeli_id']],
+                    'worker_id' => $row['israeli_id'],
                     'hourly_cost' => $contract['hourly_cost'],
                     'min_monthly_hours' => $contract['min_monthly_hours'],
                     'max_monthly_hours' => $contract['max_monthly_hours'],
@@ -738,10 +734,10 @@ final class WorkerCsvService
             );
 
             $contractIdByWorkerId = Contract::query()
-                ->whereIn('worker_id', $workerIdByIsraeliId->values())
+                ->whereIn('worker_id', $israeliIds)
                 ->pluck('id', 'worker_id');
 
-            $this->replaceAvailability($chunk, $workerIdByIsraeliId, $contractIdByWorkerId, $shiftIdByCode);
+            $this->replaceAvailability($chunk, $contractIdByWorkerId, $shiftIdByCode);
 
             return [
                 'created' => count($chunk) - $existingCount,
@@ -754,13 +750,11 @@ final class WorkerCsvService
      * Replace all availability rows (days and shifts) for the chunk's contracts.
      *
      * @param  list<array<string, mixed>>  $chunk
-     * @param  Collection<string, int>  $workerIdByIsraeliId
-     * @param  Collection<int, int>  $contractIdByWorkerId
+     * @param  Collection<string, int>  $contractIdByWorkerId
      * @param  Collection<string, int>  $shiftIdByCode
      */
     private function replaceAvailability(
         array $chunk,
-        Collection $workerIdByIsraeliId,
         Collection $contractIdByWorkerId,
         Collection $shiftIdByCode,
     ): void {
@@ -771,8 +765,7 @@ final class WorkerCsvService
         $availabilityRows = [];
 
         foreach ($chunk as $row) {
-            $workerId = (int) $workerIdByIsraeliId[$row['israeli_id']];
-            $contractId = (int) $contractIdByWorkerId[$workerId];
+            $contractId = (int) $contractIdByWorkerId[$row['israeli_id']];
 
             /** @var list<array{day_of_week: int, shift_code: string}> $slots */
             $slots = $row['availability'];

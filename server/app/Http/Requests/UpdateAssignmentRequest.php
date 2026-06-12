@@ -26,7 +26,7 @@ final class UpdateAssignmentRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'worker_id' => ['required', 'integer', Rule::exists('workers', 'id')],
+            'worker_id' => ['required', 'string', 'size:9', Rule::exists('workers', 'israeli_id')],
         ];
     }
 }

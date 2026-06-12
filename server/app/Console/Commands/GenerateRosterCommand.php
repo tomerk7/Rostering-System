@@ -9,7 +9,7 @@ use App\Models\Shift;
 use App\Models\User;
 use App\Models\Worker;
 use App\Services\Rostering\RosterGenerator;
-use App\Services\Rostering\RosterPersister;
+use App\Services\Rostering\RosterService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -29,7 +29,7 @@ final class GenerateRosterCommand extends Command
      */
     protected $description = 'Generate a monthly roster preview and optionally save it';
 
-    public function handle(RosterGenerator $generator, RosterPersister $persister): int
+    public function handle(RosterGenerator $generator, RosterService $rosterService): int
     {
         $year = (int) $this->argument('year');
         $month = (int) $this->argument('month');
@@ -93,7 +93,7 @@ final class GenerateRosterCommand extends Command
             return self::FAILURE;
         }
 
-        $roster = $persister->save($result, (int) $user->id);
+        $roster = $rosterService->saveGenerationResult($result, (int) $user->id);
 
         $this->newLine();
         $this->info(sprintf(
@@ -156,14 +156,14 @@ final class GenerateRosterCommand extends Command
     }
 
     /**
-     * @param  list<array{worker_id: int, min_hours: int, scheduled_hours: int}>  $shortfalls
+     * @param  list<array{worker_id: string, min_hours: int, scheduled_hours: int}>  $shortfalls
      * @return list<array{string, int, int}>
      */
     private function formatHoursShortfalls(array $shortfalls): array
     {
         $workerNames = Worker::query()
-            ->whereIn('id', array_column($shortfalls, 'worker_id'))
-            ->pluck('full_name', 'id');
+            ->whereIn('israeli_id', array_column($shortfalls, 'worker_id'))
+            ->pluck('full_name', 'israeli_id');
 
         return array_map(
             static fn (array $shortfall): array => [

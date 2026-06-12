@@ -50,6 +50,9 @@ db-logs:
 server-logs:
 	$(compose) logs -f server
 
+server-restart:
+	$(compose) restart server
+
 server-app-logs:
 	$(compose) exec server tail -f storage/logs/laravel.log
 
@@ -62,6 +65,9 @@ artisan-ide-helper:
 artisan-command:
 	$(server) php artisan $(args)
 
+test:
+	$(server) php artisan test
+
 composer-du:
 	$(server) sh -c "composer dump-autoload --quiet --optimize --classmap-authoritative $(args)"
 
@@ -69,7 +75,7 @@ composer-install:
 	$(server) sh -c "composer install"
 
 tests:
-	$(server) php artisan test
+	$(server) ./vendor/bin/phpunit
 
 optimize-clear-all:
 	$(server) php artisan optimize:clear

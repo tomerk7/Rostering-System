@@ -24,7 +24,7 @@ final readonly class ManualAssignmentService
      *
      * @throws ManualAssignmentException
      */
-    public function create(Roster $roster, int $workerId, int $shiftId, string $workDate): RosterAssignment
+    public function create(Roster $roster, string $workerId, int $shiftId, string $workDate): RosterAssignment
     {
         $date = CarbonImmutable::parse($workDate)->startOfDay();
         $this->assertDateInRosterMonth($roster, $date);
@@ -66,13 +66,13 @@ final readonly class ManualAssignmentService
      * @return RosterAssignment
      * @throws ManualAssignmentException
      */
-    public function change(Roster $roster, RosterAssignment $assignment, int $workerId): RosterAssignment
+    public function change(Roster $roster, RosterAssignment $assignment, string $workerId): RosterAssignment
     {
         if ((int) $assignment->roster_id !== (int) $roster->id) {
             throw ManualAssignmentException::assignmentNotInRoster();
         }
 
-        if ((int) $assignment->worker_id === $workerId) {
+        if ((string) $assignment->worker_id === $workerId) {
             return $assignment;
         }
 
@@ -167,13 +167,13 @@ final readonly class ManualAssignmentService
      * Assert that the worker is not already assigned to the same date and shift.
      *
      * @param Roster $roster
-     * @param int $workerId
+     * @param string $workerId
      * @param int $shiftId
      * @param CarbonImmutable $date
      * @return void
      * @throws ManualAssignmentException
      */
-    private function assertUniqueSlot(Roster $roster, int $workerId, int $shiftId, CarbonImmutable $date): void
+    private function assertUniqueSlot(Roster $roster, string $workerId, int $shiftId, CarbonImmutable $date): void
     {
         $exists = RosterAssignment::query()
             ->where('roster_id', $roster->id)
@@ -191,12 +191,12 @@ final readonly class ManualAssignmentService
      * Assert that the worker is not assigned to more than the maximum number of shifts per day.
      *
      * @param Roster $roster
-     * @param int $workerId
+     * @param string $workerId
      * @param CarbonImmutable $date
      * @return void
      * @throws ManualAssignmentException
      */
-    private function assertDailyShiftLimit(Roster $roster, int $workerId, CarbonImmutable $date): void
+    private function assertDailyShiftLimit(Roster $roster, string $workerId, CarbonImmutable $date): void
     {
         $shiftsOnDate = RosterAssignment::query()
             ->where('roster_id', $roster->id)
@@ -222,7 +222,7 @@ final readonly class ManualAssignmentService
     {
         $assignedHours = (int) RosterAssignment::query()
             ->where('roster_assignments.roster_id', $roster->id)
-            ->where('roster_assignments.worker_id', $worker->id)
+            ->where('roster_assignments.worker_id', $worker->israeli_id)
             ->join('shifts', 'shifts.id', '=', 'roster_assignments.shift_id')
             ->sum('shifts.duration_hours');
 
