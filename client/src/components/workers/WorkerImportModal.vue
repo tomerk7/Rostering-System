@@ -406,39 +406,25 @@ async function downloadSample() {
           <h3 class="import-errors__title">
             Row errors ({{ importErrors.length }})
           </h3>
-          <div class="import-errors__scroll">
-            <table class="table import-errors__table">
-              <thead>
-                <tr>
-                  <th class="import-errors__th import-errors__th--line">
-                    Line
-                  </th>
-                  <th class="import-errors__th import-errors__th--field">
-                    Field
-                  </th>
-                  <th class="import-errors__th import-errors__th--message">
-                    Message
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(rowError, index) in importErrors"
-                  :key="`${rowError.line}-${index}`"
-                >
-                  <td class="import-errors__td import-errors__td--line">
-                    {{ rowError.line }}
-                  </td>
-                  <td class="import-errors__td import-errors__td--field">
-                    {{ rowError.field }}
-                  </td>
-                  <td class="import-errors__td import-errors__td--message">
-                    {{ rowError.message }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <ul class="import-errors__list">
+            <li
+              v-for="(rowError, index) in importErrors"
+              :key="`${rowError.line}-${rowError.field}-${index}`"
+              class="import-errors__item"
+            >
+              <div class="import-errors__meta">
+                <span class="import-errors__badge">
+                  Line {{ rowError.line }}
+                </span>
+                <span class="import-errors__field">
+                  {{ rowError.field }}
+                </span>
+              </div>
+              <p class="import-errors__message">
+                {{ rowError.message }}
+              </p>
+            </li>
+          </ul>
         </div>
 
         <footer class="modal__footer">
@@ -730,35 +716,56 @@ async function downloadSample() {
   color: #334155;
 }
 
-.import-errors__scroll {
+.import-errors__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
   max-height: 45vh;
+  margin: 0;
+  padding: 0;
   overflow-y: auto;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
+  list-style: none;
 }
 
-.import-errors__table {
-  min-width: 0;
-  width: 100%;
-  table-layout: fixed;
+.import-errors__item {
+  padding: 0.75rem 0.875rem;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 0.625rem;
 }
 
-.import-errors__th--line,
-.import-errors__td--line {
-  width: 3.5rem;
-  white-space: nowrap;
+.import-errors__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.375rem;
 }
 
-.import-errors__th--field,
-.import-errors__td--field {
-  width: 7rem;
-  white-space: nowrap;
+.import-errors__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #991b1b;
+  background: #fee2e2;
+  border-radius: 999px;
 }
 
-.import-errors__th--message,
-.import-errors__td--message {
-  white-space: normal;
-  word-break: break-word;
+.import-errors__field {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #7f1d1d;
+}
+
+.import-errors__message {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #334155;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 820px) {

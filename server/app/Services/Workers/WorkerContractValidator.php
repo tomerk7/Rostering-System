@@ -9,12 +9,12 @@ use App\Models\RosterAssignment;
 use Illuminate\Support\Carbon;
 
 /**
- * Validates worker contract changes against persisted roster assignments.
+ * Validates worker contract changes against current and future roster assignments.
  */
 final readonly class WorkerContractValidator
 {
     /**
-     * Rosters where the worker already exceeds the proposed max monthly hours.
+     * Current and future rosters where the worker already exceeds the proposed max monthly hours.
      *
      * @return list<array{period_label: string, assigned_hours: int}>
      */
@@ -24,6 +24,7 @@ final readonly class WorkerContractValidator
             ->join('rosters', 'rosters.id', '=', 'roster_assignments.roster_id')
             ->join('shifts', 'shifts.id', '=', 'roster_assignments.shift_id')
             ->where('roster_assignments.worker_id', $workerId)
+            ->whereDate('rosters.period_start', '>=', Carbon::now()->startOfMonth()->toDateString())
             ->groupBy('rosters.id', 'rosters.period_start')
             ->havingRaw('SUM(shifts.duration_hours) > ?', [$maxMonthlyHours])
             ->selectRaw('rosters.period_start, SUM(shifts.duration_hours) AS assigned_hours')

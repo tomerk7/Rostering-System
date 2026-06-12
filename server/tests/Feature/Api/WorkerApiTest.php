@@ -528,6 +528,63 @@ final class WorkerApiTest extends TestCase
         ]);
     }
 
+    public function test_worker_import_allows_lower_max_hours_when_only_past_roster_exceeds(): void
+    {
+        $user = User::query()->firstOrFail();
+        $israeliId = $this->validIsraeliId(74345679);
+        $worker = Worker::factory()->create([
+            'full_name' => 'Past Roster Worker',
+            'israeli_id' => $israeliId,
+            'role_id' => $this->supervisorRole->id,
+            'is_active' => true,
+        ]);
+        Contract::factory()
+            ->for($worker)
+            ->withAvailability([0, 1, 2, 3, 4, 5, 6], [$this->morningShift->id])
+            ->create([
+                'hourly_cost' => 75,
+                'min_monthly_hours' => 80,
+                'max_monthly_hours' => 240,
+            ]);
+
+        $past = Carbon::now()->startOfMonth()->subMonthsNoOverflow();
+        $pastRoster = Roster::factory()
+            ->forPeriod((int) $past->year, (int) $past->month)
+            ->create(['created_by' => $user->id]);
+
+        for ($day = 1; $day <= 22; $day++) {
+            RosterAssignment::query()->create([
+                'roster_id' => $pastRoster->id,
+                'worker_id' => $worker->israeli_id,
+                'shift_id' => $this->morningShift->id,
+                'work_date' => $past->copy()->day($day)->toDateString(),
+                'source' => AssignmentSource::Auto,
+                'hourly_cost' => 50,
+            ]);
+        }
+
+        $this->importCsv([
+            $this->csvRow(
+                fullName: 'Past Roster Worker',
+                israeliId: $israeliId,
+                role: 'Supervisor',
+                status: 'Active',
+                hourlyCost: '75.00',
+                minMonthlyHours: '80',
+                maxMonthlyHours: '144',
+                shiftA: '1-7',
+            ),
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.updated', 1)
+            ->assertJsonPath('data.skipped', 0);
+
+        $this->assertDatabaseHas('contracts', [
+            'worker_id' => $worker->israeli_id,
+            'max_monthly_hours' => 144,
+        ]);
+    }
+
     public function test_worker_import_removes_assignments_outside_updated_availability(): void
     {
         $user = User::query()->firstOrFail();
