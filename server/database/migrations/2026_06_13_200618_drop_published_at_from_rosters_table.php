@@ -13,8 +13,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('rosters', function (Blueprint $table) {
-            $table->string('status')->default('ready')->after('period_start');
+        Schema::table('rosters', function (Blueprint $table): void {
+            $table->dropColumn('published_at');
         });
     }
 
@@ -23,8 +23,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('rosters', function (Blueprint $table) {
-            $table->dropColumn('status');
+        Schema::table('rosters', function (Blueprint $table): void {
+            $table->timestamp('published_at')->nullable()->after('generated_at');
         });
     }
 };

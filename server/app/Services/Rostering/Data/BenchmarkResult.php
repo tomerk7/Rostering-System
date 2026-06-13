@@ -9,11 +9,6 @@ namespace App\Services\Rostering\Data;
  * cost-optimized run for one month. Nothing is persisted — both runs are
  * previews, and this object only carries the comparison metrics.
  *
- * Each per-run metrics array has the shape:
- *
- *   array{assignments: int, coverage_shortages: int, total_cost: float,
- *         min_hours_shortfall_workers: int, min_hours_shortfall_hours: int,
- *         max_hours_violations: int, hours_std_dev: float, generation_seconds: float}
  */
 final readonly class BenchmarkResult
 {

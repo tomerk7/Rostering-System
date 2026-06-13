@@ -79,8 +79,6 @@ final class RosterStatsApiTest extends TestCase
                             'min_hours',
                             'max_hours',
                             'actual_hours',
-                            'percent_of_min',
-                            'percent_of_max',
                             'total_cost',
                             'shortfall_hours',
                         ],

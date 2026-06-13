@@ -15,29 +15,6 @@ final class StatsMath
     private const int LEADERBOARD_SIZE = 5;
 
     /**
-     * Utilization percentage with division-by-zero protection.
-     * 
-     * @param int $actualHours
-     * @param int $targetHours
-     * @param bool $capAtHundred
-     * @return float
-     */
-    public static function percentOf(int $actualHours, int $targetHours, bool $capAtHundred): float
-    {
-        if ($targetHours <= 0) {
-            return 0.0;
-        }
-
-        $percent = ($actualHours / $targetHours) * 100;
-
-        if ($capAtHundred) {
-            $percent = min($percent, 100);
-        }
-
-        return round($percent, 2);
-    }
-
-    /**
      * Build the standard leaderboards from per-worker stat rows.
      *
      * @param  list<WorkerStatsRow>  $rows

@@ -16,6 +16,7 @@ return new class extends Migration
         Schema::create('rosters', function (Blueprint $table) {
             $table->id();
             $table->date('period_start');
+            $table->string('status')->default('ready');
             $table->timestamp('generated_at')->nullable();
             $table->timestamp('published_at')->nullable();
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();

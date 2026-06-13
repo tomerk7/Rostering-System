@@ -23,6 +23,7 @@ return new class extends Migration
             $table->foreignId('shift_id')->constrained('shifts')->restrictOnDelete();
             $table->date('work_date');
             $table->string('source')->default(AssignmentSource::Auto->value);
+            $table->decimal('hourly_cost', 8, 2);
             $table->timestamps();
 
             // Prevent assigning the same worker to the same date and shift more than once in the same roster.
@@ -41,6 +42,7 @@ return new class extends Migration
         ));
 
         DB::statement("ALTER TABLE roster_assignments ADD CONSTRAINT roster_assignments_source_allowed CHECK (source IN ({$allowedSources}))");
+        DB::statement('ALTER TABLE roster_assignments ADD CONSTRAINT roster_assignments_hourly_cost_non_negative CHECK (hourly_cost >= 0)');
     }
 
     /**

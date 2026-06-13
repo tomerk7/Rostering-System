@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace App\Services\Rostering\Data;
 
-use App\Services\Rostering\Support\StatsMath;
-
 /**
- * Per-worker hours, utilization, cost, and shortfall for roster stats,
- * CSV export, and benchmark comparison tables.
+ * Per-worker hours, cost, and shortfall for roster stats, CSV export, and
+ * benchmark comparison tables.
  */
 final readonly class WorkerStatsRow
 {
@@ -19,14 +17,12 @@ final readonly class WorkerStatsRow
         public int $minHours,
         public int $maxHours,
         public int $actualHours,
-        public float $percentOfMin,
-        public float $percentOfMax,
         public float $totalCost,
         public int $shortfallHours,
     ) {}
 
     /**
-     * Build a row from aggregated hours and cost, computing utilization percents.
+     * Build a row from aggregated hours and cost.
      */
     public static function fromHoursAndCost(
         string $workerId,
@@ -45,8 +41,6 @@ final readonly class WorkerStatsRow
             minHours: $minHours,
             maxHours: $maxHours,
             actualHours: $actualHours,
-            percentOfMin: StatsMath::percentOf($actualHours, $minHours, capAtHundred: true),
-            percentOfMax: StatsMath::percentOf($actualHours, $maxHours, capAtHundred: false),
             totalCost: round($totalCost, 2),
             shortfallHours: $shortfallHours,
         );
@@ -60,8 +54,6 @@ final readonly class WorkerStatsRow
      *     min_hours: int,
      *     max_hours: int,
      *     actual_hours: int,
-     *     percent_of_min: float,
-     *     percent_of_max: float,
      *     total_cost: float,
      *     shortfall_hours: int
      * }
@@ -75,8 +67,6 @@ final readonly class WorkerStatsRow
             'min_hours' => $this->minHours,
             'max_hours' => $this->maxHours,
             'actual_hours' => $this->actualHours,
-            'percent_of_min' => $this->percentOfMin,
-            'percent_of_max' => $this->percentOfMax,
             'total_cost' => $this->totalCost,
             'shortfall_hours' => $this->shortfallHours,
         ];

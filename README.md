@@ -90,33 +90,7 @@ graph LR
 ### Prerequisites
 
 - Docker + Docker Compose
-- `make` (optional but convenient — every command below has a raw equivalent)
-
-### One-command start (development)
-
-```bash
-make docker-init          # alias for docker-init-dev
-# or explicitly:
-make docker-init-dev
-```
-
-This copies `.env.example` → `.env` for `server/`, `db/` and `client/` (if missing) and runs the **development** stack (`docker-compose.dev.yml`). No manual DB steps are needed — migrations and idempotent seeders (roles, shifts, staffing requirements, default user) run automatically on server boot.
-
-**Development mode** (`docker-compose.dev.yml`):
-
-- **Server** — `server/docker-start.sh`: full `composer install`, migrate, seed, queue worker, `artisan serve`
-- **Client** — `client/docker-start.dev.sh`: `npm install` + **Vite dev server** with hot reload on `:5173`
-
-Equivalent without `make`:
-
-```bash
-cp server/.env.example server/.env
-cp db/.env.example db/.env
-cp client/.env.example client/.env
-docker compose -f docker-compose.dev.yml up -d --build
-```
-
-(`docker compose up` also works — root `docker-compose.yml` includes the dev file.)
+- `make`
 
 ### Production mode
 
@@ -124,15 +98,12 @@ docker compose -f docker-compose.dev.yml up -d --build
 make docker-init-prod
 ```
 
-**Production mode** (`docker-compose.prod.yml`):
-
-- **Server** — `server/docker-start.prod.sh`: `composer install --no-dev`, migrate, seed, Laravel config/route/view cache, queue worker, `artisan serve`
-- **Client** — `client/docker-start.prod.sh`: `npm ci` → `vite build` → `vite preview` (serves the built static assets on `:5173`)
-
-Equivalent without `make`:
+### Development mode
 
 ```bash
-docker compose -f docker-compose.prod.yml up -d --build
+make docker-init
+# or explicitly:
+make docker-init-dev
 ```
 
 ### Open the app
@@ -148,7 +119,17 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 ### Load sample workers
 
-From the **Workers** page, click **Import** and upload `server/database/data/workers-sample.csv` (13 workers), or download the same file via the "sample CSV" link inside the import modal. See [Sample Data & Test-Data Generator](#sample-data--test-data-generator) for generating larger datasets.
+From the **Workers** page, click **Import** and upload one of the prepared CSVs in `server/database/data/` (or download `workers-sample.csv` via the "sample CSV" link inside the import modal):
+
+
+| File                 | Workers | Use for                                                                                                 |
+| -------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `workers-sample.csv` | 12      | quick smoke test                                                                                        |
+| `realistic.csv`      | 45      | a sustainable 30 / 10 / 5 workforce that fully staffs a month — the main roster demo                    |
+| `optimization.csv`   | 54      | bimodal cheap/expensive pools with a bench, built to show the cost optimizer's savings in the benchmark |
+
+
+All three share the same import schema. To seed data directly into the database instead of importing, use the `workers:seed` command — see [Sample Data & Test-Data Generator](#sample-data--test-data-generator).
 
 ### Useful Makefile targets
 
@@ -159,8 +140,9 @@ From the **Workers** page, click **Import** and upload `server/database/data/wor
 | `make docker-up-dev` / `make docker-up-prod`             | Start dev or prod stack         |
 | `make docker-down`                                       | Stop running stacks             |
 | `make docker-rebuild-dev` / `make docker-rebuild-prod`   | Rebuild images and restart      |
-| `make db-migrate` / `make db-rebuild`                    | Run migrations / fresh-migrate  |
-| `make db-seeders`                                        | Re-run seeders manually         |
+| `make db-migrate` / `make db-rebuild`                    | Run migrations / fresh-migrate + seed (dev) |
+| `make db-rebuild-prod`                                   | Fresh-migrate + seed (prod stack)           |
+| `make db-seeders`                                        | Re-run seeders manually                     |
 | `make db-psql`                                           | Open a `psql` shell             |
 | `make test`                                              | Run the backend test suite      |
 | `make server-logs` / `make client-logs` / `make db-logs` | Tail container logs             |
@@ -174,159 +156,96 @@ From the **Workers** page, click **Import** and upload `server/database/data/wor
 
 ```mermaid
 erDiagram
-    roles ||--o{ workers : "role_id"
-    workers ||--|| contracts : "worker_id (unique)"
-    contracts ||--o{ contract_availability : "contract_id"
-    shifts ||--o{ contract_availability : "shift_id"
-    shifts ||--o{ shift_role_requirements : "shift_id"
-    roles ||--o{ shift_role_requirements : "role_id"
-    rosters ||--o{ roster_assignments : "roster_id"
-    workers ||--o{ roster_assignments : "worker_id"
-    shifts ||--o{ roster_assignments : "shift_id"
-    rosters ||--o{ roster_alerts : "roster_id"
-    rosters ||--o{ coverage_shortages : "roster_id"
-    users ||--o{ rosters : "created_by"
+    roles ||--o{ workers : ""
+    roles ||--o{ shift_role_requirements : ""
+    roles ||--o{ coverage_shortages : ""
+    shifts ||--o{ shift_role_requirements : ""
+    shifts ||--o{ contract_availability : ""
+    shifts ||--o{ roster_assignments : ""
+    shifts ||--o{ coverage_shortages : ""
+    workers ||--|| contracts : ""
+    workers ||--o{ roster_assignments : ""
+    workers ||--o{ roster_alerts : ""
+    contracts ||--o{ contract_availability : ""
+    users ||--o{ rosters : ""
+    rosters ||--o{ roster_assignments : ""
+    rosters ||--o{ roster_alerts : ""
+    rosters ||--o{ coverage_shortages : ""
+
+    roles {
+        bigint id PK
+        varchar code UK
+        varchar name
+    }
+    shifts {
+        bigint id PK
+        varchar code UK
+        time start_time
+        smallint duration_hours
+    }
+    shift_role_requirements {
+        bigint id PK
+        bigint shift_id FK
+        bigint role_id FK
+        smallint required_count
+    }
+    workers {
+        char israeli_id PK
+        varchar full_name
+        bigint role_id FK
+        boolean is_active
+    }
+    contracts {
+        bigint id PK
+        char worker_id FK
+        decimal hourly_cost
+        smallint min_monthly_hours
+        smallint max_monthly_hours
+    }
+    contract_availability {
+        bigint id PK
+        bigint contract_id FK
+        bigint shift_id FK
+        smallint day_of_week
+    }
+    rosters {
+        bigint id PK
+        date period_start UK
+        varchar status
+        bigint created_by FK
+    }
+    roster_assignments {
+        bigint id PK
+        bigint roster_id FK
+        char worker_id FK
+        bigint shift_id FK
+        date work_date
+        decimal hourly_cost
+    }
+    roster_alerts {
+        bigint id PK
+        bigint roster_id FK
+        char worker_id FK
+        varchar type
+    }
+    coverage_shortages {
+        bigint id PK
+        bigint roster_id FK
+        bigint shift_id FK
+        bigint role_id FK
+        smallint assigned_count
+    }
+    users {
+        bigint id PK
+        varchar name
+    }
 ```
 
 
 
 PostgreSQL. Structural rules live in the DB (unique roster per month, 1:1 contracts, check constraints); scheduling rules (max 2 shifts/day, min/max hours, role demand) are enforced by the engine. `users` are admins only — workers never log in.
 
-### Lookup tables
-
-`**roles**`
-
-
-| Column | Type        | Notes                                              |
-| ------ | ----------- | -------------------------------------------------- |
-| `id`   | PK          | surrogate key for FKs                              |
-| `code` | varchar(20) | unique — `general_guard`, `supervisor`, `screener` |
-| `name` | varchar(50) | display label                                      |
-
-
-`**shifts**`
-
-
-| Column                    | Type     | Notes                                      |
-| ------------------------- | -------- | ------------------------------------------ |
-| `id`                      | PK       | surrogate key for FKs                      |
-| `code`                    | char(1)  | unique — `A`, `B`, `C`                     |
-| `start_time` / `end_time` | time     | shift window                               |
-| `duration_hours`          | smallint | `check > 0` — used for monthly hour totals |
-
-
-`**shift_role_requirements**` — staffing demand (6 / 2 / 1 per shift)
-
-
-| Column           | Type        | Notes                          |
-| ---------------- | ----------- | ------------------------------ |
-| `shift_id`       | FK → shifts |                                |
-| `role_id`        | FK → roles  |                                |
-| `required_count` | smallint    | unique (`shift_id`, `role_id`) |
-
-
-### HR & contracts
-
-`**workers**`
-
-
-| Column       | Type         | Notes                                            |
-| ------------ | ------------ | ------------------------------------------------ |
-| `israeli_id` | char(9) PK   | natural key; CSV upsert key                      |
-| `full_name`  | varchar(255) |                                                  |
-| `role_id`    | FK → roles   | restrict on delete                               |
-| `is_active`  | boolean      | default `true`; inactive excluded from rostering |
-| `deleted_at` | timestamp    | nullable; soft-deleted workers archived and hidden from default queries |
-
-
-`**contracts**` — one per worker
-
-
-| Column                                    | Type         | Notes                           |
-| ----------------------------------------- | ------------ | ------------------------------- |
-| `worker_id`                               | char(9) FK   | unique (1:1), cascade on delete |
-| `hourly_cost`                             | decimal(8,2) | `check >= 0`                    |
-| `min_monthly_hours` / `max_monthly_hours` | smallint     | `check (max >= min)`            |
-
-
-`**contract_availability**` — one row per allowed (weekday, shift) pair
-
-
-| Column        | Type           | Notes                                    |
-| ------------- | -------------- | ---------------------------------------- |
-| `contract_id` | FK → contracts | cascade on delete                        |
-| `day_of_week` | smallint       | 0–6 (0 = Sunday); unique with `shift_id` |
-| `shift_id`    | FK → shifts    | restrict on delete                       |
-
-
-### Rostering
-
-`**rosters**` — one row per calendar month
-
-
-| Column                          | Type       | Notes                             |
-| ------------------------------- | ---------- | --------------------------------- |
-| `period_start`                  | date       | first day of month; unique        |
-| `status`                        | varchar    | `processing` / `ready` / `failed` |
-| `generated_at` / `published_at` | timestamp  | set when generation completes     |
-| `created_by`                    | FK → users | restrict on delete                |
-
-
-`**roster_assignments**` — core fact table (one worker × one shift × one date)
-
-
-| Column      | Type         | Notes              |
-| ----------- | ------------ | ------------------ |
-| `roster_id` | FK → rosters | cascade on delete  |
-| `worker_id` | char(9) FK   | restrict on delete |
-| `shift_id`  | FK → shifts  | restrict on delete |
-| `work_date` | date         |                    |
-| `source`    | enum         | `auto` or `manual` |
-
-
-Role is derived from `workers.role_id` (no `role_id` column on assignments). Unique (`roster_id`, `worker_id`, `work_date`, `shift_id`).
-
-### Report snapshots
-
-Refreshed after generation, regeneration, manual edits, and worker changes — read from storage, not recomputed on every page load.
-
-`**roster_alerts**` — per-worker issues (today: hours below contract minimum)
-
-
-| Column                          | Type         | Notes             |
-| ------------------------------- | ------------ | ----------------- |
-| `roster_id`                     | FK → rosters |                   |
-| `type`                          | varchar      | `hours_shortfall` |
-| `worker_id`                     | char(9) FK   |                   |
-| `min_hours` / `scheduled_hours` | integer      |                   |
-
-
-`**coverage_shortages**` — understaffed slots (no worker — keyed by date/shift/role)
-
-
-| Column                              | Type         | Notes                 |
-| ----------------------------------- | ------------ | --------------------- |
-| `roster_id`                         | FK → rosters |                       |
-| `work_date`                         | date         |                       |
-| `shift_id` / `role_id`              | FK           |                       |
-| `required_count` / `assigned_count` | integer      | demand vs actual fill |
-
-
-Plus Laravel infra: `sessions`, `cache`, `jobs`, `failed_jobs`, `personal_access_tokens`.
-
-### Key indexes
-
-
-| Index                                                                     | Serves                                   |
-| ------------------------------------------------------------------------- | ---------------------------------------- |
-| `roster_assignments (roster_id, work_date, shift_id)`                     | Calendar grid reads                      |
-| `roster_assignments` unique `(roster_id, worker_id, work_date, shift_id)` | Slot integrity + manual assign checks    |
-| `roster_assignments (worker_id)`                                          | Per-worker hours, export, worker cleanup |
-| `workers (role_id)`                                                       | Eligible-worker filtering by role        |
-| `coverage_shortages (roster_id, work_date, shift_id)`                     | Shortage report load                     |
-
-
-Assignments are bulk-inserted in chunks, so write overhead stays low even for full months.
+For column-level detail of each table — types, constraints, indexes, and design rationale — see the [database schema reference](schema.md).
 
 ---
 
@@ -355,21 +274,6 @@ Assignments are bulk-inserted in chunks, so write overhead stays low even for fu
 
 Both reports are **recomputed automatically** whenever the roster changes — manual add/remove of assignments, worker edits, or worker deletion — so they never go stale.
 
-### Viewing & manual editing
-
-The roster is displayed as a monthly/weekly grid (toggleable) showing every shift slot and its assigned workers. On top of the generated schedule you can:
-
-- **Manually add** a worker to any slot (the API enforces the same hard constraints as the engine; the client pre-filters to eligible workers only).
-- **Manually remove** any assignment.
-- **Regenerate** the month (replaces auto assignments).
-
-### Scalability of the engine
-
-- Generation runs in a **queued job** with a generous timeout/memory budget — a 10× workforce never blocks an HTTP request.
-- The engine works on plain in-memory data structures loaded in a handful of queries (no N+1 per slot), and assignments are **bulk-inserted in chunks**.
-- Complexity is roughly *O(slots × candidates)* per month; slots are fixed by the calendar (~9 role-slots/day), so it scales linearly with workforce size.
-- Demand (6/2/1) lives in the `shift_role_requirements` table, so changing staffing levels requires no code change.
-
 ---
 
 ## CSV Import / Export Schema
@@ -397,25 +301,6 @@ The export produces exactly this format, and the import accepts it unchanged, as
 
 **Day expression syntax** (per shift column): days are numbered `1` = Sunday … `7` = Saturday. Use single days, ranges, or both, joined with `|`. An empty cell means *not available for that shift*. At least one shift column must be non-empty.
 
-
-| Example   | Meaning                       |
-| --------- | ----------------------------- |
-| `1-7`     | every day                     |
-| `1-5`     | Sunday–Thursday               |
-| `2        | 4                             |
-| `1-3      | 6-7`                          |
-| *(empty)* | never available on this shift |
-
-
-**Example rows:**
-
-```csv
-full_name,israeli_id,role,status,hourly_cost,min_monthly_hours,max_monthly_hours,00:00-08:00,08:00-16:00,16:00-00:00
-Dana Cohen,234567816,Supervisor,Active,75.00,120,180,1-4,1-4,
-Yossi Levi,314159260,General Guard,Active,52.50,80,160,1-7,1-7,1-7
-Maya Bar,271828188,Screener,Inactive,60.00,0,120,,2|4|6,
-```
-
 **Import behaviour:**
 
 - Runs as a **queued job**; the client polls progress and shows the final report.
@@ -427,120 +312,66 @@ Maya Bar,271828188,Screener,Inactive,60.00,0,120,,2|4|6,
 
 **Export:** Workers page → **Export** streams active directory workers (excluding archived/soft-deleted) with contract + availability as `workers-YYYY-MM-DD.csv` in the exact schema above.
 
-### Roster analytics CSV (bonus feature — see rationale below)
-
-Exported per roster from the roster details page:
-
-
-| Column                         | Description                                                                |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `worker_id`                    | Israeli ID                                                                 |
-| `worker_name`                  | Full name                                                                  |
-| `roster_year` / `roster_month` | The roster period                                                          |
-| `min_hours` / `max_hours`      | Contracted bounds                                                          |
-| `actual_hours`                 | Hours actually scheduled this month                                        |
-| `percent_of_max`               | Utilisation vs contractual maximum (can exceed 100 if manually overridden) |
-| `percent_of_min`               | Progress toward the contracted minimum (capped at 100)                     |
-| `total_cost`                   | `actual_hours × hourly_cost` (ILS) — the worker's projected monthly cost   |
-
-
 The export is only enabled once the roster has **no coverage shortages**, so the numbers always describe a fully staffed, valid month.
 
 ---
 
 ## Sample Data & Test-Data Generator
 
-### Sample CSV (assignment deliverable)
+### Prepared CSVs
 
-`server/database/data/workers-sample.csv` — 13 workers covering all three roles, active/inactive statuses, and varied availability patterns. It is also downloadable from inside the app (import modal → sample CSV).
+`server/database/data/` ships three import-ready files — `workers-sample.csv` (12), `realistic.csv` (45), `optimization.csv` (54) — uploadable from the Workers page.
 
-### Workforce generator (for testing at scale)
+### Generate into the DB
 
-`server/scripts/generate_workers_csv.py` produces import-ready CSVs of any size using purpose-built profiles:
+`workers:seed` writes workers, contracts, and availability straight to the database via the model factories:
 
 ```bash
-# default: balanced profile, 50 workers
-python3 server/scripts/generate_workers_csv.py
-
-# fully covers a month with little/no shortage (22 guards / 8 screeners / 5 supervisors)
-python3 server/scripts/generate_workers_csv.py --profile adequate
-
-# deliberately undersized — exercises shortage & shortfall alerts (6/2/1)
-python3 server/scripts/generate_workers_csv.py --profile shortage
-
-# realistic 24/7 workforce: per-shift demand × coverage factor (default 5.0 → 30/10/5),
-# workers take 1–2 days off per week and are spread across shifts round-robin
-python3 server/scripts/generate_workers_csv.py --profile realistic
-python3 server/scripts/generate_workers_csv.py --profile realistic --coverage-factor 4.8
-
-# arbitrary size, reproducible output
-python3 server/scripts/generate_workers_csv.py --count 80 --seed 42 --output server/database/data/workers-large.csv
+make artisan-command args="workers:seed realistic"
 ```
 
 
-| Profile     | Purpose                                                                                                                      |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `balanced`  | Random realistic mix of roles, availability, and a few inactive workers                                                      |
-| `adequate`  | Sized so the engine can fill (almost) every slot — happy-path demos                                                          |
-| `shortage`  | Too small on purpose — demonstrates coverage-shortage and min-hours alerts                                                   |
-| `realistic` | Models a sustainable 24/7 workforce with days off and shift spread, forcing the engine to make genuine scheduling trade-offs |
+| Profile        | Roles (G/Scr/Sup) | Purpose                                                              |
+| -------------- | ----------------- | -------------------------------------------------------------------- |
+| `realistic`    | 30 / 10 / 5       | sustainable 24/7 workforce that fully staffs a month                 |
+| `optimization` | 36 / 12 / 6       | bimodal cheap/expensive pools with a bench — shows optimizer savings |
+| `shortage`     | 6 / 2 / 1         | deliberately undersized — exercises coverage & min-hours alerts      |
 
 
-Output defaults to `server/database/data/workers-generated.csv`; import it through the UI like any other file. Requires only Python 3 (standard library).
+Flags: `--coverage-factor=N` (size), `--seed=N` (reproducible), `--fresh` (wipe workers first).
 
 ---
 
 ## Bonus Features & Rationale
 
-The assignment requires at least two self-designed features with documented business value.
+### 1. Cost optimizer + objective selection
 
-### Bonus 1 — Roster Analytics Export (per-month workforce statistics)
+A simulated-annealing pass runs after the greedy build, swapping *who* fills each position to lower a multi-criteria objective (payroll cost + min-hours shortfall + even hour spread) while keeping every hard constraint and coverage intact. The trade-off is a user-picked preset — **Maximum Savings → Distribution Focused**. **Value:** the same roster can be tuned for budget or for balanced workloads on demand.
 
-**What:** An **Export** button on every generated roster that produces a per-worker analytics CSV for the month: scheduled hours, utilisation against contractual minimum and maximum (`percent_of_min`, `percent_of_max`), and **total projected cost** (`actual_hours × hourly_cost`). Export is gated until the roster has zero coverage shortages, so the report always reflects a valid, fully staffed schedule. Generation runs as a queued job with download polling, so even very large months never block the UI.
+### 2. Generation benchmark
 
-**Business value:** This turns the roster from an operational artifact into a management tool. The contract data already contains hourly cost — this feature computes the numbers the Product Manager actually needs each month:
+Generates the month twice — a baseline vs. a chosen objective — and reports the cost, hours, shortfall, and workload-spread deltas plus the per-worker changes. **Value:** quantifies what the optimizer actually saves before anything is committed, and doubles as a tuning aid for the objective weights.
 
-- **Budgeting / payroll forecasting** — the projected ILS cost of the month per worker and in total, *before* the month happens.
-- **Contract compliance at a glance** — `percent_of_min` instantly shows who is below their contracted minimum (a contractual risk the assignment explicitly cares about), and `percent_of_max` shows who is being run close to their ceiling.
-- **Fair-allocation review** — HR can spot over- and under-utilised workers and rebalance future months, reducing both burnout and contract violations.
-- It's a CSV, so it drops straight into the spreadsheet workflows finance/HR teams already use.
+### 3. Roster statistics grid
 
-### Additional enhancements beyond the spec
+A per-worker view of any saved roster: scheduled hours against contractual min/max, utilisation, and projected cost, with leaderboards for highest-paid and most/least scheduled. **Value:** turns the roster into a management tool for budgeting, contract compliance, and fair-allocation review at a glance.
 
-These weren't required but add genuine value:
+### Other enhancements
 
-- **Authentication with single active session** — Sanctum session auth protects all data; logging in elsewhere invalidates the previous session (sensible for a confidential HR system).
-- **Fully asynchronous heavy operations** — roster generation and all CSV import/export run on a queue with progress polling; the UI never freezes on big datasets.
-- **Live alert recomputation** — coverage shortages and hours shortfalls are refreshed automatically after every manual edit or worker change, so the alert panel is never stale.
-- **Roster regeneration** — re-run the engine for an existing month after the workforce changes.
-- **Week/month grid toggle** and client-side eligible-worker filtering in the manual assignment modal (only legal candidates are offered).
-
----
-
-## API Overview
-
-All routes are under `auth:sanctum` except login.
-
-
-| Area                 | Endpoints                                                                                                                                                                                                                         |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth                 | `POST /login`, `POST /logout`, `GET /api/user`                                                                                                                                                                                    |
-| Workers              | `GET/POST /api/workers`, `GET/PUT/DELETE /api/workers/{id}`, `POST /api/workers/{id}/deactivate`, `POST /api/workers/{id}/restore`, `POST /api/workers/delete-all`, `POST /api/workers/restore-all`, `GET /api/workers/reference-data` (list supports `is_active`, `trashed=only\|with`) |
-| Worker CSV           | `POST /api/workers/import`, `GET /api/workers/import/sample`, `GET /api/workers/import/{importId}` (poll), `POST /api/workers/export`, `GET /api/workers/export/{exportId}` (poll), `GET /api/workers/export/{exportId}/download` |
-| Rosters              | `GET/POST /api/rosters`, `GET/DELETE /api/rosters/{id}`, `POST /api/rosters/{id}/regenerate`                                                                                                                                      |
-| Roster analytics CSV | `POST /api/rosters/{id}/export`, `GET /api/rosters/{id}/export/{exportId}` (poll), `GET .../download`                                                                                                                             |
-| Assignments          | `GET /api/rosters/{id}/assignments?from_date&to_date`, `POST /api/rosters/{id}/assignments`, `DELETE /api/rosters/{id}/assignments/{assignmentId}`                                                                                |
-
+- **Fully async heavy work** — generation and import/export run on a queue with progress polling.
+- **Regeneration** and client-side eligible-worker filtering in the manual-assignment modal.
 
 ---
 
 ## What I Would Improve With More Time
 
-- **Simulated annealing optimizer** — generate a fast baseline roster with the current greedy algorithm, then run simulated annealing to improve hour balance and reduce soft-constraint violations while preserving all hard constraints.
-- **Roster cost optimisation mode** — expose the optimiser objective as a product choice (fairness-first vs. cost-first) and surface the projected savings vs. the baseline greedy schedule.
-- **Assignment UX — fill shortages and reassign in place** — clicking a missing role in the grid would open an eligible-worker picker scoped to that date, shift, and role; each assigned worker would get a one-click reassign flow that atomically swaps them with another legal candidate instead of delete-then-add.
-- **Roster change history** — persist an audit trail of manual adds, removals, and reassignments (who, when, before/after worker, date/shift/role) so managers can review edits and compliance can trace how a published roster evolved.
-- **Store import summaries and row-level errors in a NoSQL store** — these results are ephemeral, can become large for big imports, and are only needed for polling and short-term review, making them a better fit than PostgreSQL.
-- **Horizontal scaling** — Redis-backed queue with Horizon, multiple worker processes, and optional per-week parallel generation for very large workforces.
-- **Frontend structure** — the SPA works but could be better organised: clearer feature folders (rosters vs. workers), shared composables for roster data loading, and tighter separation between grid presentation, eligibility logic, and API calls so new assignment flows do not spread across views and lib files.
+- **Snapshot scheduling targets on the roster** — min/max hours (and the shortfall, utilisation, and alerts derived from them) are read from the worker's *current* contract, so editing a contract retroactively rewrites a past roster's stats. Cost is already snapshotted per assignment; min/max should be too, so a finalised roster is an immutable record.
+- **Preserve manual assignments on regeneration** — regenerate currently deletes every assignment, including `source = manual`; it should pin manual rows and only refill the auto positions around them.
+- **Run the optimizer in place** — let the user re-run the cost optimizer on an existing roster *after* manual edits, optimizing only the auto positions and leaving manual selections untouched, instead of a full regenerate.
+- **Concurrent-edit protection** — there is no guard today against two admins editing the same roster at once, optimistic locking (version / `updated_at` check) or per-roster locking would prevent silent overwrites.
+- **Authorization layer** — every authenticated admin can do everything; a thin Policy/role split (e.g. viewer vs. editor) plus login rate-limiting would suit a confidential HR system.
+- **Audit trail** — no record of who changed an assignment or contract and when; persisting an edit history would support HR/compliance review and pairs naturally with concurrent-edit protection.
+- **Benchmarks** — more comparison options and per-worker optimization-change detail, and persist each run as a snapshot so results can be revisited and compared over time (today it is computed on the fly and discarded).
+- **Frontend structure** — clearer feature folders and shared composables, keeping grid presentation, eligibility logic, and API calls separated instead of spread across views and lib files.
+- **Better UX / UI** — a more polished design system, richer empty/loading/error states, drag-and-drop assignment editing.
 

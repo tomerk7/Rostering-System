@@ -46,8 +46,6 @@ final class RosterCsvExporterTest extends TestCase
             'min_hours',
             'max_hours',
             'actual_hours',
-            'percent_of_max',
-            'percent_of_min',
             'total_cost',
         ], $this->exporter->headers());
     }
@@ -70,8 +68,6 @@ final class RosterCsvExporterTest extends TestCase
             '160',
             '240',
             '16',
-            '6.67',   // 16 / 240, uncapped
-            '10.00',  // 16 / 160, capped at 100
             '664.00', // 16h x 41.50
         ], $rows[1]);
     }
@@ -85,7 +81,7 @@ final class RosterCsvExporterTest extends TestCase
 
         $rows = $this->export();
 
-        self::assertSame('320.00', $rows[1][9]);
+        self::assertSame('320.00', $rows[1][7]);
     }
 
     /**

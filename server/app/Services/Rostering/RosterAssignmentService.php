@@ -24,6 +24,9 @@ final readonly class RosterAssignmentService
     /**
      * List assignments in a date range with monthly assigned hours by worker.
      *
+     * @param Roster $roster
+     * @param string $fromDate
+     * @param string $toDate
      * @return array{
      *     assignments: Collection<int, RosterAssignment>,
      *     from_date: string,

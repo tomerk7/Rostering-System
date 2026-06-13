@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Api;
 use App\Exceptions\Rostering\BenchmarkException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BenchmarkRosterRequest;
+use App\Services\Rostering\Data\DistributionPreference;
 use App\Services\Rostering\RosterBenchmark;
 use Illuminate\Http\JsonResponse;
 
@@ -27,10 +28,13 @@ final class RosterBenchmarkController extends Controller
      */
     public function __invoke(BenchmarkRosterRequest $request): JsonResponse
     {
+        $preference = DistributionPreference::from($request->validated('distribution_preference'));
+
         try {
             $result = $this->benchmark->run(
                 (int) now()->year,
                 (int) $request->validated('month'),
+                $preference->balanceWeight(),
             );
         } catch (BenchmarkException $exception) {
             return $this->response(

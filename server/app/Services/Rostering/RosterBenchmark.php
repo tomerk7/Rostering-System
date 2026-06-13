@@ -16,8 +16,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * Compare a plain greedy roster against the cost-optimized one for a month.
  *
- * A tuning aid for OptimizerConfig (lambda, temperature, cooling, iterations):
- * both rosters are generated as previews only and nothing is persisted.
+ * A tuning aid for OptimizerConfig (shortfallPenaltyPerHour, balanceWeight,
+ * temperature, cooling, iterations): both rosters are generated as previews only
+ * and nothing is persisted.
  */
 final readonly class RosterBenchmark
 {
@@ -32,15 +33,18 @@ final readonly class RosterBenchmark
     public function __construct(private RosterGenerator $generator) {}
 
     /**
-     * Run a plain vs cost-optimized generation benchmark for the given month
-     * in the current year. Both runs are previews only — nothing is saved.
+     * Benchmark two generation runs for the given month and report how they
+     * differ. The baseline ("plain") is greedy generation by default, or an
      *
      * @param  int  $year
      * @param  int  $month
+     * @param  float|null  $balanceWeight
+     * @param  float|null  $baselineBalanceWeight
      * @return BenchmarkResult
+     *
      * @throws BenchmarkException when no contracts exist
      */
-    public function run(int $year, int $month): BenchmarkResult
+    public function run(int $year, int $month, ?float $balanceWeight = null, ?float $baselineBalanceWeight = null): BenchmarkResult
     {
         $contracts = Contract::query()
             ->select(['worker_id', 'hourly_cost', 'min_monthly_hours', 'max_monthly_hours'])
@@ -54,11 +58,13 @@ final readonly class RosterBenchmark
         }
 
         $startedAt = microtime(true);
-        $plain = $this->generator->generate($year, $month);
+        $plain = $baselineBalanceWeight === null
+            ? $this->generator->generate($year, $month)
+            : $this->generator->generate($year, $month, optimizeCost: true, balanceWeight: $baselineBalanceWeight);
         $plainSeconds = microtime(true) - $startedAt;
 
         $startedAt = microtime(true);
-        $optimized = $this->generator->generate($year, $month, optimizeCost: true);
+        $optimized = $this->generator->generate($year, $month, optimizeCost: true, balanceWeight: $balanceWeight);
         $optimizedSeconds = microtime(true) - $startedAt;
 
         $costPlain = $this->totalCost($plain->assignments, $costs);
@@ -126,7 +132,7 @@ final readonly class RosterBenchmark
      * Includes workers with a min-hours shortfall even when they received no
      * assignments at all.
      *
-     * @param  GenerationResult  $result
+     * @param  GenerationResult $result
      * @param  Collection<array-key, mixed>  $costs
      * @param  Collection<array-key, mixed>  $minHours
      * @param  Collection<array-key, mixed>  $maxHours
@@ -245,16 +251,14 @@ final readonly class RosterBenchmark
 
     /**
      * Calculate the metrics for a given roster.
+     *
      * @param  list<array{worker_id: string}>  $assignments
-     * @param  int  $coverageShortages
-     * @param  int  $hoursShortfallWorkers
-     * @param  float  $totalCost
-     * @param  float  $seconds
      * @param  Collection<array-key, mixed>  $minHours
      * @param  Collection<array-key, mixed>  $maxHours
      * @return array<string, int|float>
      */
-    private function metrics(array $assignments, int $coverageShortages, int $hoursShortfallWorkers, float $totalCost, float $seconds, Collection $minHours, Collection $maxHours): array {
+    private function metrics(array $assignments, int $coverageShortages, int $hoursShortfallWorkers, float $totalCost, float $seconds, Collection $minHours, Collection $maxHours): array
+    {
         $scheduled = $this->scheduledHours($assignments);
 
         return [
@@ -274,6 +278,7 @@ final readonly class RosterBenchmark
      *
      * @param  list<array{worker_id: string}>  $assignments
      * @param  Collection<array-key, mixed>  $costs
+     * @return float
      */
     private function totalCost(array $assignments, Collection $costs): float
     {
@@ -308,6 +313,7 @@ final readonly class RosterBenchmark
      *
      * @param  array<string, int>  $scheduled
      * @param  Collection<array-key, mixed>  $minHours
+     * @return int
      */
     private function shortfallHours(array $scheduled, Collection $minHours): int
     {
@@ -343,7 +349,6 @@ final readonly class RosterBenchmark
      * This function calculates the total standard deviation of the roster.
      *
      * @param  array<string, int>  $scheduled
-     * @return float
      */
     private function hoursStdDev(array $scheduled): float
     {

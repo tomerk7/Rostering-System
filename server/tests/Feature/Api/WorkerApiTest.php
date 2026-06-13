@@ -1712,6 +1712,7 @@ final class WorkerApiTest extends TestCase
     public function test_soft_delete_removes_upcoming_assignments_preserves_past(): void
     {
         $worker = Worker::factory()->create([
+            'full_name' => 'Past Roster Worker',
             'role_id' => $this->role->id,
             'israeli_id' => $this->validIsraeliId(62345689),
             'is_active' => true,
@@ -1748,6 +1749,13 @@ final class WorkerApiTest extends TestCase
             'roster_id' => $currentRoster->id,
             'worker_id' => $worker->israeli_id,
         ]);
+
+        $this->getJson("/api/rosters/{$pastRoster->id}")
+            ->assertOk()
+            ->assertJsonPath('data.assignments.0.worker_id', $worker->israeli_id)
+            ->assertJsonPath('data.assignments.0.worker_name', 'Past Roster Worker')
+            ->assertJsonPath('data.assignments.0.role_id', $this->role->id)
+            ->assertJsonPath('data.assignments.0.role_name', $this->role->name);
     }
 
     public function test_worker_import_restores_soft_deleted_worker_by_israeli_id(): void

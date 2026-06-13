@@ -38,11 +38,14 @@ final class RosterController extends Controller
      */
     public function store(GenerateRosterRequest $request): JsonResponse
     {
+        [$optimizeCost, $balanceWeight] = $request->optimization();
+
         $roster = $this->rosterService->queueStore(
             (int) now()->year,
             (int) $request->validated('month'),
             (int) $request->user()->id,
-            $request->boolean('optimize_cost'),
+            $optimizeCost,
+            $balanceWeight,
         );
 
         return $this->rosterGenerationResponse(
@@ -106,7 +109,9 @@ final class RosterController extends Controller
      */
     public function regenerate(RegenerateRosterRequest $request, Roster $roster): JsonResponse
     {
-        $roster = $this->rosterService->queueRegeneration($roster, $request->boolean('optimize_cost'));
+        [$optimizeCost, $balanceWeight] = $request->optimization();
+
+        $roster = $this->rosterService->queueRegeneration($roster, $optimizeCost, $balanceWeight);
 
         return $this->rosterGenerationResponse(
             $roster,

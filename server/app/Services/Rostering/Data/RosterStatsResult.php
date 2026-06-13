@@ -32,8 +32,6 @@ final readonly class RosterStatsResult
      *         min_hours: int,
      *         max_hours: int,
      *         actual_hours: int,
-     *         percent_of_min: float,
-     *         percent_of_max: float,
      *         total_cost: float,
      *         shortfall_hours: int
      *     }>,

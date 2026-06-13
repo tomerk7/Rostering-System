@@ -9,11 +9,11 @@ use App\Services\Rostering\Data\OptimizerConfig;
 use App\Services\Rostering\Data\RosterSlot;
 use App\Services\Rostering\Data\RosterWorker;
 use App\Services\Rostering\RosteringEngine;
-use App\Services\Rostering\SimulatedAnnealingOptimizer;
+use App\Services\Rostering\SAOptimizer;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\TestCase;
 
-final class SimulatedAnnealingOptimizerTest extends TestCase
+final class SAOptimizerTest extends TestCase
 {
     private const int ROLE_GUARD = 1;
 
@@ -98,6 +98,49 @@ final class SimulatedAnnealingOptimizerTest extends TestCase
         self::assertSame('10', $optimized[0]['worker_id']);
         self::assertSame(8, $workers[10]->assignedHours);
         self::assertSame(0, $workers[20]->assignedHours);
+    }
+
+    public function test_balance_weight_spreads_surplus_shifts(): void
+    {
+        // Four single-guard slots on four distinct days: one worker can legally
+        // cover all of them (one shift per day, 32h <= max). Greedy hands every
+        // slot to the cheapest, lowest-id worker, the lopsided extreme.
+        $slots = [];
+
+        for ($day = 0; $day < 4; $day++) {
+            $slots[] = $this->slot(self::SHIFT_A, self::ROLE_GUARD, date: $this->date->addDays($day));
+        }
+
+        $allDays = [0, 1, 2, 3, 4, 5, 6];
+
+        $makeWorkers = fn (): array => [
+            10 => $this->worker(hourlyCost: 30.0, maxHours: 32, days: $allDays),
+            11 => $this->worker(hourlyCost: 60.0, maxHours: 32, days: $allDays),
+            12 => $this->worker(hourlyCost: 60.0, maxHours: 32, days: $allDays),
+            13 => $this->worker(hourlyCost: 60.0, maxHours: 32, days: $allDays),
+        ];
+
+        // balanceWeight 0: pure cost keeps every cheap shift on the cheap worker.
+        $cheapWorkers = $makeWorkers();
+        $cheapAssignments = $this->engine->generate($slots, $cheapWorkers);
+        self::assertSame(32, $cheapWorkers[10]->assignedHours);
+
+        $this->optimizer(lambda: 0.0, balanceWeight: 0.0)->optimize($slots, $cheapWorkers, $cheapAssignments);
+        self::assertSame(32, $cheapWorkers[10]->assignedHours, 'balanceWeight=0 should leave the cheap worker fully loaded');
+
+        // Strong balanceWeight: shedding shifts cuts the squared-excess penalty
+        // enough to outweigh the higher wage bill, so surplus shifts spread out.
+        $spreadWorkers = $makeWorkers();
+        $spreadAssignments = $this->engine->generate($slots, $spreadWorkers);
+
+        $this->optimizer(lambda: 0.0, balanceWeight: 100.0)->optimize($slots, $spreadWorkers, $spreadAssignments);
+
+        self::assertLessThan(32, $spreadWorkers[10]->assignedHours, 'balanceWeight should pull shifts off the over-loaded worker');
+        self::assertLessThan(
+            $this->excessShiftPenalty($cheapWorkers),
+            $this->excessShiftPenalty($spreadWorkers),
+            'balanceWeight should reduce the concentration of surplus shifts',
+        );
     }
 
     public function test_skips_optimization_when_coverage_is_below_the_threshold(): void
@@ -296,12 +339,31 @@ final class SimulatedAnnealingOptimizerTest extends TestCase
     }
 
     /**
+     * Total squared-excess-shift penalty across workers — the quantity the
+     * balanceWeight term minimises (Σ ((hoursAboveMin) / 8)²).
+     *
+     * @param  array<int|string, RosterWorker>  $workers
+     */
+    private function excessShiftPenalty(array $workers): float
+    {
+        $total = 0.0;
+
+        foreach ($workers as $worker) {
+            $excessShifts = max(0, $worker->assignedHours - $worker->minHours) / 8;
+            $total += $excessShifts ** 2;
+        }
+
+        return $total;
+    }
+
+    /**
      * Build an optimizer with a test-sized iteration budget and a fixed seed.
      */
-    private function optimizer(float $lambda): SimulatedAnnealingOptimizer
+    private function optimizer(float $lambda, float $balanceWeight = 0.0): SAOptimizer
     {
-        return new SimulatedAnnealingOptimizer($this->engine, new OptimizerConfig(
-            lambda: $lambda,
+        return new SAOptimizer($this->engine, new OptimizerConfig(
+            shortfallPenaltyPerHour: $lambda,
+            balanceWeight: $balanceWeight,
             initialTemperature: 50.0,
             coolingRate: 0.995,
             maxIterations: 2_000,

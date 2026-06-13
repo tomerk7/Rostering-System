@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Services\Rostering\Data\DistributionPreference;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class BenchmarkRosterRequest extends FormRequest
 {
@@ -26,6 +28,7 @@ final class BenchmarkRosterRequest extends FormRequest
     {
         return [
             'month' => ['required', 'integer', 'between:1,12'],
+            'distribution_preference' => ['required', Rule::enum(DistributionPreference::class)],
         ];
     }
 }

@@ -9,7 +9,15 @@ import Select from '@/components/ui/Select.vue'
 const router = useRouter()
 const rostersStore = useRostersStore()
 
-const optimizeCost = ref(false)
+const objectiveOptions = [
+  { value: '', label: 'Standard scheduling' },
+  { value: 'maximum_savings', label: 'Maximum savings' },
+  { value: 'cost_focused', label: 'Cost focused' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'distribution_focused', label: 'Spread hours evenly' },
+]
+
+const selectedPreference = ref('')
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
@@ -37,19 +45,16 @@ onMounted(async () => {
   await rostersStore.fetchRosters()
 })
 
-function onPeriodChange() {
-  rostersStore.clearErrors()
-}
-
 async function generateRoster() {
   if (!canGenerate.value) {
     return
   }
 
+  const preference = selectedPreference.value || undefined
   const existing = existingRosterForPeriod.value
   const roster = existing
-    ? await rostersStore.regenerate(existing.id, optimizeCost.value)
-    : await rostersStore.create(rostersStore.selectedMonth, optimizeCost.value)
+    ? await rostersStore.regenerate(existing.id, preference)
+    : await rostersStore.create(rostersStore.selectedMonth, preference)
 
   if (roster) {
     await router.push({ name: 'rosters.show', params: { id: roster.id } })
@@ -68,8 +73,9 @@ async function generateRoster() {
           Generate Roster
         </h1>
         <p class="page__description">
-          Select a month and generate a roster. You will be taken to the schedule
-          preview where you can review alerts and make manual edits.
+          Select a month, choose how to balance cost against an even spread of
+          hours, and generate. You will be taken to the schedule preview where you
+          can review alerts and make manual edits.
         </p>
       </div>
       <div class="page__actions">
@@ -88,7 +94,6 @@ async function generateRoster() {
           <Select
             v-model="rostersStore.selectedMonth"
             required
-            @change="onPeriodChange"
           >
             <option
               :value="null"
@@ -106,13 +111,20 @@ async function generateRoster() {
           </Select>
         </Field>
 
-        <label class="check-field">
-          <input
-            v-model="optimizeCost"
-            type="checkbox"
+        <Field :label="existingRosterForPeriod ? undefined : 'Objective'">
+          <Select
+            v-model="selectedPreference"
+            :aria-label="existingRosterForPeriod ? 'Scheduling objective' : undefined"
           >
-          <span>Schedule by cost efficiency</span>
-        </label>
+            <option
+              v-for="option in objectiveOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </Select>
+        </Field>
 
         <div class="toolbar__actions">
           <Button
@@ -154,21 +166,7 @@ async function generateRoster() {
 }
 
 .roster-toolbar {
-  grid-template-columns: repeat(2, minmax(10rem, 14rem)) auto;
-}
-
-.check-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.375rem;
-  color: #334155;
-}
-
-.check-field input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #2563eb;
+  grid-template-columns: repeat(3, minmax(10rem, 14rem)) auto;
 }
 
 .toolbar__actions {

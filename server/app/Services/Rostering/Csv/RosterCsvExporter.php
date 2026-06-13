@@ -27,8 +27,6 @@ final readonly class RosterCsvExporter
         'min_hours',
         'max_hours',
         'actual_hours',
-        'percent_of_max',
-        'percent_of_min',
         'total_cost',
     ];
 
@@ -83,8 +81,6 @@ final readonly class RosterCsvExporter
             (string) $row->minHours,
             (string) $row->maxHours,
             (string) $row->actualHours,
-            number_format($row->percentOfMax, 2, '.', ''),
-            number_format($row->percentOfMin, 2, '.', ''),
             number_format($row->totalCost, 2, '.', ''),
         ];
     }

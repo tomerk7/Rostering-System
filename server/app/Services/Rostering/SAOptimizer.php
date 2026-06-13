@@ -21,16 +21,23 @@ use Random\Randomizer;
  * (role match, availability, daily shift ceiling, max hours, unique slot), so
  * an optimized roster can never become invalid. All assignments are movable.
  *
- * The objective is multi-criteria: total cost plus a weighted penalty for
- * min-hours shortfalls, so a cheap move that wrecks a worker's hours can lose
- * to its fairness cost. The RNG is seeded, keeping runs deterministic.
+ * The objective is multi-criteria: total cost, plus a weighted penalty for
+ * min-hours shortfalls, plus a weighted penalty on the squared number of shifts
+ * each worker is scheduled above their minimum. 
  */
-final readonly class SimulatedAnnealingOptimizer
+final readonly class SAOptimizer
 {
     /**
      * Guard for float comparisons when tracking the best-seen objective.
      */
     private const float EPSILON = 1e-9;
+
+    /**
+     * Hours per shift, used to express the balance penalty in whole shifts above
+     * minimum so balanceWeight tunes on a human scale. Matches the seeded 8h
+     * shift grid and RosterBenchmark::SHIFT_HOURS.
+     */
+    private const int SHIFT_HOURS = 8;
 
     public function __construct(
         private RosteringEngine $engine,
@@ -149,8 +156,8 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  list<array{slot: RosterSlot, workerId: string, index: int}>  $entries
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
-     * @param  Randomizer  $randomizer
-     * @param  float  $temperature
+     * @param  Randomizer $randomizer
+     * @param  float $temperature
      * @return ?float
      */
     private function tryReplace(array &$entries, array $workers, array &$slotWorkers, Randomizer $randomizer, float $temperature): ?float
@@ -171,11 +178,11 @@ final readonly class SimulatedAnnealingOptimizer
         $newId = $candidateIds[$randomizer->getInt(0, count($candidateIds) - 1)];
         $durationHours = $slot->durationHours;
 
-        // Net objective change: wage difference of swapping workers plus the weighted fairness impact on both workers' min-hours shortfalls.
+        // Net objective change: wage difference of swapping workers, the weighted shortfall impact on both workers' min-hours floors, and the weighted balance impact (old worker sheds hours, new worker gains them).
         $deltaCost = ($workers[$newId]->hourlyCost - $workers[$oldId]->hourlyCost) * $durationHours;
-        $deltaFairness = $this->shortfallDelta($workers[$oldId], -$durationHours)
-            + $this->shortfallDelta($workers[$newId], $durationHours);
-        $delta = $deltaCost + $this->config->lambda * $deltaFairness;
+        $deltaShortfall = $this->shortfallDelta($workers[$oldId], -$durationHours) + $this->shortfallDelta($workers[$newId], $durationHours);
+        $deltaBalance = $this->balanceDelta($workers[$oldId], -$durationHours)+ $this->balanceDelta($workers[$newId], $durationHours);
+        $delta = $deltaCost + $this->config->shortfallPenaltyPerHour * $deltaShortfall + $this->config->balanceWeight * $deltaBalance;
 
         if (! $this->accepts($delta, $temperature, $randomizer)) {
             return null;
@@ -200,8 +207,9 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  list<array{slot: RosterSlot, workerId: string, index: int}>  $entries
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
-     * @param  Randomizer  $randomizer
-     * @param  float  $temperature
+     * @param  Randomizer $randomizer
+     * @param  float $temperature
+     * 
      * @return ?float
      */
     private function trySwap(array &$entries, array $workers, array &$slotWorkers, Randomizer $randomizer, float $temperature): ?float
@@ -237,9 +245,13 @@ final readonly class SimulatedAnnealingOptimizer
         // Deltas read the pre-move counters, so compute them before vacating.
         $hoursDeltaA = $slotB->durationHours - $slotA->durationHours;
         $deltaCost = ($workerA->hourlyCost - $workerB->hourlyCost) * $hoursDeltaA;
-        $deltaFairness = $this->shortfallDelta($workerA, $hoursDeltaA)
+        $deltaShortfall = $this->shortfallDelta($workerA, $hoursDeltaA)
             + $this->shortfallDelta($workerB, -$hoursDeltaA);
-        $delta = $deltaCost + $this->config->lambda * $deltaFairness;
+        $deltaBalance = $this->balanceDelta($workerA, $hoursDeltaA)
+            + $this->balanceDelta($workerB, -$hoursDeltaA);
+        $delta = $deltaCost
+            + $this->config->shortfallPenaltyPerHour * $deltaShortfall
+            + $this->config->balanceWeight * $deltaBalance;
 
         $this->vacate($workerA, $workerIdA, $slotA, $slotWorkers, $keyA);
         $this->vacate($workerB, $workerIdB, $slotB, $slotWorkers, $keyB);
@@ -268,9 +280,9 @@ final readonly class SimulatedAnnealingOptimizer
      * moves with probability exp(-delta / T) so early high temperatures can
      * escape the greedy solution's local optimum.
      * 
-     * @param  float  $delta
-     * @param  float  $temperature
-     * @param  Randomizer  $randomizer
+     * @param  float $delta
+     * @param  float $temperature
+     * @param  Randomizer $randomizer
      * @return bool
      */
     private function accepts(float $delta, float $temperature, Randomizer $randomizer): bool
@@ -291,11 +303,11 @@ final readonly class SimulatedAnnealingOptimizer
      * @param  array<string, RosterWorker>  $workers
      * @param  array<string, array<string, true>>  $slotWorkers
      * @param  list<string>  $bestWorkerIds
-     * @param  float  $bestObjective
-     * @param  float  $currentObjective
-     * @return void
+     * @param  float $bestObjective
+     * @param  float $currentObjective
      */
-    private function restoreBest(array &$entries, array $workers, array &$slotWorkers, array $bestWorkerIds, float $bestObjective, float $currentObjective): void {
+    private function restoreBest(array &$entries, array $workers, array &$slotWorkers, array $bestWorkerIds, float $bestObjective, float $currentObjective): void
+    {
         if ($bestObjective >= $currentObjective - self::EPSILON) {
             return;
         }
@@ -318,11 +330,12 @@ final readonly class SimulatedAnnealingOptimizer
     }
 
     /**
-     * Total objective: cost plus the weighted min-hours shortfall
-     * penalty. Cost is read from the live assigned-hours counters (which the
-     * engine accumulated from these assignments), so Σ rate × duration over
-     * rows equals Σ rate × assignedHours over workers. Computed once at the
-     * start; the annealing loop maintains it incrementally through deltas.
+     * Total objective: cost, plus the weighted min-hours shortfall penalty, plus
+     * the weighted squared-excess-shifts balance penalty. Cost is read from the
+     * live assigned-hours counters (which the engine accumulated from these
+     * assignments), so Σ rate × duration over rows equals Σ rate × assignedHours
+     * over workers. Computed once at the start; the annealing loop maintains it
+     * incrementally through deltas.
      *
      * @param  array<string, RosterWorker>  $workers
      * @return float
@@ -331,21 +344,26 @@ final readonly class SimulatedAnnealingOptimizer
     {
         $cost = 0.0;
         $shortfallPenalty = 0;
+        $balancePenalty = 0.0;
 
         foreach ($workers as $worker) {
             $cost += $worker->hourlyCost * $worker->assignedHours;
+            // count shortfall hours
             $shortfallPenalty += max(0, $worker->minHours - $worker->assignedHours);
+            $balancePenalty += $this->balancePenalty($worker);
         }
 
-        return $cost + $this->config->lambda * $shortfallPenalty;
+        return $cost
+            + $this->config->shortfallPenaltyPerHour * $shortfallPenalty
+            + $this->config->balanceWeight * $balancePenalty;
     }
 
     /**
      * Change in a worker's min-hours shortfall if their assigned hours moved
      * by the given amount. Positive means the shortfall got worse.
      * 
-     * @param  RosterWorker  $worker
-     * @param  int  $hoursDelta
+     * @param  RosterWorker $worker
+     * @param  int $hoursDelta
      * @return int
      */
     private function shortfallDelta(RosterWorker $worker, int $hoursDelta): int
@@ -355,16 +373,48 @@ final readonly class SimulatedAnnealingOptimizer
     }
 
     /**
+     * A worker's balance penalty: the square of how many whole shifts they are
+     * scheduled above their contracted minimum. Squaring makes each extra shift
+     * on an already-loaded worker hurt more than the last, so the optimizer is
+     * rewarded for spreading surplus shifts across the pool. Workers at or below
+     * their minimum contribute nothing.
+     *
+     * @param  RosterWorker $worker
+     * @param  int $hoursDelta
+     * @return float
+     */
+    private function balancePenalty(RosterWorker $worker, int $hoursDelta = 0): float
+    {
+        $excessShifts = max(0, ($worker->assignedHours + $hoursDelta) - $worker->minHours) / self::SHIFT_HOURS;
+
+        return $excessShifts ** 2;
+    }
+
+    /**
+     * Change in a worker's balance penalty if their assigned hours moved by the
+     * given amount. Reads the pre-move counters, mirroring shortfallDelta.
+     * 
+     * @param  RosterWorker $worker
+     * @param  int $hoursDelta
+     * @return float
+     */
+    private function balanceDelta(RosterWorker $worker, int $hoursDelta): float
+    {
+        return $this->balancePenalty($worker, $hoursDelta) - $this->balancePenalty($worker);
+    }
+
+    /**
      * Remkove a worer from a slot: release counters and the occupancy set,
      * mirroring how the greedy engine claimed them.
+     *
+     * @param  RosterWorker $worker
+     * @param  string $workerId
+     * @param  RosterSlot $slot
+     * @param  array<string, array<string, true>>  $slotWorkers
+     * @param  string $key
      * 
-     * @param  RosterWorker  $worker
-     * @param  string  $workerId
-     * @param  RosterSlot  $slot
-     * @param  array<string, array<string, true>>  $slotWorkers
-     * @param  string  $key
-     * @param  array<string, array<string, true>>  $slotWorkers
      * @return void
+     * @param  array<string, array<string, true>>  $slotWorkers
      */
     private function vacate(RosterWorker $worker, string $workerId, RosterSlot $slot, array &$slotWorkers, string $key): void
     {
@@ -384,8 +434,12 @@ final readonly class SimulatedAnnealingOptimizer
      * Place a worker into a slot: claim counters and the occupancy set,
      * mirroring how the greedy engine claims them.
      *
+     * @param  RosterWorker $worker
+     * @param  string $workerId
+     * @param  RosterSlot $slot
      * @param  array<string, array<string, true>>  $slotWorkers
-     * @param  string  $key
+     * @param  string $key
+     * 
      * @return void
      */
     private function occupy(RosterWorker $worker, string $workerId, RosterSlot $slot, array &$slotWorkers, string $key): void
@@ -401,9 +455,9 @@ final readonly class SimulatedAnnealingOptimizer
      * Build the stable key for one (date, shift, role) slot, matching the
      * engine's coverage aggregation key.
      * 
-     * @param  CarbonImmutable  $date
-     * @param  int  $shiftId
-     * @param  int  $roleId
+     * @param  CarbonImmutable $date
+     * @param  int $shiftId
+     * @param  int $roleId
      * @return string
      */
     private function slotKey(CarbonImmutable $date, int $shiftId, int $roleId): string

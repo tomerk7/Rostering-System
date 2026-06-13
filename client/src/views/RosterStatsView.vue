@@ -37,25 +37,11 @@ function formatCurrency(value) {
   return `₪${currencyFormat.format(value)}`
 }
 
-/**
- * Format a percentage with two decimals.
- *
- * @param {number} value
- * @returns {string}
- */
-function formatPercent(value) {
-  return `${Number(value).toFixed(2)}%`
-}
-
 const columns = [
   { key: 'worker_id', label: 'Worker ID' },
   { key: 'name', label: 'Name' },
   { key: 'role', label: 'Role' },
-  { key: 'min_hours', label: 'Min hours', numeric: true },
-  { key: 'max_hours', label: 'Max hours', numeric: true },
-  { key: 'actual_hours', label: 'Actual hours', numeric: true },
-  { key: 'percent_of_min', label: '% of min', numeric: true, formatter: formatPercent },
-  { key: 'percent_of_max', label: '% of max', numeric: true, formatter: formatPercent },
+  { key: 'actual_hours', label: 'Hours (actual / min–max)', numeric: true },
   { key: 'shortfall_hours', label: 'Shortfall', numeric: true },
   { key: 'total_cost', label: 'Total cost', numeric: true, formatter: formatCurrency },
 ]
@@ -107,10 +93,8 @@ watch(rosterId, async () => {
  * @returns {Promise<void>}
  */
 async function loadStats() {
-  await Promise.all([
-    rostersStore.fetchRoster(rosterId.value),
-    rostersStore.fetchStats(rosterId.value),
-  ])
+  await rostersStore.fetchRoster(rosterId.value)
+  await rostersStore.fetchStats(rosterId.value)
 }
 
 /**
@@ -249,6 +233,9 @@ async function downloadExport() {
           :initial-sort="{ key: 'actual_hours', direction: 'desc' }"
           empty-text="No workers assigned to this roster."
         >
+          <template #cell-actual_hours="{ row }">
+            {{ row.actual_hours }} / {{ row.min_hours }}–{{ row.max_hours }}
+          </template>
           <template #cell-shortfall_hours="{ value }">
             <span
               v-if="value > 0"
@@ -260,6 +247,13 @@ async function downloadExport() {
           </template>
         </SortableTable>
       </template>
+
+      <div
+        v-else
+        class="empty-state"
+      >
+        Could not load stats for this roster.
+      </div>
     </section>
   </main>
 </template>

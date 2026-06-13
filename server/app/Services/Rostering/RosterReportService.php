@@ -81,50 +81,10 @@ final readonly class RosterReportService
     }
 
     /**
-     * Recompute coverage shortages for the given rosters.
-     *
-     * @param  list<int>  $rosterIds
-     *
-     * @throws Exception
-     */
-    public function refreshCoverageForRosters(array $rosterIds): void
-    {
-        if ($rosterIds === []) {
-            return;
-        }
-
-        Roster::query()
-            ->whereIn('id', $rosterIds)
-            ->orderBy('id')
-            ->cursor()
-            ->each(function (Roster $roster): void {
-                DB::transaction(function () use ($roster): void {
-                    $this->recomputeCoverage($roster);
-                });
-            });
-    }
-
-    /**
-     * Remove alerts for the given workers from current and future rosters only,
-     * preserving past alerts as history.
-     *
-     * @param  list<string>  $workerIds
-     */
-    public function removeUpcomingAlertsForWorkers(array $workerIds): void
-    {
-        if ($workerIds === []) {
-            return;
-        }
-
-        RosterAlert::query()
-            ->whereIn('roster_id', $this->upcomingRostersQuery()->select('id'))
-            ->whereIn('worker_id', $workerIds)
-            ->delete();
-    }
-
-    /**
      * Remove every alert from current and future rosters only,
      * preserving past alerts as history.
+     * 
+     * @return void
      */
     public function removeUpcomingAlerts(): void
     {
@@ -136,6 +96,8 @@ final readonly class RosterReportService
     /**
      * Recompute and persist coverage shortages and hours-shortfall alerts for a roster.
      *
+     * @param Roster $roster
+     * @return void
      * @throws Exception
      */
     public function refreshReports(Roster $roster): void
@@ -157,6 +119,7 @@ final readonly class RosterReportService
      * @param Roster $roster
      * @param GenerationResult $result
      * @return void
+     * @throws Exception
      */
     public function insertAlerts(Roster $roster, GenerationResult $result): void
     {
@@ -467,7 +430,7 @@ final readonly class RosterReportService
         }
 
         /** @var array<string, string> $workerNames */
-        $workerNames = Worker::query()
+        $workerNames = Worker::withTrashed()
             ->whereIn('israeli_id', array_column($hoursShortfalls, 'worker_id'))
             ->pluck('full_name', 'israeli_id')
             ->all();

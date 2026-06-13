@@ -27,6 +27,7 @@ final class GenerateRosterJob implements ShouldQueue
     public function __construct(
         private readonly int $rosterId,
         public readonly bool $optimizeCost = false,
+        public readonly ?float $balanceWeight = null,
     ) {}
 
     /**
@@ -46,7 +47,7 @@ final class GenerateRosterJob implements ShouldQueue
             'optimize_cost' => $this->optimizeCost,
         ]);
 
-        $rosterService->processGeneration($this->rosterId, $this->optimizeCost);
+        $rosterService->processGeneration($this->rosterId, $this->optimizeCost, $this->balanceWeight);
 
         Log::info('Roster generation job completed.', [
             'roster_id' => $this->rosterId,

@@ -78,59 +78,52 @@ const periodLabel = computed(() => (props.fullMonth ? 'this month' : 'this week'
 /**
  * Count of understaffed slots in the visible range.
  *
- * @returns {number}
+ * @returns {number|null}
  */
-const issueCount = computed(() =>
-  grid.value.rows.reduce(
+const issueCount = computed(() => {
+  if (props.loading) {
+    return null
+  }
+
+  return grid.value.rows.reduce(
     (total, row) => total + row.shifts.filter((cell) => cell.isUnderstaffed).length,
     0,
-  ),
-)
+  )
+})
 
 /**
  * Aggregate a cell's per-role demands into an overall coverage summary.
  *
  * Status follows the same per-role shortage rules as `cell.isUnderstaffed`.
- * Filled counts cap each role at its requirement so overstaffing in one role
- * cannot mask a shortage in another.
  *
  * @param {object} cell
- * @returns {{ filled: number, required: number, shortage: number, ratio: number, status: string }}
+ * @returns {{ assigned: number, required: number, shortage: number, ratio: number, status: string }}
  */
 function coverageOf(cell) {
   const required = cell.roles.reduce((sum, role) => sum + role.required, 0)
+  const assigned = cell.roles.reduce((sum, role) => sum + role.assigned, 0)
   const shortage = cell.roles.reduce((sum, role) => sum + role.shortage, 0)
-  const filled = required - shortage
-  const ratio = required === 0 ? 1 : Math.min(filled / required, 1)
+  const ratio = required === 0 ? 1 : Math.min(assigned / required, 1)
+
+  let status = 'none'
+
+  if (required > 0) {
+    if (!cell.isUnderstaffed) {
+      status = 'full'
+    } else if (assigned === 0) {
+      status = 'empty'
+    } else {
+      status = 'short'
+    }
+  }
 
   return {
-    filled,
+    assigned,
     required,
     shortage,
     ratio,
-    status: statusOfCell(cell, filled, required),
+    status,
   }
-}
-
-/**
- * Derive a coverage status from per-role shortages.
- *
- * @param {object} cell
- * @param {number} filled
- * @param {number} required
- * @returns {'none'|'full'|'empty'|'short'}
- */
-function statusOfCell(cell, filled, required) {
-  if (required === 0) {
-    return 'none'
-  }
-  if (!cell.isUnderstaffed) {
-    return 'full'
-  }
-  if (filled === 0) {
-    return 'empty'
-  }
-  return 'short'
 }
 
 /**
@@ -141,12 +134,15 @@ function statusOfCell(cell, filled, required) {
  */
 function statusLabel(cell) {
   const { shortage, status } = coverageOf(cell)
+
   if (status === 'none') {
     return 'No demand'
   }
+
   if (status === 'full') {
     return 'Fully staffed'
   }
+
   return `Short ${shortage}`
 }
 
@@ -186,13 +182,14 @@ function isToday(workDate) {
 }
 
 /**
- * Open the assignment modal prefilled from a grid cell click.
+ * Open the assignment picker for a specific role slot.
  *
  * @param {object} cell
  * @param {object} row
+ * @param {object} role
  * @returns {void}
  */
-function onCellClick(cell, row) {
+function onRoleAddClick(cell, row, role) {
   if (!props.editable) {
     return
   }
@@ -200,18 +197,9 @@ function onCellClick(cell, row) {
   emit('cell-click', {
     workDate: row.workDate,
     shiftId: cell.shiftId,
-    roleId: firstShortRoleId(cell),
+    roleId: role.roleId,
+    roleRequired: role.required,
   })
-}
-
-/**
- * First role id with a staffing shortage in the cell.
- *
- * @param {object} cell
- * @returns {number|undefined}
- */
-function firstShortRoleId(cell) {
-  return cell.roles.find((role) => role.shortage > 0)?.roleId
 }
 </script>
 
@@ -224,7 +212,10 @@ function firstShortRoleId(cell) {
         </h2>
         <p class="roster-grid__hint">
           Coverage by day and shift.
-          <template v-if="issueCount">
+          <template v-if="loading">
+            Loading {{ periodLabel }}...
+          </template>
+          <template v-else-if="issueCount">
             <strong class="roster-grid__hint-flag">{{ issueCount }}</strong>
             understaffed slot{{ issueCount === 1 ? '' : 's' }} {{ periodLabel }}.
           </template>
@@ -355,12 +346,12 @@ function firstShortRoleId(cell) {
                   :class="`roster-grid__coverage--${coverageOf(cell).status}`"
                 >
                   <span class="roster-grid__coverage-count">
-                    {{ coverageOf(cell).filled }}/{{ coverageOf(cell).required }}
+                    {{ coverageOf(cell).assigned }}/{{ coverageOf(cell).required }}
                   </span>
                   <span class="roster-grid__coverage-status">{{ statusLabel(cell) }}</span>
                   <span
                     class="roster-grid__meter"
-                    :aria-label="`${coverageOf(cell).filled} of ${coverageOf(cell).required} filled`"
+                    :aria-label="`${coverageOf(cell).assigned} of ${coverageOf(cell).required} assigned`"
                   >
                     <span
                       class="roster-grid__meter-fill"
@@ -374,10 +365,24 @@ function firstShortRoleId(cell) {
                     v-for="role in cell.roles"
                     :key="role.roleId"
                     class="roster-grid__role"
-                    :class="{ 'roster-grid__role--short': role.shortage > 0 }"
+                    :class="{
+                      'roster-grid__role--short': role.shortage > 0,
+                    }"
                   >
                     <span class="roster-grid__role-name">{{ role.roleName }}</span>
-                    <span class="roster-grid__role-count">{{ role.assigned }}/{{ role.required }}</span>
+                    <span class="roster-grid__role-meta">
+                      <span class="roster-grid__role-count">{{ role.assigned }}/{{ role.required }}</span>
+                      <button
+                        v-if="editable && role.shortage > 0"
+                        type="button"
+                        class="roster-grid__role-add"
+                        :title="`Add ${role.roleName}`"
+                        :aria-label="`Add ${role.roleName}`"
+                        @click.stop="onRoleAddClick(cell, row, role)"
+                      >
+                        +
+                      </button>
+                    </span>
                   </li>
                 </ul>
 
@@ -406,15 +411,6 @@ function firstShortRoleId(cell) {
                     </button>
                   </li>
                 </ul>
-
-                <button
-                  v-if="editable"
-                  type="button"
-                  class="roster-grid__add"
-                  @click.stop="onCellClick(cell, row)"
-                >
-                  + Add worker
-                </button>
               </div>
             </td>
           </tr>
@@ -743,13 +739,45 @@ function firstShortRoleId(cell) {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
+  align-items: center;
   font-size: 0.75rem;
   color: #475569;
+}
+
+.roster-grid__role-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .roster-grid__role-count {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.roster-grid__role-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.roster-grid__role-add:hover {
+  color: #fff;
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 .roster-grid__role--short {
@@ -827,29 +855,6 @@ function firstShortRoleId(cell) {
 .roster-grid__remove:hover {
   color: var(--crit);
   background: var(--crit-bg);
-}
-
-/* Add affordance */
-.roster-grid__add {
-  align-self: flex-start;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #2563eb;
-  background: transparent;
-  border: 1px dashed #bfdbfe;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  opacity: 0.55;
-  transition: opacity 0.15s ease, background 0.15s ease;
-}
-
-.roster-grid__cell:hover .roster-grid__add {
-  opacity: 1;
-}
-
-.roster-grid__add:hover {
-  background: #eff6ff;
 }
 
 .roster-grid__loading {

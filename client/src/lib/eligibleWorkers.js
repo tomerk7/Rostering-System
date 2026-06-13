@@ -68,7 +68,7 @@ function shiftsOnDateForWorker(assignments, workerId, workDate) {
  * Check whether a worker may be manually assigned to a slot.
  *
  * @param {object} worker
- * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
+ * @param {{ workDate: string, shiftId: number, roleId?: number, roleRequired?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
  * @returns {boolean}
  */
 export function isWorkerEligibleForAssignment(
@@ -77,6 +77,7 @@ export function isWorkerEligibleForAssignment(
     workDate,
     shiftId,
     roleId,
+    roleRequired,
     assignments,
     shiftsById,
     assignedHoursByWorker = {},
@@ -88,6 +89,22 @@ export function isWorkerEligibleForAssignment(
 
   if (roleId && worker.role.id !== roleId) {
     return false
+  }
+
+  if (roleId) {
+    // No requirement (or zero/unknown demand) means the role is not staffed on
+    // this slot — capacity is zero, not unlimited. Always enforce the ceiling so
+    // a slot can never be over-filled, even when roleRequired is missing.
+    const required = roleRequired ?? 0
+    const assignedForRole = assignments.filter(
+      (assignment) => assignment.work_date === workDate
+        && assignment.shift_id === shiftId
+        && Number(assignment.role_id) === Number(roleId),
+    ).length
+
+    if (assignedForRole >= required) {
+      return false
+    }
   }
 
   if (!isAvailableForSlot(worker, workDate, shiftId)) {
@@ -122,7 +139,7 @@ export function isWorkerEligibleForAssignment(
  * Filter workers to those eligible for a manual assignment slot.
  *
  * @param {object[]} workers
- * @param {{ workDate: string, shiftId: number, roleId?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
+ * @param {{ workDate: string, shiftId: number, roleId?: number, roleRequired?: number, assignments: object[], shiftsById: Map<number, object>, assignedHoursByWorker?: Record<string, number> }} options
  * @returns {object[]}
  */
 export function filterEligibleWorkers(workers, options) {

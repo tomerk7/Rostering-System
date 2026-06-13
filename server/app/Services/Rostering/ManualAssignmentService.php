@@ -9,6 +9,7 @@ use App\Exceptions\Rostering\ManualAssignmentException;
 use App\Models\Roster;
 use App\Models\RosterAssignment;
 use App\Models\Shift;
+use App\Models\ShiftRoleRequirement;
 use App\Models\Worker;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,9 @@ final readonly class ManualAssignmentService
 {
     /**
      * Constructor.
+     *
+     * @param RosterReportService $reportService
+     * @return void
      */
     public function __construct(
         private RosterReportService $reportService,
@@ -29,6 +33,11 @@ final readonly class ManualAssignmentService
     /**
      * Add a manual assignment after validating every hard constraint.
      *
+     * @param Roster $roster
+     * @param string $workerId
+     * @param int $shiftId
+     * @param string $workDate
+     * @return RosterAssignment
      * @throws ManualAssignmentException
      */
     public function create(Roster $roster, string $workerId, int $shiftId, string $workDate): RosterAssignment
@@ -53,6 +62,7 @@ final readonly class ManualAssignmentService
         $shift = Shift::query()->whereKey($shiftId)->firstOrFail();
 
         $this->assertWorkerAvailability($worker, $date, $shiftId);
+        $this->assertRoleCapacity($roster, $worker, $shiftId, $date);
         $this->assertUniqueSlot($roster, $workerId, $shiftId, $date);
         $this->assertDailyShiftLimit($roster, $workerId, $date);
         $this->assertWithinMaxHours($roster, $worker, $shift);
@@ -114,6 +124,42 @@ final readonly class ManualAssignmentService
         }
 
         throw ManualAssignmentException::unavailableDay();
+    }
+
+    /**
+     * Assert that the worker's role still has an open slot on the date and shift.
+     *
+     * @param Roster $roster
+     * @param Worker $worker
+     * @param int $shiftId
+     * @param CarbonImmutable $date
+     * @return void
+     * @throws ManualAssignmentException
+     */
+    private function assertRoleCapacity(Roster $roster, Worker $worker, int $shiftId, CarbonImmutable $date): void
+    {
+        $required = ShiftRoleRequirement::query()
+            ->where('shift_id', $shiftId)
+            ->where('role_id', $worker->role_id)
+            ->value('required_count');
+
+        // No requirement row (or zero demand) means this role is not staffed on
+        // this shift at all — capacity is zero, not unlimited, so reject.
+        if ($required === null || (int) $required === 0) {
+            throw ManualAssignmentException::roleAtCapacity();
+        }
+
+        $assigned = RosterAssignment::query()
+            ->join('workers', 'workers.israeli_id', '=', 'roster_assignments.worker_id')
+            ->where('roster_assignments.roster_id', $roster->id)
+            ->where('roster_assignments.shift_id', $shiftId)
+            ->whereDate('roster_assignments.work_date', $date->toDateString())
+            ->where('workers.role_id', $worker->role_id)
+            ->count();
+
+        if ($assigned >= (int) $required) {
+            throw ManualAssignmentException::roleAtCapacity();
+        }
     }
 
     /**

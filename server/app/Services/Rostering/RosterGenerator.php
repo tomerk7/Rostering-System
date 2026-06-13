@@ -6,6 +6,7 @@ namespace App\Services\Rostering;
 
 use App\Models\ShiftRoleRequirement;
 use App\Services\Rostering\Data\GenerationResult;
+use App\Services\Rostering\Data\OptimizerConfig;
 use App\Services\Rostering\Data\RosterSlot;
 use App\Services\Rostering\Data\RosterWorker;
 use Carbon\CarbonImmutable;
@@ -18,18 +19,31 @@ use Illuminate\Support\Facades\DB;
  */
 final readonly class RosterGenerator
 {
+    /**
+     * Create a new roster generator.
+     *
+     * @param RosteringEngine $engine
+     * @param OptimizerConfig $optimizerConfig
+     */
     public function __construct(
         private RosteringEngine $engine,
-        private SimulatedAnnealingOptimizer $optimizer,
+        private OptimizerConfig $optimizerConfig = new OptimizerConfig,
     ) {}
 
     /**
      * Generate the roster preview for a target month.
      *
+     * When $optimizeCost is set, $balanceWeight selects the distribution
+     * preference for the cost pass (null uses the optimizer's default weight).
      *
+     * @param int $year
+     * @param int $month
+     * @param bool $optimizeCost
+     * @param float|null $balanceWeight
+     * @return GenerationResult
      * @throws Exception
      */
-    public function generate(int $year, int $month, bool $optimizeCost = false): GenerationResult
+    public function generate(int $year, int $month, bool $optimizeCost = false, ?float $balanceWeight = null): GenerationResult
     {
         $slots = $this->buildSlots($year, $month);
         $workers = $this->resolveWorkers();
@@ -43,7 +57,11 @@ final readonly class RosterGenerator
         // already-filled positions. Coverage is invariant and the counters stay
         // consistent, so the reports below read the post-optimization state.
         if ($optimizeCost) {
-            $assignments = $this->optimizer->optimize($slots, $workers, $assignments);
+            $config = $balanceWeight === null
+                ? $this->optimizerConfig
+                : $this->optimizerConfig->withBalanceWeight($balanceWeight);
+
+            $assignments = (new SAOptimizer($this->engine, $config))->optimize($slots, $workers, $assignments);
         }
 
         return new GenerationResult(
@@ -59,6 +77,8 @@ final readonly class RosterGenerator
      * Recompute coverage shortages and hours shortfalls from saved assignments.
      *
      * @param  list<array{worker_id: string, shift_id: int, work_date: CarbonImmutable}>  $savedAssignments
+     * @param int $year
+     * @param int $month
      * @return array{
      *     coverageShortages: list<array{work_date: CarbonImmutable, shift_id: int, role_id: int, required: int, assigned: int}>,
      *     hoursShortfalls: list<array{worker_id: string, min_hours: int, scheduled_hours: int}>
@@ -109,6 +129,8 @@ final readonly class RosterGenerator
      * Expand the target month into every staffing slot by crossing each calendar
      * day with the data-driven demand in shift_role_requirements.
      *
+     * @param int $year
+     * @param int $month
      * @return list<RosterSlot>
      *
      * @throws Exception

@@ -15,9 +15,7 @@ use Illuminate\Support\Collection;
  *
  * Hours and cost are derived from assignment rows whose hourly_cost was
  * snapshotted at creation time, so historical stats never change when a
- * contract rate is updated later. Min/max monthly hours (and the percents
- * and shortfall derived from them) read the worker's CURRENT contract —
- * they are scheduling targets, not money.
+ * contract rate is updated later.
  *
  * Consumed by both the stats API endpoint and the roster CSV exporter so
  * the screen and the export can never disagree.

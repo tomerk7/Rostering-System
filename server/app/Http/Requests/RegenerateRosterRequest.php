@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Http\Requests\Concerns\ResolvesOptimization;
+use App\Services\Rostering\Data\DistributionPreference;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 final class RegenerateRosterRequest extends FormRequest
 {
+    use ResolvesOptimization;
+
     /**
      * Determine if the user is authorized to make this request.
      *
@@ -28,6 +33,7 @@ final class RegenerateRosterRequest extends FormRequest
     {
         return [
             'optimize_cost' => ['sometimes', 'boolean'],
+            'distribution_preference' => ['sometimes', Rule::enum(DistributionPreference::class)],
         ];
     }
 }

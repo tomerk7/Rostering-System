@@ -167,21 +167,6 @@ function shortageKey(workDate, shiftId, roleId) {
   return `${workDate}|${shiftId}|${roleId}`
 }
 
-/**
- * Index coverage shortages by date, shift, and role.
- *
- * @param {object[]} shortages
- * @returns {Map<string, object>}
- */
-function buildShortageMap(shortages) {
-  const map = new Map()
-
-  for (const shortage of shortages) {
-    map.set(shortageKey(shortage.work_date, shortage.shift_id, shortage.role_id), shortage)
-  }
-
-  return map
-}
 
 /**
  * Group staffing requirements by shift with resolved role metadata.
@@ -279,7 +264,7 @@ function buildAssignmentsForCell(assignments, workDate, shiftId, workersById) {
 /**
  * Build the visible date-range grid model for roster display and editing.
  *
- * @param {{ startDate: string, endDate: string, shifts: object[], requirements: object[], roles: object[], assignments: object[], reports: object, workersById: Map<number|string, object> }} params
+ * @param {{ startDate: string, endDate: string, shifts: object[], requirements: object[], roles: object[], assignments: object[], workersById: Map<number|string, object> }} params
  * @returns {object}
  */
 export function buildRosterGrid(params) {
@@ -290,13 +275,11 @@ export function buildRosterGrid(params) {
     requirements,
     roles,
     assignments,
-    reports,
     workersById,
   } = params
 
   const rolesById = new Map(roles.map((role) => [role.id, role]))
   const requirementsByShift = buildRequirementsByShift(requirements, rolesById)
-  const shortageMap = buildShortageMap(reports.coverage_shortages)
   const assignmentCounts = countAssignmentsBySlotRole(assignments, workersById)
   const sortedShifts = [...shifts].sort((left, right) => left.code.localeCompare(right.code))
 
@@ -306,9 +289,10 @@ export function buildRosterGrid(params) {
 
       const roleDemands = shiftRequirements.map((requirement) => {
         const key = shortageKey(workDate, shift.id, requirement.role_id)
-        const shortage = shortageMap.get(key)
-        const assigned = shortage?.assigned ?? assignmentCounts.get(key) ?? 0
-        const required = shortage?.required ?? requirement.required_count
+        const required = requirement.required_count
+        // Count live assignments rather than a server snapshot, so a slot's
+        // filled count is always current after an add/remove.
+        const assigned = assignmentCounts.get(key) ?? 0
 
         return {
           roleId: requirement.role_id,

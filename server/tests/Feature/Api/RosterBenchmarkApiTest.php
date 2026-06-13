@@ -44,24 +44,65 @@ final class RosterBenchmarkApiTest extends TestCase
     {
         $this->app['auth']->forgetGuards();
 
-        $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+        $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
             ->assertStatus(401);
     }
 
     public function test_benchmark_validates_month(): void
     {
-        $this->postJson('/api/rosters/benchmark', ['month' => 13])
+        $this->postJson('/api/rosters/benchmark', [
+            'month' => 13,
+            'distribution_preference' => 'balanced',
+        ])
             ->assertStatus(422)
             ->assertJsonValidationErrors('month');
 
         $this->postJson('/api/rosters/benchmark', [])
             ->assertStatus(422)
-            ->assertJsonValidationErrors('month');
+            ->assertJsonValidationErrors(['month', 'distribution_preference']);
+    }
+
+    public function test_benchmark_requires_distribution_preference(): void
+    {
+        $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('distribution_preference');
+    }
+
+    public function test_benchmark_rejects_invalid_distribution_preference(): void
+    {
+        $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
+
+        $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'invalid',
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('distribution_preference');
+    }
+
+    public function test_benchmark_accepts_balanced_distribution_preference(): void
+    {
+        $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
+
+        $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.assignments_match', true);
     }
 
     public function test_benchmark_fails_without_contracts(): void
     {
-        $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+        $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
             ->assertStatus(422)
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'No contracts found — add some workers first.');
@@ -71,7 +112,10 @@ final class RosterBenchmarkApiTest extends TestCase
     {
         $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
 
-        $response = $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+        $response = $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
             ->assertStatus(200)
             ->assertJsonPath('success', true)
             ->assertJsonStructure([
@@ -114,7 +158,10 @@ final class RosterBenchmarkApiTest extends TestCase
     {
         $this->buildWorkforce(guards: 12, screeners: 6, supervisors: 4);
 
-        $response = $this->postJson('/api/rosters/benchmark', ['month' => self::MONTH])
+        $response = $this->postJson('/api/rosters/benchmark', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
             ->assertStatus(200)
             ->assertJsonPath('data.worker_stats.truncated', false);
 
@@ -129,8 +176,6 @@ final class RosterBenchmarkApiTest extends TestCase
             'min_hours',
             'max_hours',
             'actual_hours',
-            'percent_of_min',
-            'percent_of_max',
             'total_cost',
             'shortfall_hours',
         ];

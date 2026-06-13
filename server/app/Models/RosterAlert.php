@@ -40,7 +40,7 @@ final class RosterAlert extends Model
      */
     public function worker(): BelongsTo
     {
-        return $this->belongsTo(Worker::class, 'worker_id', 'israeli_id');
+        return $this->belongsTo(Worker::class, 'worker_id', 'israeli_id')->withTrashed();
     }
 
     /**

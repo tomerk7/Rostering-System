@@ -58,8 +58,6 @@ final class RosterStatsServiceTest extends TestCase
         self::assertSame(960.0, $row->totalCost);
         self::assertSame(160, $row->minHours);
         self::assertSame(240, $row->maxHours);
-        self::assertSame(15.0, $row->percentOfMin);
-        self::assertSame(10.0, $row->percentOfMax);
         self::assertSame(136, $row->shortfallHours);
     }
 
@@ -80,22 +78,7 @@ final class RosterStatsServiceTest extends TestCase
         self::assertSame(320.0, $row->totalCost);
         self::assertSame(8, $row->minHours);
         self::assertSame(16, $row->maxHours);
-        self::assertSame(100.0, $row->percentOfMin);
-        self::assertSame(50.0, $row->percentOfMax);
         self::assertSame(0, $row->shortfallHours);
-    }
-
-    public function test_percent_of_min_is_capped_and_percent_of_max_is_not(): void
-    {
-        $worker = $this->workerWithContract(hourlyCost: 50, minHours: 8, maxHours: 8);
-
-        $this->assign($worker, $this->shiftA, '2026-06-01', hourlyCost: 50);
-        $this->assign($worker, $this->shiftB, '2026-06-01', hourlyCost: 50);
-
-        $row = $this->service->forRoster($this->roster)->rows[0];
-
-        self::assertSame(100.0, $row->percentOfMin);
-        self::assertSame(200.0, $row->percentOfMax);
     }
 
     public function test_worker_without_contract_gets_zero_targets_and_snapshot_cost(): void
@@ -108,8 +91,6 @@ final class RosterStatsServiceTest extends TestCase
 
         self::assertSame(0, $row->minHours);
         self::assertSame(0, $row->maxHours);
-        self::assertSame(0.0, $row->percentOfMin);
-        self::assertSame(0.0, $row->percentOfMax);
         self::assertSame(600.0, $row->totalCost);
         self::assertSame(0, $row->shortfallHours);
     }

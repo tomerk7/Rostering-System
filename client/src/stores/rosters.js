@@ -92,7 +92,6 @@ export const useRostersStore = defineStore('rosters', {
         request: async () => {
           const response = await getRoster(rosterId, { include_assignments: false })
           this.roster = response.data
-          this.stats = null
           const { useRosterAssignmentsStore } = await import('@/stores/rosterAssignments')
           useRosterAssignmentsStore().reset()
         },
@@ -110,8 +109,15 @@ export const useRostersStore = defineStore('rosters', {
         loadingKey: 'statsLoading',
         fallback: 'Could not load roster stats. Please try again.',
         request: async () => {
+          if (this.roster?.id === rosterId) {
+            this.stats = null
+          }
+
           const response = await getRosterStats(rosterId)
-          this.stats = response.data
+
+          if (this.roster?.id === rosterId) {
+            this.stats = response.data
+          }
 
           return response.data
         },
@@ -122,17 +128,19 @@ export const useRostersStore = defineStore('rosters', {
      * Generate a roster for the given month.
      *
      * @param {number} month
-     * @param {boolean} [optimizeCost=false]
+     * @param {string} [preference] distribution preference preset
      * @returns {Promise<object|null>}
      */
-    create(month, optimizeCost = false) {
+    create(month, preference = undefined) {
       return runStoreRequest(this, {
         loadingKey: 'generating',
         fallback: 'Could not generate roster. Please try again.',
         request: async () => {
           const roster = await createRoster({
             month: Number(month),
-            optimize_cost: Boolean(optimizeCost),
+            ...(typeof preference === 'string' && preference !== ''
+              ? { distribution_preference: preference }
+              : {}),
           })
           this.roster = roster
           this.currentYear = roster.year
@@ -148,17 +156,19 @@ export const useRostersStore = defineStore('rosters', {
      * Regenerate an existing roster by id.
      *
      * @param {number} rosterId
-     * @param {boolean} [optimizeCost=false]
+     * @param {boolean|string} [optimizeCostOrPreference=false] optimize_cost flag or distribution preference preset
      * @returns {Promise<object|null>}
      */
-    regenerate(rosterId, optimizeCost = false) {
+    regenerate(rosterId, optimizeCostOrPreference = false) {
       return runStoreRequest(this, {
         loadingKey: 'generating',
         fallback: 'Could not regenerate roster. Please try again.',
         request: async () => {
-          const roster = await regenerateRoster(rosterId, {
-            optimize_cost: Boolean(optimizeCost),
-          })
+          const payload = typeof optimizeCostOrPreference === 'string' && optimizeCostOrPreference !== ''
+            ? { distribution_preference: optimizeCostOrPreference }
+            : { optimize_cost: Boolean(optimizeCostOrPreference) }
+
+          const roster = await regenerateRoster(rosterId, payload)
           this.applyRosterUpdate(roster)
 
           return roster
@@ -211,7 +221,6 @@ export const useRostersStore = defineStore('rosters', {
             year: roster.year,
             month: roster.month,
             generated_at: roster.generated_at,
-            published_at: roster.published_at,
             assignments_count: roster.assignments_count ?? roster.assignments?.length ?? 0,
           },
           ...this.rosters.filter(

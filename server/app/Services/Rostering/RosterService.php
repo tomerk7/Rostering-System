@@ -51,6 +51,7 @@ final readonly class RosterService
      * @param ?int $shiftId
      * @param bool $includeAssignments
      * @return Roster
+     * @throws Exception
      */
     public function loadDetails(
         Roster $roster,
@@ -88,10 +89,17 @@ final readonly class RosterService
 
     /**
      * Queue creation of a roster for a month.
+     *
+     * @param int $year
+     * @param int $month
+     * @param int $userId
+     * @param bool $optimizeCost
+     * @param float|null $balanceWeight
+     * @return Roster
      */
-    public function queueStore(int $year, int $month, int $userId, bool $optimizeCost = false): Roster
+    public function queueStore(int $year, int $month, int $userId, bool $optimizeCost = false, ?float $balanceWeight = null): Roster
     {
-        return DB::transaction(function () use ($year, $month, $userId, $optimizeCost): Roster {
+        return DB::transaction(function () use ($year, $month, $userId, $optimizeCost, $balanceWeight): Roster {
             Roster::query()
                 ->forPeriod($year, $month)
                 ->delete();
@@ -99,12 +107,11 @@ final readonly class RosterService
             $roster = Roster::query()->create([
                 'period_start' => Carbon::create($year, $month, 1)->toDateString(),
                 'generated_at' => null,
-                'published_at' => null,
                 'created_by' => $userId,
                 'status' => RosterStatus::Processing,
             ]);
 
-            GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost);
+            GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost, $balanceWeight);
 
             return $roster->fresh();
         });
@@ -113,15 +120,16 @@ final readonly class RosterService
     /**
      * Queue regeneration of an existing roster.
      *
-     * @param Roster $roster
-     * @param bool $optimizeCost
+     * @param  Roster  $roster
+     * @param  bool  $optimizeCost
+     * @param  float|null  $balanceWeight
      * @return Roster
      */
-    public function queueRegeneration(Roster $roster, bool $optimizeCost = false): Roster
+    public function queueRegeneration(Roster $roster, bool $optimizeCost = false, ?float $balanceWeight = null): Roster
     {
         $roster->update(['status' => RosterStatus::Processing]);
 
-        GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost);
+        GenerateRosterJob::dispatch((int) $roster->getKey(), $optimizeCost, $balanceWeight);
 
         return $roster->fresh();
     }
@@ -129,16 +137,20 @@ final readonly class RosterService
     /**
      * Process a queued roster generation.
      *
+     * @param int $rosterId
+     * @param bool $optimizeCost
+     * @param float|null $balanceWeight
+     * @return void
      * @throws Exception
      */
-    public function processGeneration(int $rosterId, bool $optimizeCost = false): void
+    public function processGeneration(int $rosterId, bool $optimizeCost = false, ?float $balanceWeight = null): void
     {
         $roster = Roster::query()->findOrFail($rosterId);
 
         if ($roster->assignments()->exists()) {
-            $this->regenerate($roster, $optimizeCost);
+            $this->regenerate($roster, $optimizeCost, $balanceWeight);
         } else {
-            $this->fillNewRoster($roster, $optimizeCost);
+            $this->fillNewRoster($roster, $optimizeCost, $balanceWeight);
         }
 
         $roster->update(['status' => RosterStatus::Ready]);
@@ -146,6 +158,9 @@ final readonly class RosterService
 
     /**
      * Record a failed queued roster generation.
+     * 
+     * @param Roster $roster
+     * @return void
      */
     public function markGenerationFailed(Roster $roster): void
     {
@@ -155,21 +170,23 @@ final readonly class RosterService
     /**
      * Regenerate assignments for an existing roster, keeping the same roster id.
      *
+     * @param Roster $roster
+     * @param bool $optimizeCost
+     * @param float|null $balanceWeight
+     * @return Roster
      * @throws Exception
      */
-    private function regenerate(Roster $roster, bool $optimizeCost = false): Roster
+    private function regenerate(Roster $roster, bool $optimizeCost = false, ?float $balanceWeight = null): Roster
     {
-        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost);
+        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost, $balanceWeight);
 
         return DB::transaction(function () use ($roster, $result): Roster {
             $roster->assignments()->delete();
             $roster->alerts()->delete();
             $roster->coverageShortages()->delete();
 
-            $now = Carbon::now();
             $roster->update([
-                'generated_at' => $now,
-                'published_at' => $now,
+                'generated_at' => Carbon::now(),
             ]);
 
             $this->insertAssignments($roster, $result->assignments);
@@ -181,6 +198,9 @@ final readonly class RosterService
 
     /**
      * Delete a roster.
+     *
+     * @param Roster $roster
+     * @return void
      */
     public function delete(Roster $roster): void
     {
@@ -190,16 +210,17 @@ final readonly class RosterService
     /**
      * Generate and persist assignments into a queued roster stub.
      *
+     * @param Roster $roster
+     * @param bool $optimizeCost
+     * @param float|null $balanceWeight
+     * @return void
      * @throws Exception
      */
-    private function fillNewRoster(Roster $roster, bool $optimizeCost = false): void
+    private function fillNewRoster(Roster $roster, bool $optimizeCost = false, ?float $balanceWeight = null): void
     {
-        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost);
-        $now = Carbon::now();
-
+        $result = $this->generator->generate($roster->year, $roster->month, $optimizeCost, $balanceWeight);
         $roster->update([
-            'generated_at' => $now,
-            'published_at' => $now,
+            'generated_at' => Carbon::now(),
         ]);
 
         $this->insertAssignments($roster, $result->assignments);

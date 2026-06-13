@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
-#[Fillable(['period_start', 'status', 'generated_at', 'published_at', 'created_by'])]
+#[Fillable(['period_start', 'status', 'generated_at', 'created_by'])]
 final class Roster extends Model
 {
     use HasFactory;
@@ -88,7 +88,6 @@ final class Roster extends Model
             'period_start' => 'date',
             'status' => RosterStatus::class,
             'generated_at' => 'datetime',
-            'published_at' => 'datetime',
         ];
     }
 }

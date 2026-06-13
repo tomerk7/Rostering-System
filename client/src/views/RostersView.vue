@@ -67,7 +67,6 @@ async function deleteRoster(roster) {
             <th>Period</th>
             <th>Assignments</th>
             <th>Generated</th>
-            <th>Published</th>
             <th class="table__actions">
               Actions
             </th>
@@ -76,7 +75,7 @@ async function deleteRoster(roster) {
         <tbody>
           <tr v-if="rostersStore.loading">
             <td
-              colspan="5"
+              colspan="4"
               class="table__empty"
             >
               Loading rosters...
@@ -84,7 +83,7 @@ async function deleteRoster(roster) {
           </tr>
           <tr v-else-if="rostersStore.rosters.length === 0">
             <td
-              colspan="5"
+              colspan="4"
               class="table__empty"
             >
               No rosters found.
@@ -100,7 +99,6 @@ async function deleteRoster(roster) {
               </td>
               <td>{{ roster.assignments_count ?? '-' }}</td>
               <td>{{ roster.generated_at ? new Date(roster.generated_at).toLocaleString() : '-' }}</td>
-              <td>{{ roster.published_at ? new Date(roster.published_at).toLocaleString() : '-' }}</td>
               <td class="table__actions">
                 <Button :to="{ name: 'rosters.show', params: { id: roster.id } }">
                   View

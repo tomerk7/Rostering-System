@@ -49,6 +49,9 @@ export const useRosterAssignmentsStore = defineStore('rosterAssignments', {
         loadingKey: 'assignmentsLoading',
         fallback: 'Could not load assignments for this week. Please try again.',
         request: async () => {
+          this.assignments = []
+          this.assignedHoursByWorker = {}
+
           const response = await listAssignments(rosterId, range)
           this.assignments = response.data
           this.assignedHoursByWorker = response.meta?.assigned_hours_by_worker ?? {}

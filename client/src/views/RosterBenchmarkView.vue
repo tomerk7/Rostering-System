@@ -11,7 +11,14 @@ import Table from '@/components/ui/Table.vue'
 const benchmarkStore = useRosterBenchmarkStore()
 
 const selectedMonth = ref(null)
-const showFullTables = ref(false)
+const selectedPreference = ref('balanced')
+
+const objectiveOptions = [
+  { value: 'maximum_savings', label: 'Maximum savings' },
+  { value: 'cost_focused', label: 'Cost focused' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'distribution_focused', label: 'Spread hours evenly' },
+]
 
 const monthOptions = Array.from({ length: 12 }, (_, index) => ({
   value: index + 1,
@@ -29,10 +36,6 @@ function formatCurrency(value) {
   return `₪${currencyFormat.format(value)}`
 }
 
-function formatPercent(value) {
-  return `${Number(value).toFixed(2)}%`
-}
-
 function formatDeltaCost(value) {
   if (value === 0) return '—'
   const abs = `₪${currencyFormat.format(Math.abs(value))}`
@@ -42,6 +45,10 @@ function formatDeltaCost(value) {
 function formatDeltaHours(value) {
   if (value === 0) return '—'
   return value > 0 ? `+${value}h` : `${value}h`
+}
+
+function formatWorkloadSpread(value) {
+  return `${Number(value).toFixed(1)} hours`
 }
 
 const metricRows = computed(() => {
@@ -54,14 +61,21 @@ const metricRows = computed(() => {
   const { plain, optimized } = benchmark
 
   return [
-    ['Assignments', plain.assignments, optimized.assignments],
-    ['Coverage shortages', plain.coverage_shortages, optimized.coverage_shortages],
-    ['Total cost', currencyFormat.format(plain.total_cost), currencyFormat.format(optimized.total_cost)],
-    ['Min-hours shortfall (workers)', plain.min_hours_shortfall_workers, optimized.min_hours_shortfall_workers],
-    ['Min-hours shortfall (hours)', plain.min_hours_shortfall_hours, optimized.min_hours_shortfall_hours],
-    ['Max-hours violations (workers)', plain.max_hours_violations, optimized.max_hours_violations],
-    ['Hours std deviation', plain.hours_std_dev.toFixed(2), optimized.hours_std_dev.toFixed(2)],
-    ['Generation time', `${plain.generation_seconds.toFixed(2)}s`, `${optimized.generation_seconds.toFixed(2)}s`],
+    { key: 'assignments', label: 'Assignments', plain: plain.assignments, optimized: optimized.assignments },
+    { key: 'coverage_shortages', label: 'Coverage shortages', plain: plain.coverage_shortages, optimized: optimized.coverage_shortages },
+    { key: 'total_cost', label: 'Total cost', plain: formatCurrency(plain.total_cost), optimized: formatCurrency(optimized.total_cost) },
+    { key: 'min_hours_shortfall_workers', label: 'Min-hours shortfall (workers)', plain: plain.min_hours_shortfall_workers, optimized: optimized.min_hours_shortfall_workers },
+    { key: 'min_hours_shortfall_hours', label: 'Min-hours shortfall (hours)', plain: plain.min_hours_shortfall_hours, optimized: optimized.min_hours_shortfall_hours },
+    { key: 'max_hours_violations', label: 'Max-hours violations (workers)', plain: plain.max_hours_violations, optimized: optimized.max_hours_violations },
+    {
+      key: 'hours_std_dev',
+      label: 'Workload spread',
+      hint: 'How much workers\' assigned hours differ from the average. Lower is more evenly distributed.',
+      lowerIsBetter: true,
+      plain: formatWorkloadSpread(plain.hours_std_dev),
+      optimized: formatWorkloadSpread(optimized.hours_std_dev),
+    },
+    { key: 'generation_seconds', label: 'Generation time', plain: `${plain.generation_seconds.toFixed(2)}s`, optimized: `${optimized.generation_seconds.toFixed(2)}s` },
   ]
 })
 
@@ -88,18 +102,6 @@ const deltaColumns = [
   { key: 'shortfall_change', label: 'Shortfall', sortable: false },
 ]
 
-const workerColumns = [
-  { key: 'worker_id', label: 'Worker ID' },
-  { key: 'name', label: 'Name' },
-  { key: 'min_hours', label: 'Min hours', numeric: true },
-  { key: 'max_hours', label: 'Max hours', numeric: true },
-  { key: 'actual_hours', label: 'Actual hours', numeric: true },
-  { key: 'percent_of_min', label: '% of min', numeric: true, formatter: formatPercent },
-  { key: 'percent_of_max', label: '% of max', numeric: true, formatter: formatPercent },
-  { key: 'shortfall_hours', label: 'Shortfall', numeric: true },
-  { key: 'total_cost', label: 'Total cost', numeric: true, formatter: formatCurrency },
-]
-
 onMounted(() => {
   benchmarkStore.clearErrors()
   benchmarkStore.reset()
@@ -114,8 +116,7 @@ async function runBenchmark() {
     return
   }
 
-  showFullTables.value = false
-  await benchmarkStore.runBenchmark(selectedMonth.value)
+  await benchmarkStore.runBenchmark(selectedMonth.value, selectedPreference.value)
 }
 </script>
 
@@ -130,8 +131,8 @@ async function runBenchmark() {
           Benchmark
         </h1>
         <p class="page__description">
-          Compare plain greedy roster generation against the cost-optimized run
-          for a month in the current year. Nothing is saved.
+          Compare plain greedy roster generation against a cost-optimized run for
+          the selected objective. Nothing is saved.
         </p>
       </div>
       <div class="page__actions">
@@ -164,6 +165,18 @@ async function runBenchmark() {
               :value="month.value"
             >
               {{ month.label }}
+            </option>
+          </Select>
+        </Field>
+
+        <Field label="Objective">
+          <Select v-model="selectedPreference">
+            <option
+              v-for="option in objectiveOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
             </option>
           </Select>
         </Field>
@@ -206,11 +219,27 @@ async function runBenchmark() {
           <tbody>
             <tr
               v-for="row in metricRows"
-              :key="row[0]"
+              :key="row.key"
             >
-              <td>{{ row[0] }}</td>
-              <td>{{ row[1] }}</td>
-              <td>{{ row[2] }}</td>
+              <td>
+                <div class="benchmark-metric">
+                  <div class="benchmark-metric__heading">
+                    <span class="benchmark-metric__label">{{ row.label }}</span>
+                    <span
+                      v-if="row.lowerIsBetter"
+                      class="benchmark-metric__badge"
+                    >Lower is better</span>
+                  </div>
+                  <p
+                    v-if="row.hint"
+                    class="benchmark-metric__hint"
+                  >
+                    {{ row.hint }}
+                  </p>
+                </div>
+              </td>
+              <td>{{ row.plain }}</td>
+              <td>{{ row.optimized }}</td>
             </tr>
           </tbody>
         </Table>
@@ -232,44 +261,48 @@ async function runBenchmark() {
           Workers affected by optimization
         </h2>
 
-        <SortableTable
+        <div
           v-if="workerDeltas.length"
-          :columns="deltaColumns"
-          :rows="workerDeltas"
-          row-key="worker_id"
-          :initial-sort="{ key: 'optimized_cost', direction: 'desc' }"
-          empty-text="No workers changed."
+          class="benchmark-table-scroll"
         >
-          <template #cell-hours_delta="{ value }">
-            <span
-              :class="{
-                'delta--neg': value < 0,
-                'delta--pos': value > 0,
-              }"
-            >{{ formatDeltaHours(value) }}</span>
-          </template>
-          <template #cell-cost_delta="{ value }">
-            <span
-              :class="{
-                'delta--neg': value < 0,
-                'delta--pos': value > 0,
-              }"
-            >{{ formatDeltaCost(value) }}</span>
-          </template>
-          <template #cell-shortfall_change="{ value }">
-            <span
-              v-if="value === 'appeared'"
-              class="badge badge--warn"
-            >appeared</span>
-            <span
-              v-else-if="value === 'disappeared'"
-              class="badge badge--success"
-            >resolved</span>
-            <template v-else>
-              —
+          <SortableTable
+            :columns="deltaColumns"
+            :rows="workerDeltas"
+            row-key="worker_id"
+            :initial-sort="{ key: 'optimized_cost', direction: 'desc' }"
+            empty-text="No workers changed."
+          >
+            <template #cell-hours_delta="{ value }">
+              <span
+                :class="{
+                  'delta--neg': value < 0,
+                  'delta--pos': value > 0,
+                }"
+              >{{ formatDeltaHours(value) }}</span>
             </template>
-          </template>
-        </SortableTable>
+            <template #cell-cost_delta="{ value }">
+              <span
+                :class="{
+                  'delta--neg': value < 0,
+                  'delta--pos': value > 0,
+                }"
+              >{{ formatDeltaCost(value) }}</span>
+            </template>
+            <template #cell-shortfall_change="{ value }">
+              <span
+                v-if="value === 'appeared'"
+                class="badge badge--warn"
+              >appeared</span>
+              <span
+                v-else-if="value === 'disappeared'"
+                class="badge badge--success"
+              >resolved</span>
+              <template v-else>
+                —
+              </template>
+            </template>
+          </SortableTable>
+        </div>
 
         <p
           v-else
@@ -294,70 +327,6 @@ async function runBenchmark() {
           </div>
         </div>
 
-        <!-- Full worker tables -->
-        <div
-          v-if="benchmarkStore.benchmark.worker_stats.truncated"
-          class="alert"
-          role="alert"
-        >
-          Per-worker detail tables are omitted — workforce exceeds 300 workers.
-          Deltas and leaderboards above are still complete.
-        </div>
-
-        <template v-else>
-          <div class="benchmark-toggle">
-            <Button
-              type="button"
-              @click="showFullTables = !showFullTables"
-            >
-              {{ showFullTables ? 'Hide full tables' : 'Show full tables' }}
-            </Button>
-          </div>
-
-          <template v-if="showFullTables">
-            <h2 class="section-title section-title--spaced">
-              Plain — per-worker stats
-            </h2>
-            <SortableTable
-              :columns="workerColumns"
-              :rows="benchmarkStore.benchmark.worker_stats.plain"
-              row-key="worker_id"
-              :initial-sort="{ key: 'total_cost', direction: 'desc' }"
-              empty-text="No workers assigned."
-            >
-              <template #cell-shortfall_hours="{ value }">
-                <span
-                  v-if="value > 0"
-                  class="badge badge--muted"
-                >{{ value }}h short</span>
-                <template v-else>
-                  —
-                </template>
-              </template>
-            </SortableTable>
-
-            <h2 class="section-title section-title--spaced">
-              Optimized — per-worker stats
-            </h2>
-            <SortableTable
-              :columns="workerColumns"
-              :rows="benchmarkStore.benchmark.worker_stats.optimized"
-              row-key="worker_id"
-              :initial-sort="{ key: 'total_cost', direction: 'desc' }"
-              empty-text="No workers assigned."
-            >
-              <template #cell-shortfall_hours="{ value }">
-                <span
-                  v-if="value > 0"
-                  class="badge badge--muted"
-                >{{ value }}h short</span>
-                <template v-else>
-                  —
-                </template>
-              </template>
-            </SortableTable>
-          </template>
-        </template>
       </template>
     </section>
   </main>
@@ -369,7 +338,7 @@ async function runBenchmark() {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(10rem, 14rem) auto;
+  grid-template-columns: repeat(2, minmax(10rem, 14rem)) auto;
   gap: 1rem;
   align-items: end;
 }
@@ -385,6 +354,33 @@ async function runBenchmark() {
   color: #334155;
 }
 
+.benchmark-metric__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+  align-items: center;
+}
+
+.benchmark-metric__label {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.benchmark-metric__badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #166534;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.benchmark-metric__hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
 .section-title {
   margin: 1.5rem 0 0.75rem;
   font-size: 0.875rem;
@@ -392,8 +388,9 @@ async function runBenchmark() {
   color: #0f172a;
 }
 
-.section-title--spaced {
-  margin-top: 2rem;
+.benchmark-table-scroll {
+  max-height: 50vh;
+  overflow: auto;
 }
 
 .benchmark-empty {
@@ -407,10 +404,6 @@ async function runBenchmark() {
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
   margin-top: 0.5rem;
-}
-
-.benchmark-toggle {
-  margin-top: 1rem;
 }
 
 .delta--neg {

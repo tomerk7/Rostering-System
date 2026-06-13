@@ -14,6 +14,7 @@ use App\Models\Roster;
 use App\Models\RosterAlert;
 use App\Models\RosterAssignment;
 use App\Models\Shift;
+use App\Models\ShiftRoleRequirement;
 use App\Models\User;
 use App\Models\Worker;
 use Database\Seeders\ReferenceDataSeeder;
@@ -173,6 +174,32 @@ final class RosterApiTest extends TestCase
             ->assertStatus(202);
 
         Queue::assertPushed(GenerateRosterJob::class, fn (GenerateRosterJob $job): bool => $job->optimizeCost === false);
+    }
+
+    public function test_roster_generation_rejects_invalid_distribution_preference(): void
+    {
+        $this->postJson('/api/rosters', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'invalid',
+        ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('distribution_preference');
+    }
+
+    public function test_balanced_distribution_preference_queues_optimization_with_balance_weight(): void
+    {
+        Queue::fake();
+
+        $this->postJson('/api/rosters', [
+            'month' => self::MONTH,
+            'distribution_preference' => 'balanced',
+        ])
+            ->assertStatus(202);
+
+        Queue::assertPushed(
+            GenerateRosterJob::class,
+            fn (GenerateRosterJob $job): bool => $job->optimizeCost === true && $job->balanceWeight === 30.0,
+        );
     }
 
     public function test_roster_regeneration_queues_the_optimize_cost_flag(): void
@@ -655,6 +682,78 @@ final class RosterApiTest extends TestCase
             ->assertJsonPath('message', 'A worker may take at most two shifts per calendar day.');
 
         $this->assertDatabaseCount('roster_assignments', 2);
+    }
+
+    public function test_manual_assignment_rejects_role_at_capacity(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->create(['created_by' => $this->user->id]);
+
+        $guardRoleId = Role::query()->where('code', 'general_guard')->value('id');
+        $guards = Worker::query()
+            ->active()
+            ->whereHas('contract')
+            ->where('role_id', $guardRoleId)
+            ->limit(7)
+            ->get();
+
+        self::assertGreaterThanOrEqual(7, $guards->count());
+
+        foreach ($guards->take(6) as $guard) {
+            RosterAssignment::query()->create([
+                'roster_id' => $roster->id,
+                'worker_id' => $guard->israeli_id,
+                'shift_id' => $this->shiftA->id,
+                'work_date' => '2026-06-01',
+                'source' => AssignmentSource::Manual,
+                'hourly_cost' => 50,
+            ]);
+        }
+
+        $this->postJson("/api/rosters/{$roster->id}/assignments", [
+            'worker_id' => $guards[6]->israeli_id,
+            'shift_id' => $this->shiftA->id,
+            'work_date' => '2026-06-01',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonValidationErrors('assignment');
+
+        $this->assertDatabaseCount('roster_assignments', 6);
+    }
+
+    public function test_manual_assignment_rejects_a_role_with_no_requirement_on_the_shift(): void
+    {
+        $roster = Roster::factory()
+            ->forPeriod(self::YEAR, self::MONTH)
+            ->create(['created_by' => $this->user->id]);
+
+        $guardRoleId = Role::query()->where('code', 'general_guard')->value('id');
+
+        // Remove the demand for guards on shift A: the role is no longer staffed
+        // on this shift, so its capacity there is zero, not unlimited.
+        ShiftRoleRequirement::query()
+            ->where('shift_id', $this->shiftA->id)
+            ->where('role_id', $guardRoleId)
+            ->delete();
+
+        $guard = Worker::query()
+            ->active()
+            ->whereHas('contract')
+            ->where('role_id', $guardRoleId)
+            ->firstOrFail();
+
+        $this->postJson("/api/rosters/{$roster->id}/assignments", [
+            'worker_id' => $guard->israeli_id,
+            'shift_id' => $this->shiftA->id,
+            'work_date' => '2026-06-01',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('success', false)
+            ->assertJsonValidationErrors('assignment');
+
+        $this->assertDatabaseCount('roster_assignments', 0);
     }
 
     public function test_roster_can_be_deleted_with_its_assignments(): void

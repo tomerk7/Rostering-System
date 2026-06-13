@@ -12,6 +12,7 @@ compose_dev := $(compose) -f docker-compose.dev.yml
 compose_prod := $(compose) -f docker-compose.prod.yml
 
 server := $(compose_dev) exec server
+server_prod := $(compose_prod) exec server
 client := $(compose_dev) exec client
 
 docker-init: docker-init-dev
@@ -27,6 +28,8 @@ docker-init-prod:
 	[ -f db/.env ] || cp db/.env.example db/.env
 	[ -f client/.env ] || cp client/.env.example client/.env
 	$(compose_prod) up -d --build
+	@sh scripts/wait-prod-server-ready.sh "$(compose_prod)"
+	@$(MAKE) db-rebuild-prod
 	@sh scripts/wait-prod-client-build.sh "$(compose_prod)" || true
 	@$(MAKE) docker-print-prod-urls
 
@@ -63,7 +66,10 @@ db-migrate:
 	$(server) php artisan migrate
 
 db-rebuild:
-	$(server) php artisan migrate:fresh
+	$(server) php artisan migrate:fresh --seed --force
+
+db-rebuild-prod:
+	$(server_prod) php artisan migrate:fresh --seed --force
 
 db-migrate-revert:
 	$(server) php artisan migrate:rollback --step=1

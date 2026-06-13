@@ -8,6 +8,7 @@ import AssignmentFormModal from '@/components/rosters/AssignmentFormModal.vue'
 import RosterAlertSummary from '@/components/rosters/RosterAlertSummary.vue'
 import RosterGrid from '@/components/rosters/RosterGrid.vue'
 import Button from '@/components/ui/Button.vue'
+import Select from '@/components/ui/Select.vue'
 import {
   addDays,
   formatMonthYear,
@@ -32,7 +33,16 @@ const assignmentError = ref('')
 const assignmentContext = ref(null)
 const weekAnchor = ref('')
 const viewMode = ref('week')
-const optimizeCost = ref(false)
+const selectedPreference = ref('')
+const rangeLoaded = ref(false)
+
+const objectiveOptions = [
+  { value: '', label: 'Standard scheduling' },
+  { value: 'maximum_savings', label: 'Maximum savings' },
+  { value: 'cost_focused', label: 'Cost focused' },
+  { value: 'balanced', label: 'Balanced' },
+  { value: 'distribution_focused', label: 'Spread hours evenly' },
+]
 
 /**
  * Formatted month and year label for the loaded roster.
@@ -125,6 +135,8 @@ watch(rosterId, async () => {
  * @returns {Promise<void>}
  */
 async function loadRoster() {
+  rangeLoaded.value = false
+
   await Promise.all([referenceData.load(), rostersStore.fetchRoster(rosterId.value)])
 
   const roster = rostersStore.roster
@@ -156,13 +168,18 @@ async function loadVisibleRange() {
   const range = gridRange.value
 
   if (!roster || !range) {
+    rangeLoaded.value = false
     return false
   }
+
+  rangeLoaded.value = false
 
   const response = await assignmentsStore.fetchAssignments(roster.id, {
     fromDate: range.startDate,
     toDate: range.endDate,
   })
+
+  rangeLoaded.value = Boolean(response)
 
   return Boolean(response)
 }
@@ -336,7 +353,8 @@ async function regenerateRoster() {
     return
   }
 
-  const regenerated = await rostersStore.regenerate(roster.id, optimizeCost.value)
+  const preference = selectedPreference.value || undefined
+  const regenerated = await rostersStore.regenerate(roster.id, preference)
 
   if (!regenerated) {
     return
@@ -362,7 +380,7 @@ async function regenerateRoster() {
           </template>
         </h1>
       </div>
-      <div class="page__actions">
+      <div class="page__actions page__actions--toolbar">
         <Button :to="{ name: 'rosters' }">
           Back to list
         </Button>
@@ -374,13 +392,20 @@ async function regenerateRoster() {
         </Button>
         <label
           v-if="rostersStore.roster"
-          class="check-field"
+          class="roster-objective"
         >
-          <input
-            v-model="optimizeCost"
-            type="checkbox"
+          <Select
+            v-model="selectedPreference"
+            aria-label="Scheduling objective"
           >
-          <span>Schedule by cost efficiency</span>
+            <option
+              v-for="option in objectiveOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </Select>
         </label>
         <Button
           v-if="rostersStore.roster"
@@ -451,7 +476,7 @@ async function regenerateRoster() {
           :reports="rostersStore.reports"
           :workers-by-id="referenceData.workersById"
           :editable="true"
-          :loading="assignmentsStore.assignmentsLoading"
+          :loading="assignmentsStore.assignmentsLoading || !rangeLoaded"
           :show-navigation="viewMode === 'week'"
           :full-month="viewMode === 'month'"
           :can-go-previous="canGoPrevious"
@@ -493,10 +518,9 @@ async function regenerateRoster() {
       :shifts="referenceData.reference?.shifts ?? []"
       :roles="referenceData.reference?.roles"
       :initial-date="assignmentContext?.workDate"
-      :min-date="monthRange?.startDate"
-      :max-date="monthRange?.endDate"
       :initial-shift-id="assignmentContext?.shiftId"
       :initial-role-id="assignmentContext?.roleId"
+      :role-required="assignmentContext?.roleRequired"
       :saving="assignmentsStore.assignmentLoading"
       :error="assignmentError"
       @close="closeAssignmentModal"
@@ -508,23 +532,25 @@ async function regenerateRoster() {
 <style scoped>
 @import '@/assets/ui/page.css';
 
+.page__actions--toolbar {
+  align-items: center;
+}
+
+.roster-objective {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.375rem;
+}
+
+.roster-objective :deep(.input) {
+  width: auto;
+  min-width: 11rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
 .roster-view-toggle {
   display: inline-flex;
   gap: 0.375rem;
-}
-
-.check-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 2.375rem;
-  color: #334155;
-  font-size: 0.875rem;
-}
-
-.check-field input {
-  width: 1rem;
-  height: 1rem;
-  accent-color: #2563eb;
 }
 </style>

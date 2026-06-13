@@ -50,4 +50,9 @@ final class ManualAssignmentException extends RuntimeException
     {
         return new self("This assignment would exceed the worker's maximum monthly hours.");
     }
+
+    public static function roleAtCapacity(): self
+    {
+        return new self('This role is already fully staffed for that date and shift.');
+    }
 }

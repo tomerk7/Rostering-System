@@ -29,7 +29,6 @@ final class RosterFactory extends Factory
             'period_start' => Carbon::create($year, $month, 1)->toDateString(),
             'status' => RosterStatus::Ready,
             'generated_at' => Carbon::now(),
-            'published_at' => Carbon::now(),
             'created_by' => User::factory(),
         ];
     }
