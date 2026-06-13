@@ -37,7 +37,7 @@ The only hard labour rule is: **a worker may never be assigned all 3 shifts of t
 
 | Layer            | Technology                                              |
 | ---------------- | ------------------------------------------------------- |
-| Backend          | PHP 8.4, Laravel 11                                     |
+| Backend          | PHP 8.4, Laravel 13                                     |
 | Frontend         | Vue 3 SPA, Vue Router, Vite, TailwindCSS                |
 | Database         | PostgreSQL 16 (relational SQL only)                     |
 | Auth             | Laravel Sanctum (stateful SPA session + CSRF cookie)    |
