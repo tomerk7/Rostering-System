@@ -154,91 +154,104 @@ All three share the same import schema. To seed data directly into the database 
 
 ## Database Schema
 
-```mermaid
+``` mermaid
 erDiagram
-    roles ||--o{ workers : ""
-    roles ||--o{ shift_role_requirements : ""
-    roles ||--o{ coverage_shortages : ""
-    shifts ||--o{ shift_role_requirements : ""
-    shifts ||--o{ contract_availability : ""
-    shifts ||--o{ roster_assignments : ""
-    shifts ||--o{ coverage_shortages : ""
-    workers ||--|| contracts : ""
-    workers ||--o{ roster_assignments : ""
-    workers ||--o{ roster_alerts : ""
-    contracts ||--o{ contract_availability : ""
-    users ||--o{ rosters : ""
-    rosters ||--o{ roster_assignments : ""
-    rosters ||--o{ roster_alerts : ""
-    rosters ||--o{ coverage_shortages : ""
+    USERS ||--o{ ROSTERS : creates
+    ROLES ||--o{ WORKERS : assigned
+    ROLES ||--o{ SHIFT_ROLE_REQUIREMENTS : demands
+    SHIFTS ||--o{ SHIFT_ROLE_REQUIREMENTS : "staffing for"
+    SHIFTS ||--o{ CONTRACT_AVAILABILITY : allowed
+    WORKERS ||--|| CONTRACTS : "1:1"
+    CONTRACTS ||--o{ CONTRACT_AVAILABILITY : defines
+    ROSTERS ||--o{ ROSTER_ASSIGNMENTS : contains
+    ROSTERS ||--o{ ROSTER_ALERTS : reports
+    ROSTERS ||--o{ COVERAGE_SHORTAGES : reports
+    WORKERS ||--o{ ROSTER_ASSIGNMENTS : assigned
+    SHIFTS ||--o{ ROSTER_ASSIGNMENTS : "scheduled for"
 
-    roles {
-        bigint id PK
-        varchar code UK
-        varchar name
+    ROLES {
+        int id PK
+        string code UK "general_guard, supervisor, screener"
+        string name
     }
-    shifts {
-        bigint id PK
-        varchar code UK
+
+    SHIFTS {
+        int id PK
+        string code UK "A, B, C"
         time start_time
-        smallint duration_hours
+        time end_time
+        smallint duration_hours "check > 0"
     }
-    shift_role_requirements {
-        bigint id PK
-        bigint shift_id FK
-        bigint role_id FK
-        smallint required_count
+
+    SHIFT_ROLE_REQUIREMENTS {
+        int shift_id FK
+        int role_id FK
+        smallint required_count "UK: shift_id, role_id"
     }
-    workers {
-        char israeli_id PK
-        varchar full_name
-        bigint role_id FK
-        boolean is_active
+
+    WORKERS {
+        string israeli_id PK "char(9)"
+        string full_name
+        int role_id FK
+        boolean is_active "default true"
+        timestamp deleted_at "nullable soft-delete"
     }
-    contracts {
-        bigint id PK
-        char worker_id FK
-        decimal hourly_cost
+
+    CONTRACTS {
+        string worker_id FK "char(9), UK, cascade"
+        decimal hourly_cost "check >= 0"
         smallint min_monthly_hours
-        smallint max_monthly_hours
+        smallint max_monthly_hours "check max >= min"
     }
-    contract_availability {
-        bigint id PK
-        bigint contract_id FK
-        bigint shift_id FK
-        smallint day_of_week
+
+    CONTRACT_AVAILABILITY {
+        string contract_id FK "cascade"
+        smallint day_of_week "0–6, UK with shift_id"
+        int shift_id FK
     }
-    rosters {
-        bigint id PK
+
+    USERS {
+        int id PK
+        string email
+    }
+
+    ROSTERS {
+        int id PK
         date period_start UK
-        varchar status
-        bigint created_by FK
+        string status "processing, ready, failed"
+        timestamp generated_at
+        int created_by FK
     }
-    roster_assignments {
-        bigint id PK
-        bigint roster_id FK
-        char worker_id FK
-        bigint shift_id FK
+
+    ROSTER_ASSIGNMENTS {
+        int roster_id FK
+        string worker_id FK "char(9)"
+        int shift_id FK
         date work_date
-        decimal hourly_cost
+        string source "check: auto, manual"
+        decimal hourly_cost "snapshot of contract rate"
     }
-    roster_alerts {
-        bigint id PK
-        bigint roster_id FK
-        char worker_id FK
-        varchar type
+
+    ROSTER_ALERTS {
+        int roster_id FK
+        string type "hours_shortfall"
+        string worker_id "char(9)"
+        string worker_name "nullable snapshot"
+        int min_hours
+        int scheduled_hours
     }
-    coverage_shortages {
-        bigint id PK
-        bigint roster_id FK
-        bigint shift_id FK
-        bigint role_id FK
-        smallint assigned_count
+
+    COVERAGE_SHORTAGES {
+        int roster_id FK
+        date work_date
+        int shift_id FK
+        int role_id FK
+        int required_count
+        int assigned_count
     }
-    users {
-        bigint id PK
-        varchar name
-    }
+
+    classDef allColor stroke:#818cf8,fill:#eef2ff
+    class ROLES,SHIFTS,SHIFT_ROLE_REQUIREMENTS,WORKERS,CONTRACTS,CONTRACT_AVAILABILITY,USERS,ROSTERS,ROSTER_ASSIGNMENTS,ROSTER_ALERTS,COVERAGE_SHORTAGES allColor
 ```
 
 
