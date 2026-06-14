@@ -78,8 +78,8 @@ final readonly class RosterBenchmark
         return new BenchmarkResult(
             year: $year,
             month: $month,
-            plain: $this->metrics($plain->assignments, count($plain->coverageShortages), count($plain->hoursShortfalls), $costPlain, $plainSeconds, $minHours, $maxHours),
-            optimized: $this->metrics($optimized->assignments, count($optimized->coverageShortages), count($optimized->hoursShortfalls), $costOptimized, $optimizedSeconds, $minHours, $maxHours),
+            plain: $this->metrics($plain->assignments, count($plain->hoursShortfalls), $costPlain, $plainSeconds, $minHours, $maxHours),
+            optimized: $this->metrics($optimized->assignments, count($optimized->hoursShortfalls), $costOptimized, $optimizedSeconds, $minHours, $maxHours),
             savedAmount: $saved,
             savedPercent: $costPlain > 0 ? ($saved / $costPlain) * 100 : 0.0,
             assignmentsMatch: count($plain->assignments) === count($optimized->assignments),
@@ -257,13 +257,12 @@ final readonly class RosterBenchmark
      * @param  Collection<array-key, mixed>  $maxHours
      * @return array<string, int|float>
      */
-    private function metrics(array $assignments, int $coverageShortages, int $hoursShortfallWorkers, float $totalCost, float $seconds, Collection $minHours, Collection $maxHours): array
+    private function metrics(array $assignments, int $hoursShortfallWorkers, float $totalCost, float $seconds, Collection $minHours, Collection $maxHours): array
     {
         $scheduled = $this->scheduledHours($assignments);
 
         return [
             'assignments' => count($assignments),
-            'coverage_shortages' => $coverageShortages,
             'total_cost' => $totalCost,
             'min_hours_shortfall_workers' => $hoursShortfallWorkers,
             'min_hours_shortfall_hours' => $this->shortfallHours($scheduled, $minHours),

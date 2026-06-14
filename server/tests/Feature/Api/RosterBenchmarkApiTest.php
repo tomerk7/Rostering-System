@@ -22,7 +22,6 @@ final class RosterBenchmarkApiTest extends TestCase
 
     private const array METRIC_KEYS = [
         'assignments',
-        'coverage_shortages',
         'total_cost',
         'min_hours_shortfall_workers',
         'min_hours_shortfall_hours',
