@@ -57,3 +57,9 @@
   background: #dcfce7;
   border-color: #bbf7d0;
 }
+
+.alert--info {
+  color: #1e40af;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}

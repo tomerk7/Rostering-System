@@ -62,7 +62,6 @@ const metricRows = computed(() => {
 
   return [
     { key: 'assignments', label: 'Assignments', plain: plain.assignments, optimized: optimized.assignments },
-    { key: 'coverage_shortages', label: 'Coverage shortages', plain: plain.coverage_shortages, optimized: optimized.coverage_shortages },
     { key: 'total_cost', label: 'Total cost', plain: formatCurrency(plain.total_cost), optimized: formatCurrency(optimized.total_cost) },
     { key: 'min_hours_shortfall_workers', label: 'Min-hours shortfall (workers)', plain: plain.min_hours_shortfall_workers, optimized: optimized.min_hours_shortfall_workers },
     { key: 'min_hours_shortfall_hours', label: 'Min-hours shortfall (hours)', plain: plain.min_hours_shortfall_hours, optimized: optimized.min_hours_shortfall_hours },
@@ -191,6 +190,14 @@ async function runBenchmark() {
           </Button>
         </div>
       </form>
+
+      <div
+        class="alert alert--info"
+        role="note"
+      >
+        If the workforce is too small to fully staff the month, the schedule will
+        have coverage shortages and the cost optimizer will not run.
+      </div>
 
       <p
         v-if="benchmarkStore.benchmarking"
