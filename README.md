@@ -325,8 +325,6 @@ The export produces exactly this format, and the import accepts it unchanged, as
 
 **Export:** Workers page → **Export** streams active directory workers (excluding archived/soft-deleted) with contract + availability as `workers-YYYY-MM-DD.csv` in the exact schema above.
 
-The export is only enabled once the roster has **no coverage shortages**, so the numbers always describe a fully staffed, valid month.
-
 ---
 
 ## Sample Data & Test-Data Generator
