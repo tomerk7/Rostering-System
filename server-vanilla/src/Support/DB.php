@@ -7,10 +7,11 @@ namespace App\Support;
 use PDO;
 
 /**
- * Shared PDO connection for the vanilla app. Reads the same DB_* environment
- * variables the rest of the stack uses and connects to the shared Postgres.
+ * Database access for the vanilla app: the shared PDO connection plus (over time)
+ * query/transaction helpers. Reads the same DB_* environment variables the rest
+ * of the stack uses and connects to the shared Postgres.
  */
-final class Database
+final class DB
 {
     public static function connect(): PDO
     {

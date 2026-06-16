@@ -13,7 +13,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\Support\Database;
+use App\Support\DB;
 
 // Mirrors App\Enums\RoleCode / ShiftCode and ReferenceDataSeeder constants.
 $roles = [
@@ -35,7 +35,7 @@ $requiredCountByRole = [
     'screener' => 2,
 ];
 
-$pdo = Database::connect();
+$pdo = DB::connect();
 $pdo->beginTransaction();
 
 try {

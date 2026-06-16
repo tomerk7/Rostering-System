@@ -12,14 +12,14 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\Support\Database;
+use App\Support\DB;
 
 header('Content-Type: application/json');
 
 $db = 'fail';
 
 try {
-    Database::connect()->query('SELECT 1');
+    DB::connect()->query('SELECT 1');
     $db = 'ok';
 } catch (Throwable $e) {
     $db = 'fail';

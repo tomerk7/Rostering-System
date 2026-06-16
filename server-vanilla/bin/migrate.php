@@ -19,11 +19,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use App\Support\Database;
+use App\Support\DB;
 
 $migrationsDir = __DIR__ . '/../database/migrations';
 
-$pdo = Database::connect();
+$pdo = DB::connect();
 
 // --fresh: wipe the schema, then fall through to a full create. Dropping the
 // public schema clears every table (including the tracking table), so the
