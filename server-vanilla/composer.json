@@ -3,7 +3,8 @@
     "description": "Vanilla PHP rostering service (strangler-fig migration target).",
     "type": "project",
     "require": {
-        "php": ">=8.4"
+        "php": ">=8.4",
+        "firebase/php-jwt": "^7.1"
     },
     "autoload": {
         "psr-4": {

@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
-import api from '@/lib/axios'
+import api, { TOKEN_KEY } from '@/lib/axios'
 import { isAxiosError } from 'axios'
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null,
     ready: false,
+    token: localStorage.getItem(TOKEN_KEY) || null,
   }),
 
   getters: {
@@ -20,37 +21,51 @@ export const useAuthStore = defineStore('auth', {
 
   actions: {
     /**
-     * Fetch the Sanctum CSRF cookie before authenticated requests.
+     * Persist (or clear) the JWT in state + localStorage.
      *
-     * @returns {Promise<void>}
+     * @param {string|null} token
+     * @returns {void}
      */
-    async csrf() {
-      await api.get('/sanctum/csrf-cookie')
+    setToken(token) {
+      this.token = token
+      if (token) {
+        localStorage.setItem(TOKEN_KEY, token)
+      } else {
+        localStorage.removeItem(TOKEN_KEY)
+      }
     },
 
     /**
-     * Authenticate with email and password, then load the current user.
+     * Authenticate with email and password (JWT), storing the token + user.
      *
      * @param {string} email
      * @param {string} password
      * @returns {Promise<void>}
      */
     async login(email, password) {
-      await this.csrf()
-      await api.post('/login', { email, password })
-      await this.fetchUser()
+      const { data } = await api.post('/api/auth/login', { email, password })
+      this.setToken(data.token)
+      this.user = data.user
+      this.ready = true
     },
 
     /**
-     * Load the authenticated user, or clear the session on failure.
+     * Load the current user from the stored token, or clear it on failure.
      *
      * @returns {Promise<void>}
      */
     async fetchUser() {
+      if (!this.token) {
+        this.user = null
+        this.ready = true
+        return
+      }
+
       try {
-        const { data } = await api.get('/api/user')
-        this.user = data
+        const { data } = await api.get('/api/auth/me')
+        this.user = data.user
       } catch {
+        this.setToken(null)
         this.user = null
       } finally {
         this.ready = true
@@ -58,16 +73,13 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Log out the current user and clear local session state.
+     * Log out: clear the token and local session state (JWT is stateless).
      *
      * @returns {Promise<void>}
      */
     async logout() {
-      try {
-        await api.post('/logout')
-      } finally {
-        this.user = null
-      }
+      this.setToken(null)
+      this.user = null
     },
   },
 })

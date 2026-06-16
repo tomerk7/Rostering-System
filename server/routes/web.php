@@ -6,4 +6,4 @@ Route::get('/', function () {
     return ['Laravel' => app()->version()];
 });
 
-require __DIR__.'/auth.php';
+// Session login removed — auth is JWT, issued by the vanilla service (/api/auth/login).

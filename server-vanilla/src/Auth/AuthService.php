@@ -1,0 +1,98 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Auth;
+
+use App\Repositories\UserRepository;
+use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+use RuntimeException;
+
+/**
+ * Email/password login that issues a signed HS256 JWT, plus token decoding.
+ * Ported from the project's existing JWT auth; the secret comes from JWT_SECRET
+ * instead of Laravel's APP_KEY since this service has no framework config.
+ */
+final class AuthService
+{
+    private const ALGORITHM = 'HS256';
+
+    /**
+     * Class constructor.
+     *
+     * @param UserRepository $users
+     */
+    public function __construct(
+        private readonly UserRepository $users = new UserRepository,
+    ) {}
+
+    /**
+     * Authenticate by email/password; returns the token + user, or null on failure.
+     *
+     * @return array{token: string, token_type: string, user: array{id: int, name: string, email: string}}|null
+     */
+    public function login(string $email, string $password): ?array
+    {
+        $user = $this->users->findByEmail($email);
+
+        if (!$user || ! password_verify($password, $user['password'])) {
+            return null;
+        }
+
+        return [
+            'token' => $this->issue($user),
+            'token_type' => 'Bearer',
+            'user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']],
+        ];
+    }
+
+    /**
+     * Decode and validate a token issued by this service. Throws on invalid/expired.
+     *
+     * @param string $token
+     * @return array<string, mixed>
+     */
+    public function decode(string $token): array
+    {
+        return (array) JWT::decode($token, new Key($this->secret(), self::ALGORITHM));
+    }
+
+    /**
+     * Issue a new token for the given user.
+     *
+     * @param  array{id: int, name: string, email: string}  $user
+     * @return string
+     */
+    private function issue(array $user): string
+    {
+        $now = time();
+        $ttl = (int) (getenv('JWT_TTL_SECONDS') ?: 3600);
+
+        $payload = [
+            'sub' => $user['id'],
+            'email' => $user['email'],
+            'name' => $user['name'],
+            'iat' => $now,
+            'exp' => $now + $ttl,
+        ];
+
+        return JWT::encode($payload, $this->secret(), self::ALGORITHM);
+    }
+
+    /**
+     * Get the secret key from the environment.
+     *
+     * @return string
+     */
+    private function secret(): string
+    {
+        $secret = getenv('JWT_SECRET');
+
+        if (! is_string($secret) || $secret === '') {
+            throw new RuntimeException('JWT_SECRET is not configured.');
+        }
+
+        return $secret;
+    }
+}

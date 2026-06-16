@@ -7,14 +7,12 @@ use App\Http\Controllers\Api\RosterBenchmarkController;
 use App\Http\Controllers\Api\RosterController;
 use App\Http\Controllers\Api\RosterStatsController;
 use App\Http\Controllers\Api\WorkerController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
-    return $request->user();
-});
-
-Route::middleware(['auth:sanctum'])->group(function (): void {
+// NOTE: auth is being migrated to the vanilla service (JWT). During the
+// strangler migration these Laravel routes run WITHOUT auth — the vanilla pool
+// owns login (/api/auth/*) and re-adds JWT protection as routes move over.
+Route::group([], function (): void {
     Route::get('workers/reference-data', [WorkerController::class, 'referenceData']);
     Route::post('workers/import', [WorkerController::class, 'import']);
     Route::get('workers/import/sample', [WorkerController::class, 'importSample']);
