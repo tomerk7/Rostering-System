@@ -13,6 +13,7 @@ compose_prod := $(compose) -f docker-compose.prod.yml
 
 server := $(compose_dev) exec server
 server_prod := $(compose_prod) exec server
+server_vanilla := $(compose_dev) exec server-vanilla
 client := $(compose_dev) exec client
 
 docker-init: docker-init-dev
@@ -62,23 +63,27 @@ docker-print-prod-urls:
 	@echo "  API:    http://localhost:8000/"
 	@echo ""
 
+# Schema + seed are owned by the vanilla app (server-vanilla/bin/*.php), not artisan.
 db-migrate:
-	$(server) php artisan migrate
+	$(server_vanilla) php bin/migrate.php
 
 db-rebuild:
-	$(server) php artisan migrate:fresh --seed --force
+	$(server_vanilla) sh -c 'php bin/migrate.php --fresh && php bin/seed.php'
 
+# Prod still boots schema via Laravel (server-vanilla not yet in docker-compose.prod.yml).
 db-rebuild-prod:
 	$(server_prod) php artisan migrate:fresh --seed --force
 
 db-migrate-revert:
-	$(server) php artisan migrate:rollback --step=1
+	@echo "Rollback is not supported: vanilla migrations are forward-only."
+	@echo "To reset the dev DB use: make db-rebuild"
 
 db-migrate-create:
-	$(server) php artisan make:migration $(name) $(args)
+	@echo "Add a new SQL file: server-vanilla/database/migrations/<NNNN>_<name>.sql"
+	@echo "(numeric prefix after the highest existing one; it runs in filename order)"
 
 db-seeders:
-	$(server) php artisan db:seed --force
+	$(server_vanilla) php bin/seed.php
 
 db-psql:
 	$(compose_dev) exec db psql -U rostering -d rostering
@@ -96,7 +101,10 @@ vanilla-logs:
 	$(compose_dev) logs -f server-vanilla
 
 vanilla-shell:
-	$(compose_dev) exec server-vanilla sh
+	$(server_vanilla) sh
+
+vanilla-composer-du:
+	$(server_vanilla) sh -c "composer dump-autoload --optimize --classmap-authoritative $(args)"
 
 nginx-logs:
 	$(compose_dev) logs -f nginx

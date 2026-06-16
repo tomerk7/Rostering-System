@@ -14,6 +14,15 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# Composer for PSR-4 autoloading (no runtime framework — autoload only).
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# git/unzip let Composer operate normally (and fetch any future deps).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git unzip \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Keep docker env_file vars visible to getenv() inside FPM workers.
 COPY php-fpm.d/zz-clear-env.conf /usr/local/etc/php-fpm.d/zz-clear-env.conf
 

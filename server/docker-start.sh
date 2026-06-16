@@ -14,11 +14,9 @@ if [ -f .env ]; then
 	fi
 fi
 
-php artisan migrate --force;
-
-# Seed reference data (roles, shifts, staffing requirements) and the default
-# login user. Seeders are idempotent, so re-running on every boot is safe.
-php artisan db:seed --force;
+# Schema migrations and reference-data seeding are owned by the vanilla app
+# (server-vanilla/bin/migrate.php + seed.php), which runs before this service
+# boots (compose depends_on: server-vanilla healthy). Laravel only reads the DB.
 
 # Process queued jobs using the database queue connection.
 #

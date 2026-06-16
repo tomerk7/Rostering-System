@@ -22,6 +22,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      # The vanilla app owns the schema/seed now; wait until it has prepared the DB.
+      server-vanilla:
+        condition: service_healthy
     env_file:
       - ./server/.env
     # nginx owns host :8000; :8001 is a direct-to-Laravel escape hatch for debugging.
@@ -45,6 +48,14 @@ services:
       - ./server-vanilla/.env
     volumes:
       - ./server-vanilla:/var/www
+    # Runs migrate + seed, then php-fpm. Marker file flips the healthcheck.
+    command: ["sh", "/var/www/docker-start.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/vanilla-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 60s
 
   # Front-door gateway: routes each request to Laravel (default) or the vanilla
   # FPM pool (per-route carve-outs). Owns the host :8000 the client already uses.

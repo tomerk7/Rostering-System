@@ -1,0 +1,17 @@
+{
+    "name": "rostering/server-vanilla",
+    "description": "Vanilla PHP rostering service (strangler-fig migration target).",
+    "type": "project",
+    "require": {
+        "php": ">=8.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "sort-packages": true
+    }
+}
