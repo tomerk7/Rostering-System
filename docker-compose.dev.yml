@@ -24,12 +24,40 @@ services:
         condition: service_healthy
     env_file:
       - ./server/.env
+    # nginx owns host :8000; :8001 is a direct-to-Laravel escape hatch for debugging.
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./server:/var/www
       - server_vendor:/var/www/vendor
     command: ["sh", "/var/www/docker-start.sh"]
+
+  # New vanilla PHP-FPM pool for the strangler-fig migration. No host port —
+  # nginx reaches it over the compose network on :9000.
+  server-vanilla:
+    build:
+      context: ./server-vanilla
+    container_name: rostering_server_vanilla
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./server-vanilla/.env
+    volumes:
+      - ./server-vanilla:/var/www
+
+  # Front-door gateway: routes each request to Laravel (default) or the vanilla
+  # FPM pool (per-route carve-outs). Owns the host :8000 the client already uses.
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: rostering_nginx
+    depends_on:
+      - server
+      - server-vanilla
+    ports:
+      - "8000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
 
   client:
     build:

@@ -92,6 +92,18 @@ server-logs:
 server-restart:
 	$(compose_dev) restart server
 
+vanilla-logs:
+	$(compose_dev) logs -f server-vanilla
+
+vanilla-shell:
+	$(compose_dev) exec server-vanilla sh
+
+nginx-logs:
+	$(compose_dev) logs -f nginx
+
+nginx-reload:
+	$(compose_dev) exec nginx nginx -s reload
+
 server-app-logs:
 	$(compose_dev) exec server tail -f storage/logs/laravel.log
 
