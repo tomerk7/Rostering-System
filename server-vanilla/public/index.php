@@ -11,6 +11,7 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\WorkerController;
 use App\Http\HttpException;
 use App\Http\Middleware\JwtMiddleware;
 use App\Http\Request;
@@ -57,6 +58,11 @@ $router->get('/__vanilla/health', static function (): array {
 $auth = new AuthController;
 $router->post('/api/auth/login', [$auth, 'login']);
 $router->get('/api/auth/me', [$auth, 'me'], [new JwtMiddleware]);
+
+// Workers (migrating from Laravel). JWT is re-added here now that the route
+// lives in the vanilla pool — the Laravel group runs unauthenticated.
+$workers = new WorkerController;
+$router->get('/api/workers/reference-data', [$workers, 'referenceData'], [new JwtMiddleware]);
 
 try {
     $router->dispatch(Request::capture());
