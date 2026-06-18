@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Auth\AuthService;
 use App\Http\HttpException;
 use App\Http\Request;
+use App\Data\User;
 
 final class AuthController
 {
@@ -49,9 +50,9 @@ final class AuthController
      */
     public function me(Request $request): array
     {
-        /** @var array{id: int, name: string, email: string} $user */
+        /** @var User $user */
         $user = $request->attributes['user'];
 
-        return ['user' => $user];
+        return ['user' => $user->toArray()];
     }
 }

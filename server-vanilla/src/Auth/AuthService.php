@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Auth;
 
+use App\Data\User;
 use App\Repositories\UserRepository;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -36,14 +37,14 @@ final class AuthService
     {
         $user = $this->users->findByEmail($email);
 
-        if (!$user || ! password_verify($password, $user['password'])) {
+        if ($user === null || ! password_verify($password, (string) $user->passwordHash)) {
             return null;
         }
 
         return [
             'token' => $this->issue($user),
             'token_type' => 'Bearer',
-            'user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']],
+            'user' => $user->toArray(),
         ];
     }
 
@@ -60,19 +61,16 @@ final class AuthService
 
     /**
      * Issue a new token for the given user.
-     *
-     * @param  array{id: int, name: string, email: string}  $user
-     * @return string
      */
-    private function issue(array $user): string
+    private function issue(User $user): string
     {
         $now = time();
         $ttl = (int) (getenv('JWT_TTL_SECONDS') ?: 3600);
 
         $payload = [
-            'sub' => $user['id'],
-            'email' => $user['email'],
-            'name' => $user['name'],
+            'sub' => $user->id,
+            'email' => $user->email,
+            'name' => $user->name,
             'iat' => $now,
             'exp' => $now + $ttl,
         ];
