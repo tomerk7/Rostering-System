@@ -13,15 +13,22 @@ use PDO;
  */
 final class DB
 {
+    /** Shared connection, reused across repositories within a request. */
+    private static ?PDO $connection = null;
+
     public static function connect(): PDO
     {
+        if (self::$connection instanceof PDO) {
+            return self::$connection;
+        }
+
         $host = getenv('DB_HOST') ?: 'db';
         $port = getenv('DB_PORT') ?: '5432';
         $name = getenv('DB_DATABASE') ?: 'rostering';
         $user = getenv('DB_USERNAME') ?: 'rostering';
         $pass = getenv('DB_PASSWORD') ?: '';
 
-        return new PDO(
+        return self::$connection = new PDO(
             "pgsql:host={$host};port={$port};dbname={$name}",
             $user,
             $pass,
@@ -30,5 +37,40 @@ final class DB
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ],
         );
+    }
+
+    /**
+     * Run a callback inside a transaction on the shared connection, committing on
+     * success and rolling back if it throws.
+     *
+     * Reentrant: a nested call joins the outer transaction (the outermost begin
+     * governs the single commit/rollback), so services that each wrap their own
+     * work compose without "active transaction" errors. This matches
+     * nested-transaction semantics for our use (one logical unit of work).
+     *
+     * @template T
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    public static function transaction(callable $callback): mixed
+    {
+        $pdo = self::connect();
+
+        if ($pdo->inTransaction()) {
+            return $callback();
+        }
+
+        $pdo->beginTransaction();
+
+        try {
+            $result = $callback();
+            $pdo->commit();
+
+            return $result;
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+
+            throw $e;
+        }
     }
 }

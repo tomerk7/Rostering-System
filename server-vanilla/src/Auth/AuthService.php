@@ -13,9 +13,9 @@ use RuntimeException;
 /**
  * Email/password login that issues a signed HS256 JWT, plus token decoding.
  * Ported from the project's existing JWT auth; the secret comes from JWT_SECRET
- * instead of Laravel's APP_KEY since this service has no framework config.
+ * instead of APP_KEY since this service has no framework config.
  */
-final class AuthService
+class AuthService
 {
     private const ALGORITHM = 'HS256';
 
@@ -25,7 +25,7 @@ final class AuthService
      * @param UserRepository $users
      */
     public function __construct(
-        private readonly UserRepository $users = new UserRepository,
+        private UserRepository $users = new UserRepository,
     ) {}
 
     /**
@@ -65,7 +65,7 @@ final class AuthService
     private function issue(User $user): string
     {
         $now = time();
-        $ttl = (int) (getenv('JWT_TTL_SECONDS') ?: 3600);
+        $ttl = (int) (getenv('JWT_TTL_SECONDS') ?: 7200);
 
         $payload = [
             'sub' => $user->id,

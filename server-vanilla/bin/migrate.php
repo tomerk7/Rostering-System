@@ -8,7 +8,7 @@ declare(strict_types=1);
  * pending file applied once in its own transaction.
  *
  * Adoption: when the tracking table does not yet exist but the schema is already
- * present (the DB Laravel migrated), the current files are recorded as applied
+ * present (an existing migrated database is), the current files are recorded as applied
  * without executing them — so an existing database is adopted without data loss.
  *
  * Usage:
@@ -61,7 +61,7 @@ if ($files === []) {
 
 $record = $pdo->prepare('INSERT INTO schema_migrations (name) VALUES (:name) ON CONFLICT (name) DO NOTHING');
 
-// Adopt an already-migrated database (e.g. the one Laravel created): stamp the
+// Adopt an already-migrated database (e.g. an existing database): stamp the
 // current files as applied without running their DDL.
 if (! $trackingExisted && $tableExists($pdo, 'rosters')) {
     foreach ($files as $file) {

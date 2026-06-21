@@ -124,7 +124,58 @@ Refreshed after generation, regeneration, manual edits, and worker changes — r
 | `required_count` / `assigned_count` | integer      | demand vs actual fill |
 
 
-Plus Laravel infra: `sessions`, `cache`, `jobs`, `failed_jobs`, `personal_access_tokens`.
+### Async job queue
+
+Three database-backed queues drained by the worker daemon (`bin/worker.php`); each row is both the work item and its payload/result store, so no shared volume is needed. Shared shape: `uuid` PK, a `state` machine (`queued` → `processing` → `completed` / `failed`), `reserved_at` (stamped when the worker claims the row), `created_at` / `updated_at`, and a `(state, created_at)` index serving the claim (oldest queued first). Rows are retained — there is no automatic purge today.
+
+`**worker_csv_jobs**` — CSV import/export queue + status store
+
+
+| Column              | Type    | Notes                                            |
+| ------------------- | ------- | ------------------------------------------------ |
+| `id`                | uuid PK |                                                  |
+| `type`              | text    | `check in (import, export)`                      |
+| `state`             | text    | `queued` / `processing` / `completed` / `failed` |
+| `payload`           | text    | uploaded CSV (import input)                      |
+| `result` / `errors` | jsonb   | status + per-row errors the client polls         |
+| `content`           | text    | generated CSV (export output)                    |
+| `message`           | text    | failure message                                  |
+| `reserved_at`       | timestamptz | set when the worker claims the job           |
+
+
+`**roster_generation_jobs**` — roster generate/regenerate queue
+
+
+| Column                    | Type         | Notes                                                                                       |
+| ------------------------- | ------------ | ------------------------------------------------------------------------------------------- |
+| `id`                      | uuid PK      |                                                                                             |
+| `roster_id`               | FK → rosters | cascade on delete                                                                           |
+| `optimize_cost`           | boolean      | run the cost-optimizer pass                                                                  |
+| `distribution_preference` | text         | nullable; `maximum_savings` / `cost_focused` / `balanced` / `distribution_focused` (NULL = none) |
+| `state`                   | text         | `queued` / `processing` / `completed` / `failed`                                            |
+| `message`                 | text         | failure message                                                                             |
+| `reserved_at`             | timestamptz  | set when claimed                                                                            |
+
+
+The client polls the roster's own `rosters.status`, not this table — the row is purely the worker's work queue.
+
+`**roster_export_jobs**` — roster CSV export queue + content store
+
+
+| Column        | Type         | Notes                                            |
+| ------------- | ------------ | ------------------------------------------------ |
+| `id`          | uuid PK      |                                                  |
+| `roster_id`   | FK → rosters | cascade on delete                                |
+| `state`       | text         | `queued` / `processing` / `completed` / `failed` |
+| `content`     | text         | generated CSV                                    |
+| `filename`    | text         | download filename                                |
+| `message`     | text         | failure message                                  |
+| `reserved_at` | timestamptz  | set when claimed                                 |
+
+
+Download reads-then-deletes the row (stream-then-forget).
+
+Plus baseline Laravel tables carried over from the original schema: `sessions`, `cache`, `jobs`, `failed_jobs`, `personal_access_tokens` (the vanilla async queue uses the dedicated tables above, not `jobs`).
 
 ### Key indexes
 
@@ -136,6 +187,7 @@ Plus Laravel infra: `sessions`, `cache`, `jobs`, `failed_jobs`, `personal_access
 | `roster_assignments (worker_id)`                                          | Per-worker hours, export, worker cleanup |
 | `workers (role_id)`                                                       | Eligible-worker filtering by role        |
 | `coverage_shortages (roster_id, work_date, shift_id)`                     | Shortage report load                     |
+| `worker_csv_jobs` / `roster_generation_jobs` / `roster_export_jobs` `(state, created_at)` | Worker claim — oldest queued job first   |
 
 
 Assignments are bulk-inserted in chunks, so write overhead stays low even for full months.

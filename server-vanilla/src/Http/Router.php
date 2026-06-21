@@ -44,6 +44,45 @@ final class Router
     }
 
     /**
+     * Register a PUT route.
+     *
+     * @param string $pattern
+     * @param callable $handler
+     * @param array $middleware
+     * @return void
+     */
+    public function put(string $pattern, callable $handler, array $middleware = []): void
+    {
+        $this->add('PUT', $pattern, $handler, $middleware);
+    }
+
+    /**
+     * Register a PATCH route.
+     *
+     * @param string $pattern
+     * @param callable $handler
+     * @param array $middleware
+     * @return void
+     */
+    public function patch(string $pattern, callable $handler, array $middleware = []): void
+    {
+        $this->add('PATCH', $pattern, $handler, $middleware);
+    }
+
+    /**
+     * Register a DELETE route.
+     *
+     * @param string $pattern
+     * @param callable $handler
+     * @param array $middleware
+     * @return void
+     */
+    public function delete(string $pattern, callable $handler, array $middleware = []): void
+    {
+        $this->add('DELETE', $pattern, $handler, $middleware);
+    }
+
+    /**
      * Register a route.
      *
      * @param string $method
@@ -79,8 +118,20 @@ final class Router
                 $middleware($request);
             }
 
-            $data = ($route['handler'])($request, $params);
-            Response::json($data);
+            $result = ($route['handler'])($request, $params);
+
+            if ($result instanceof RawResponse) {
+                http_response_code($result->status);
+                header('Content-Type: ' . $result->contentType);
+                foreach ($result->headers as $name => $value) {
+                    header($name . ': ' . $value);
+                }
+                echo $result->body;
+            } elseif ($result instanceof JsonResponse) {
+                Response::json($result->data, $result->status);
+            } else {
+                Response::json($result);
+            }
 
             return;
         }

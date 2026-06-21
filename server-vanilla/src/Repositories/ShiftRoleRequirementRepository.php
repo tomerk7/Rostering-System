@@ -57,4 +57,23 @@ final class ShiftRoleRequirementRepository
                 : null,
         ), $rows);
     }
+
+    /**
+     * The required headcount for a (shift, role) pair, or 0 when there is no
+     * demand row — i.e. that role is not staffed on that shift at all.
+     *
+     * @param int $shiftId
+     * @param int $roleId
+     * @return int
+     */
+    public function requiredCount(int $shiftId, int $roleId): int
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT required_count FROM shift_role_requirements WHERE shift_id = ? AND role_id = ?',
+        );
+        $stmt->execute([$shiftId, $roleId]);
+        $value = $stmt->fetchColumn();
+
+        return $value === false ? 0 : (int) $value;
+    }
 }

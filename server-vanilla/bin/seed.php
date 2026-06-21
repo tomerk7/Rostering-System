@@ -75,7 +75,7 @@ try {
         }
     }
 
-    // Default login user. bcrypt ($2y$) is what Laravel's guard verifies against,
+    // Default login user. bcrypt ($2y$) is standard bcrypt verification,
     // so login keeps working while Sanctum is still in place.
     $upsertUser = $pdo->prepare(
         "INSERT INTO users (name, email, email_verified_at, password, created_at, updated_at)

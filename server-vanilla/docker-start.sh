@@ -7,7 +7,7 @@ composer install --no-interaction --no-progress
 
 # The vanilla app owns the database schema and reference data. Run migrations
 # then the idempotent seed on every boot (both are safe to re-run), then signal
-# readiness so the Laravel service can start against a prepared database.
+# readiness so the the app service can start against a prepared database.
 php /var/www/bin/migrate.php
 php /var/www/bin/seed.php
 
@@ -15,3 +15,4 @@ php /var/www/bin/seed.php
 touch /tmp/vanilla-ready
 
 exec php-fpm
+

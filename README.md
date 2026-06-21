@@ -37,12 +37,12 @@ The only hard labour rule is: **a worker may never be assigned all 3 shifts of t
 
 | Layer            | Technology                                              |
 | ---------------- | ------------------------------------------------------- |
-| Backend          | PHP 8.4, Laravel 13                                     |
+| Backend          | PHP 8.4 (vanilla, PSR-4) on PHP-FPM behind nginx        |
 | Frontend         | Vue 3 SPA, Vue Router, Vite, TailwindCSS                |
 | Database         | PostgreSQL 16 (relational SQL only)                     |
-| Auth             | Laravel Sanctum (stateful SPA session + CSRF cookie)    |
-| Background work  | Laravel database queue + dedicated `queue:work` process |
-| Containerisation | Docker Compose (3 services: `db`, `server`, `client`)   |
+| Auth             | Stateless HS256 JWT (Bearer token, no cookies/CSRF)     |
+| Background work  | Database-backed job tables + dedicated worker process   |
+| Containerisation | Docker Compose (`db`, `server-vanilla`, `server-vanilla-worker`, `nginx`, `client`) |
 
 
 ---
@@ -53,15 +53,17 @@ The only hard labour rule is: **a worker may never be assigned all 3 shifts of t
 graph LR
     Browser["Browser<br/>(Vue 3 SPA)"]
     Client["client container<br/>Node 20 + Vite dev server<br/>:5173"]
-    Server["server container<br/>PHP 8.4 + Laravel API<br/>:8000"]
-    Queue["queue:work process<br/>(same container,<br/>auto-restarting loop)"]
+    Nginx["nginx container<br/>front-door gateway<br/>:8000"]
+    Server["server-vanilla container<br/>PHP 8.4 + PHP-FPM<br/>:9000"]
+    Worker["server-vanilla-worker<br/>process (separate container,<br/>auto-restarting loop)"]
     DB[("db container<br/>PostgreSQL 16<br/>:5432")]
 
     Browser -->|serves SPA| Client
-    Browser -->|"REST /api/* (Sanctum session,<br/>CSRF cookie, withCredentials)"| Server
+    Browser -->|"REST /api/* (Bearer JWT)"| Nginx
+    Nginx --> Server
     Server --> DB
-    Queue --> DB
-    Server -.->|"dispatches jobs<br/>(import / export / generation)"| Queue
+    Worker --> DB
+    Server -.->|"enqueues jobs<br/>(import / export / generation)"| DB
 ```
 
 
@@ -71,17 +73,19 @@ graph LR
 
 | Service  | Container          | Port   | Description                                               |
 | -------- | ------------------ | ------ | --------------------------------------------------------- |
-| `db`     | `rostering_db`     | `5432` | PostgreSQL 16 (Alpine)                                    |
-| `server` | `rostering_server` | `8000` | Laravel API.                                              |
-| `client` | `rostering_client` | `5173` | Vite dev server hosting the Vue SPA. Talks to the API via |
+| `db`                    | `rostering_db`                    | `5432` | PostgreSQL 16 (Alpine)                                    |
+| `nginx`                 | `rostering_nginx`                 | `8000` | Front-door gateway; routes every request to the FPM pool. |
+| `server-vanilla`        | `rostering_server_vanilla`        | `9000` | Vanilla PHP 8.4 API on PHP-FPM (reached via nginx).       |
+| `server-vanilla-worker` | `rostering_server_vanilla_worker` | —      | Worker daemon for import / export / generation jobs.      |
+| `client`                | `rostering_client`                | `5173` | Vite dev server hosting the Vue SPA. Talks to the API via |
 
 
 ### Key design decisions
 
-- **API-first SPA split** — the Laravel backend is a pure JSON API; the Vue client is an independent app. Either side can be scaled, replaced, or deployed separately.
-- **Asynchronous heavy work** — roster generation and CSV import/export run as **queued jobs**, not inside the HTTP request. The API returns immediately and the client polls a status endpoint. This keeps the request cycle fast regardless of workforce size (a core scalability requirement of the assignment).
-- **Service-layer architecture** — controllers are thin; all business logic lives in `server/app/Services/` (`Rostering/`, `Workers/`), each class `final` with strict types. The rostering engine itself (`RosteringEngine`) is a pure in-memory algorithm with no framework coupling, which makes it unit-testable and easy to extend with a post-processing optimiser (e.g. simulated annealing) later.
-- **Stateful Sanctum auth** — session cookie + CSRF token (no bearer tokens stored in JS), with single-active-session enforcement per user.
+- **API-first SPA split** — the vanilla PHP backend is a pure JSON API; the Vue client is an independent app. Either side can be scaled, replaced, or deployed separately.
+- **Asynchronous heavy work** — roster generation and CSV import/export run as **queued jobs** (database job tables drained by a dedicated worker), not inside the HTTP request. The API returns immediately and the client polls a status endpoint. This keeps the request cycle fast regardless of workforce size (a core scalability requirement of the assignment).
+- **Service-layer architecture** — controllers are thin; all business logic lives in `server-vanilla/src/` services (`Rostering/`, `Workers/`), written under `declare(strict_types=1)`, with immutable value objects (the `Rostering/Data` DTOs) carrying data between layers. The rostering engine itself (`RosteringEngine`) is a pure in-memory algorithm with no framework coupling, which makes it unit-testable and let the simulated-annealing cost optimizer be layered on top as a separate post-processing pass (see [Bonus Features](#bonus-features--rationale)).
+- **Stateless JWT auth** — an HS256 Bearer token issued at login and sent in the `Authorization` header (no cookies/CSRF), with single-active-session enforcement per user.
 
 ---
 
@@ -119,7 +123,7 @@ make docker-init-dev
 
 ### Load sample workers
 
-From the **Workers** page, click **Import** and upload one of the prepared CSVs in `server/database/data/` (or download `workers-sample.csv` via the "sample CSV" link inside the import modal):
+From the **Workers** page, click **Import** and upload one of the prepared CSVs in `server-vanilla/database/data/` (or download `workers-sample.csv` via the "sample CSV" link inside the import modal):
 
 
 | File                 | Workers | Use for                                                                                                 |
@@ -144,10 +148,8 @@ All three share the same import schema. To seed data directly into the database 
 | `make db-rebuild-prod`                                   | Fresh-migrate + seed (prod stack)           |
 | `make db-seeders`                                        | Re-run seeders manually                     |
 | `make db-psql`                                           | Open a `psql` shell             |
-| `make test`                                              | Run the backend test suite      |
-| `make server-logs` / `make client-logs` / `make db-logs` | Tail container logs             |
-| `make server-app-logs`                                   | Tail `storage/logs/laravel.log` |
-| `make artisan-command args="..."`                        | Run any artisan command         |
+| `make vanilla-logs` / `make client-logs` / `make db-logs` / `make nginx-logs` | Tail container logs |
+| `make vanilla-shell`                                     | Open a shell in the backend container |
 
 
 ---
@@ -331,14 +333,14 @@ The export produces exactly this format, and the import accepts it unchanged, as
 
 ### Prepared CSVs
 
-`server/database/data/` ships three import-ready files — `workers-sample.csv` (12), `realistic.csv` (45), `optimization.csv` (54) — uploadable from the Workers page.
+`server-vanilla/database/data/` ships three import-ready files — `workers-sample.csv` (12), `realistic.csv` (45), `optimization.csv` (54) — uploadable from the Workers page.
 
 ### Generate into the DB
 
-`workers:seed` writes workers, contracts, and availability straight to the database via the model factories:
+`seed-workers` writes workers, contracts, and availability straight to the database:
 
 ```bash
-make artisan-command args="workers:seed realistic"
+make seed-workers args="realistic"
 ```
 
 
@@ -382,6 +384,7 @@ A per-worker view of any saved roster: scheduled hours against contractual min/m
 - **Concurrent-edit protection** — there is no guard today against two admins editing the same roster at once, optimistic locking (version / `updated_at` check) or per-roster locking would prevent silent overwrites.
 - **Authorization layer** — every authenticated admin can do everything; a thin Policy/role split (e.g. viewer vs. editor) plus login rate-limiting would suit a confidential HR system.
 - **Audit trail** — no record of who changed an assignment or contract and when; persisting an edit history would support HR/compliance review and pairs naturally with concurrent-edit protection.
+- **Job-table retention** — completed import / export / generation job rows are not purged; the worker is deliberately a pure *claim → execute → acknowledge* loop. A separate scheduled cleanup (or a row TTL) would keep the three queue tables (`worker_csv_jobs`, `roster_generation_jobs`, `roster_export_jobs`) from growing unbounded.
 - **Benchmarks** — more comparison options and per-worker optimization-change detail, and persist each run as a snapshot so results can be revisited and compared over time (today it is computed on the fly and discarded).
 - **Frontend structure** — clearer feature folders and shared composables, keeping grid presentation, eligibility logic, and API calls separated instead of spread across views and lib files.
 - **Better UX / UI** — a more polished design system, richer empty/loading/error states, drag-and-drop assignment editing.

@@ -44,4 +44,27 @@ final class ShiftRepository
             (int) $row['duration_hours'],
         ), $rows);
     }
+
+    /**
+     * A single shift by id, or null when missing.
+     *
+     * @param int $id
+     * @return Shift|null
+     */
+    public function find(int $id): ?Shift
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT id, code, start_time, end_time, duration_hours FROM shifts WHERE id = ?',
+        );
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : new Shift(
+            (int) $row['id'],
+            $row['code'],
+            $row['start_time'],
+            $row['end_time'],
+            (int) $row['duration_hours'],
+        );
+    }
 }

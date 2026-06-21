@@ -11,26 +11,27 @@ endif
 compose_dev := $(compose) -f docker-compose.dev.yml
 compose_prod := $(compose) -f docker-compose.prod.yml
 
-server := $(compose_dev) exec server
-server_prod := $(compose_prod) exec server
 server_vanilla := $(compose_dev) exec server-vanilla
+server_vanilla_prod := $(compose_prod) exec server-vanilla
 client := $(compose_dev) exec client
 
 docker-init: docker-init-dev
 
 docker-init-dev:
-	[ -f server/.env ] || cp server/.env.example server/.env
+	[ -f server-vanilla/.env ] || cp server-vanilla/.env.example server-vanilla/.env
 	[ -f db/.env ] || cp db/.env.example db/.env
 	[ -f client/.env ] || cp client/.env.example client/.env
 	$(compose_dev) up -d --build
 
 docker-init-prod:
-	[ -f server/.env ] || cp server/.env.example server/.env
+	[ -f server-vanilla/.env ] || cp server-vanilla/.env.example server-vanilla/.env
 	[ -f db/.env ] || cp db/.env.example db/.env
 	[ -f client/.env ] || cp client/.env.example client/.env
+	@echo "Tearing down any existing prod stack..."
+	-$(compose_prod) down --remove-orphans
 	$(compose_prod) up -d --build
-	@sh scripts/wait-prod-server-ready.sh "$(compose_prod)"
-	@$(MAKE) db-rebuild-prod
+	@echo "Resetting database (drop schema + fresh migrate + seed)..."
+	$(server_vanilla_prod) sh -c 'php bin/migrate.php --fresh && php bin/seed.php'
 	@sh scripts/wait-prod-client-build.sh "$(compose_prod)" || true
 	@$(MAKE) docker-print-prod-urls
 
@@ -70,9 +71,9 @@ db-migrate:
 db-rebuild:
 	$(server_vanilla) sh -c 'php bin/migrate.php --fresh && php bin/seed.php'
 
-# Prod still boots schema via Laravel (server-vanilla not yet in docker-compose.prod.yml).
+# Prod boots schema on container start (idempotent); this forces a fresh rebuild.
 db-rebuild-prod:
-	$(server_prod) php artisan migrate:fresh --seed --force
+	$(server_vanilla_prod) sh -c 'php bin/migrate.php --fresh && php bin/seed.php'
 
 db-migrate-revert:
 	@echo "Rollback is not supported: vanilla migrations are forward-only."
@@ -85,17 +86,16 @@ db-migrate-create:
 db-seeders:
 	$(server_vanilla) php bin/seed.php
 
+# Seed dev/test workers for a staffing profile (raw PDO; dev fixtures only).
+# e.g. make seed-workers args="optimization --coverage-factor=6 --fresh"
+seed-workers:
+	$(server_vanilla) php bin/seed-workers.php $(args)
+
 db-psql:
 	$(compose_dev) exec db psql -U rostering -d rostering
 
 db-logs:
 	$(compose_dev) logs -f db
-
-server-logs:
-	$(compose_dev) logs -f server
-
-server-restart:
-	$(compose_dev) restart server
 
 vanilla-logs:
 	$(compose_dev) logs -f server-vanilla
@@ -112,32 +112,8 @@ nginx-logs:
 nginx-reload:
 	$(compose_dev) exec nginx nginx -s reload
 
-server-app-logs:
-	$(compose_dev) exec server tail -f storage/logs/laravel.log
-
 client-logs:
 	$(compose_dev) logs -f client
-
-artisan-ide-helper:
-	$(server) sh -c "composer require --dev barryvdh/laravel-ide-helper"
-
-artisan-command:
-	$(server) php artisan $(args)
-
-test:
-	$(server) php artisan test
-
-composer-du:
-	$(server) sh -c "composer dump-autoload --quiet --optimize --classmap-authoritative $(args)"
-
-composer-install:
-	$(server) sh -c "composer install"
-
-tests:
-	$(server) ./vendor/bin/phpunit
-
-optimize-clear-all:
-	$(server) php artisan optimize:clear
 
 client-npm-install:
 	$(client) npm install
@@ -147,3 +123,8 @@ client-build:
 
 client-lint:
 	$(client) npm run lint
+
+# Run the vanilla backend PHPUnit suite inside the container.
+# e.g. make test args="--testsuite unit"
+test:
+	$(server_vanilla) vendor/bin/phpunit $(args)

@@ -21,12 +21,15 @@ final class Request
      * @param  string  $path
      * @param  array<string, string>  $headers  lower-cased header names
      * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>  $query  query-string params ($_GET)
      */
     public function __construct(
         public readonly string $method,
         public readonly string $path,
         private array $headers,
         private array $body,
+        private array $query = [],
+        private array $files = [],
     ) {}
 
     /**
@@ -69,7 +72,7 @@ final class Request
             $body = $_POST;
         }
 
-        return new self($method, $path, $headers, $body);
+        return new self($method, $path, $headers, $body, $_GET, $_FILES);
     }
 
     /**
@@ -112,5 +115,51 @@ final class Request
     public function input(string $key, mixed $default = null): mixed
     {
         return $this->body[$key] ?? $default;
+    }
+
+    /**
+     * The full decoded request body.
+     *
+     * @return array<string, mixed>
+     */
+    public function all(): array
+    {
+        return $this->body;
+    }
+
+    /**
+     * An uploaded file by field name ($_FILES entry), or null.
+     *
+     * @param string $key
+     * @return array{name: string, type: string, tmp_name: string, error: int, size: int}|null
+     */
+    public function file(string $key): ?array
+    {
+        return $this->files[$key] ?? null;
+    }
+
+    /**
+     * Get a query-string param by key.
+     *
+     * @param string $key
+     * @param mixed|null $default
+     * @return mixed
+     */
+    public function query(string $key, mixed $default = null): mixed
+    {
+        $value = $this->query[$key] ?? null;
+
+        return ($value === null || $value === '') ? $default : $value;
+    }
+
+    /**
+     * Whether a query-string param is present (any value, including empty).
+     *
+     * @param string $key
+     * @return bool
+     */
+    public function hasQuery(string $key): bool
+    {
+        return array_key_exists($key, $this->query);
     }
 }
